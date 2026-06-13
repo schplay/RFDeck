@@ -228,10 +228,7 @@ The RFDeck interface is engineered for **high-stakes live production environment
 # 1. Install dependencies
 pnpm install
 
-# 2. Create the server environment file (first time only)
-cp apps/server/.env.example apps/server/.env   # or copy manually on Windows
-
-# 3. Set up the database (first time only)
+# 2. Set up the database (first time only)
 pnpm --filter @rfdeck/server prisma:generate
 pnpm --filter @rfdeck/server prisma:push
 
