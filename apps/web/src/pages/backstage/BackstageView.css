@@ -1,0 +1,320 @@
+/* ===================================================
+   Backstage / Talent View
+   Full-screen, high-contrast, read-only. Designed to be
+   readable from 3–4m away in dim stage lighting.
+   =================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Geist:wght@600;700;800&family=Inter:wght@400;600;700&display=swap');
+
+.bs-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #080809;
+  color: #e5e2e3;
+  font-family: 'Inter', sans-serif;
+  user-select: none;
+}
+
+/* ── Top bar ─────────────────────────────────────── */
+.bs-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: rgba(20, 20, 22, 0.95);
+  border-bottom: 1px solid #1e2d2e;
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.bs-brand {
+  font-family: 'Geist', sans-serif;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #00dbe9;
+}
+
+.bs-brand-sub {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #849495;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.bs-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bs-hint {
+  font-size: 11px;
+  color: #849495;
+  margin-right: 8px;
+  letter-spacing: 0.03em;
+}
+
+.bs-col-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 1px solid #3b494b;
+  background: transparent;
+  color: #849495;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bs-col-btn:hover {
+  border-color: #00dbe9;
+  color: #00dbe9;
+}
+
+.bs-col-btn.active {
+  border-color: #00dbe9;
+  background: rgba(0, 219, 233, 0.15);
+  color: #00dbe9;
+}
+
+.bs-exit-btn {
+  margin-left: 12px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid #3b494b;
+  background: transparent;
+  color: #849495;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.bs-exit-btn:hover {
+  border-color: #849495;
+  color: #e5e2e3;
+}
+
+/* ── Grid ──────────────────────────────────────────── */
+.bs-grid {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  flex: 1;
+  align-content: start;
+}
+
+/* ── Channel Card ──────────────────────────────────── */
+.bs-card {
+  background: #0e1517;
+  border-radius: 12px;
+  padding: 24px 28px;
+  border: 1px solid #1e2d2e;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bs-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 12px 12px 0 0;
+  transition: background 0.2s ease;
+}
+
+.bs-card.active::before   { background: #4ae176; }
+.bs-card.warning::before  { background: #ffb86c; }
+.bs-card.critical::before { background: #ff5555; animation: bs-pulse-red 1s ease-in-out infinite; }
+.bs-card.muted::before    { background: #849495; }
+
+.bs-card.active  { border-color: #1c3a22; box-shadow: 0 0 0 0 transparent; }
+.bs-card.warning { border-color: #3d2e10; box-shadow: 0 0 24px rgba(255, 184, 108, 0.08); }
+.bs-card.critical { border-color: #3d1010; box-shadow: 0 0 32px rgba(255, 85, 85, 0.12); }
+.bs-card.muted   { border-color: #252525; opacity: 0.65; }
+
+@keyframes bs-pulse-red {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ── Card Header ─────────────────────────────────── */
+.bs-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bs-ch-name {
+  font-family: 'Geist', sans-serif;
+  font-size: clamp(22px, 3vw, 36px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: #e5e2e3;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bs-status-pill {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.bs-status-pill.active   { background: rgba(74, 225, 118, 0.15); color: #4ae176; border: 1px solid rgba(74, 225, 118, 0.3); }
+.bs-status-pill.warning  { background: rgba(255, 184, 108, 0.15); color: #ffb86c; border: 1px solid rgba(255, 184, 108, 0.3); }
+.bs-status-pill.critical { background: rgba(255, 85, 85, 0.15); color: #ff5555; border: 1px solid rgba(255, 85, 85, 0.4); }
+.bs-status-pill.muted    { background: rgba(132, 148, 149, 0.1); color: #849495; border: 1px solid rgba(132, 148, 149, 0.2); }
+
+/* ── Frequency ───────────────────────────────────── */
+.bs-freq {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(32px, 5vw, 64px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #00dbe9;
+  line-height: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.bs-freq-unit {
+  font-size: 0.35em;
+  color: #849495;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+/* ── Meters ──────────────────────────────────────── */
+.bs-meters {
+  display: flex;
+  gap: 20px;
+}
+
+.bs-meter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.bs-meter-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #849495;
+}
+
+.bs-rf-bar {
+  display: flex;
+  gap: 3px;
+  height: 10px;
+  align-items: center;
+}
+
+.bs-rf-seg {
+  flex: 1;
+  height: 10px;
+  border-radius: 2px;
+  background: #1e2d2e;
+  transition: background 0.1s;
+}
+
+.bs-rf-seg.good { background: #4ae176; }
+.bs-rf-seg.warn { background: #ffb86c; }
+.bs-rf-seg.crit { background: #ff5555; }
+
+.bs-meter-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  color: #849495;
+}
+
+/* ── Battery ─────────────────────────────────────── */
+.bs-battery {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.bs-batt-bar-track {
+  flex: 1;
+  height: 8px;
+  background: #1e2d2e;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.bs-batt-bar-fill {
+  height: 100%;
+  background: #4ae176;
+  border-radius: 99px;
+  transition: width 0.5s ease;
+}
+
+.bs-battery.bs-batt-low  .bs-batt-bar-fill { background: #ffb86c; }
+.bs-battery.bs-batt-critical .bs-batt-bar-fill {
+  background: #ff5555;
+  animation: bs-batt-flash 0.8s ease-in-out infinite;
+}
+
+@keyframes bs-batt-flash {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+.bs-batt-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  color: #849495;
+  min-width: 40px;
+  text-align: right;
+}
+
+.bs-battery.bs-batt-low  .bs-batt-label { color: #ffb86c; }
+.bs-battery.bs-batt-critical .bs-batt-label { color: #ff5555; }
+
+/* ── Empty State ─────────────────────────────────── */
+.bs-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  gap: 12px;
+  opacity: 0.5;
+}
+
+.bs-empty-icon  { font-size: 48px; }
+.bs-empty-text  { font-family: 'Geist', sans-serif; font-size: 22px; font-weight: 700; color: #849495; }
+.bs-empty-sub   { font-size: 14px; color: #849495; }

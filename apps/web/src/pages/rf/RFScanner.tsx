@@ -1,0 +1,178 @@
+import React, { useMemo, useRef, useEffect, useState } from 'react';
+import { Radio, Download, RefreshCw, Wifi, History } from 'lucide-react';
+import { useChannelStore } from '../../stores/channelStore';
+import { useDeviceStore } from '../../stores/deviceStore';
+import { useFrequencyHistoryStore } from '../../stores/frequencyHistoryStore';
+import { SpectrumCanvas } from './components/SpectrumCanvas';
+import { FrequencyTable } from './components/FrequencyTable';
+import { FrequencyHistory } from './components/FrequencyHistory';
+import './RFScanner.css';
+
+export default function RFScanner() {
+  const { channels } = useChannelStore();
+  const { inventory } = useDeviceStore();
+
+  const onlineDevices = inventory.filter((d) => d.online).length;
+  const activeChannels = channels.filter((c) => c.status === 'ACTIVE');
+
+  const handleExportCSV = () => {
+    const rows = [
+      ['Channel Name', 'Frequency (MHz)', 'Device', 'Status', 'RF Level A', 'RF Level B'],
+      ...channels.map((c) => [
+        c.name,
+        (c.frequency / 1000).toFixed(3),
+        c.deviceId,
+        c.status,
+        String(c.rfLevelA),
+        String(c.rfLevelB),
+      ]),
+    ];
+    const csv = rows.map((r) => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rfdeck-frequencies-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="rf-page">
+      {/* Page Header */}
+      <div className="rf-header">
+        <div className="rf-header-left">
+          <h1 className="page-title">RF Environment</h1>
+          <div className="rf-stats">
+            <span className="stat-badge stat-total">
+              <Wifi size={12} />
+              {onlineDevices} Devices Online
+            </span>
+            <span className="stat-badge stat-online">
+              <Radio size={12} />
+              {channels.length} Active Frequencies
+            </span>
+          </div>
+        </div>
+        <div className="rf-header-actions">
+          <button className="btn-secondary-rf" onClick={handleExportCSV} disabled={channels.length === 0}>
+            <Download size={15} />
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      {/* Main layout: spectrum + table + sidebar */}
+      <div className="rf-workspace">
+        {/* Left column: stacked spectrum + table */}
+        <div className="rf-main-col">
+          {/* Spectrum Visualization */}
+          <section className="rf-card spectrum-card">
+            <div className="rf-card-header">
+              <div className="rf-card-title">
+                <Radio size={16} className="card-icon" />
+                Live Spectrum View
+              </div>
+              <div className="spectrum-meta">
+                <span>470 – 608 MHz</span>
+                <span>RBW: 100 kHz</span>
+                <span className="simulated-badge">Simulated</span>
+              </div>
+            </div>
+            <div className="spectrum-body">
+              <SpectrumCanvas channels={channels} />
+            </div>
+          </section>
+
+          {/* Frequency Table */}
+          <section className="rf-card table-card">
+            <div className="rf-card-header">
+              <div className="rf-card-title">Active Frequencies</div>
+              <span className="table-count">{channels.length} channels</span>
+            </div>
+            <FrequencyTable channels={channels} />
+          </section>
+
+          {/* Frequency History Log */}
+          <section className="rf-card history-card">
+            <div className="rf-card-header">
+              <div className="rf-card-title">
+                <History size={16} className="card-icon" />
+                Frequency Change Log
+              </div>
+            </div>
+            <FrequencyHistory />
+          </section>
+        </div>
+
+        {/* Right sidebar */}
+        <aside className="rf-sidebar">
+          <div className="rf-card sidebar-card">
+            <div className="sidebar-section-title">Network Status</div>
+            <div className="sidebar-stat-block">
+              <div className="sidebar-stat">
+                <span className="sidebar-stat-label">Online Devices</span>
+                <span className="sidebar-stat-value">{onlineDevices}</span>
+              </div>
+              <div className="sidebar-stat">
+                <span className="sidebar-stat-label">Total Channels</span>
+                <span className="sidebar-stat-value">{channels.length}</span>
+              </div>
+              <div className="sidebar-stat">
+                <span className="sidebar-stat-label">Active</span>
+                <span className="sidebar-stat-value success">{activeChannels.length}</span>
+              </div>
+              <div className="sidebar-stat">
+                <span className="sidebar-stat-label">Warning / Critical</span>
+                <span className="sidebar-stat-value warning">
+                  {channels.filter((c) => c.status !== 'ACTIVE').length}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rf-card sidebar-card">
+            <div className="sidebar-section-title">Frequency Range</div>
+            <div className="freq-range-display">
+              {channels.length > 0 ? (
+                <>
+                  <div className="freq-range-row">
+                    <span className="freq-range-label">Lowest</span>
+                    <span className="freq-range-value">
+                      {(Math.min(...channels.map((c) => c.frequency)) / 1000).toFixed(3)} MHz
+                    </span>
+                  </div>
+                  <div className="freq-range-row">
+                    <span className="freq-range-label">Highest</span>
+                    <span className="freq-range-value">
+                      {(Math.max(...channels.map((c) => c.frequency)) / 1000).toFixed(3)} MHz
+                    </span>
+                  </div>
+                  <div className="freq-range-row">
+                    <span className="freq-range-label">Span</span>
+                    <span className="freq-range-value">
+                      {((Math.max(...channels.map((c) => c.frequency)) - Math.min(...channels.map((c) => c.frequency))) / 1000).toFixed(3)} MHz
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <p className="no-data">No active channels detected</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rf-card sidebar-card">
+            <div className="sidebar-section-title">About This View</div>
+            <p className="sidebar-note">
+              This view shows the RF environment based on live telemetry from your connected hardware. For full frequency coordination and IMD calculation, use your manufacturer's tools (Sennheiser WSM, Shure WWB6).
+            </p>
+          </div>
+
+          <div className="rf-card sidebar-card">
+            <FrequencyHistory compact />
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}

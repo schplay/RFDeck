@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model InventoryDevice {
+  id                 String   @id @default(uuid())
+  name               String
+  manufacturer       String
+  model              String
+  ip                 String
+  port               Int
+  location           String?
+  notes              String?
+  addedAt            DateTime @default(now())
+}
+
+model Settings {
+  id                 String   @id @default(uuid())
+  aes67MulticastIp   String   @default("239.69.0.1")
+  aes67Port          Int      @default(5004)
+  batteryWarningPct  Int      @default(20)
+  batteryCriticalPct Int      @default(5)
+  dropoutSensitivity Int      @default(20)
+  bindInterface      String   @default("0.0.0.0")
+}
+

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RF COMMAND - Alerts</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&amp;family=Inter:wght@400;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-error-container": "#ffdad6",
+                        "outline": "#849495",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-surface": "#e5e2e3",
+                        "primary": "#dbfcff",
+                        "on-background": "#e5e2e3",
+                        "surface-bright": "#3a393a",
+                        "surface-container-low": "#1c1b1c",
+                        "tertiary-fixed": "#ffdbca",
+                        "on-primary-container": "#006970",
+                        "secondary-fixed-dim": "#4ae176",
+                        "on-primary": "#00363a",
+                        "secondary-container": "#00b954",
+                        "tertiary-fixed-dim": "#ffb690",
+                        "inverse-on-surface": "#313031",
+                        "tertiary": "#fff3ef",
+                        "on-secondary": "#003915",
+                        "secondary-fixed": "#6bff8f",
+                        "inverse-primary": "#006970",
+                        "on-secondary-container": "#004119",
+                        "primary-fixed": "#7df4ff",
+                        "primary-container": "#00f0ff",
+                        "surface-container-high": "#2a2a2b",
+                        "surface": "#131314",
+                        "surface-container-lowest": "#0e0e0f",
+                        "on-tertiary-container": "#9d4300",
+                        "tertiary-container": "#ffcfb8",
+                        "surface-variant": "#353436",
+                        "background": "#131314",
+                        "surface-container": "#201f20",
+                        "surface-dim": "#131314",
+                        "secondary": "#4ae176",
+                        "on-tertiary": "#552100",
+                        "error": "#ffb4ab",
+                        "primary-fixed-dim": "#00dbe9",
+                        "surface-tint": "#00dbe9",
+                        "on-tertiary-fixed-variant": "#783200",
+                        "on-primary-fixed": "#002022",
+                        "on-error": "#690005",
+                        "on-surface-variant": "#b9cacb",
+                        "inverse-surface": "#e5e2e3",
+                        "surface-container-highest": "#353436",
+                        "on-secondary-fixed": "#002109",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed": "#341100",
+                        "outline-variant": "#3b494b",
+                        "on-secondary-fixed-variant": "#005321"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    spacing: {
+                        "gutter": "12px",
+                        "margin": "16px",
+                        "density-comfortable": "12px 16px",
+                        "unit": "4px",
+                        "density-compact": "4px 8px"
+                    },
+                    fontFamily: {
+                        "label-caps": ["Inter"],
+                        "display-rf": ["JetBrains Mono"],
+                        "headline-lg": ["Geist"],
+                        "body-md": ["Inter"],
+                        "data-tabular": ["JetBrains Mono"],
+                        "headline-md": ["Geist"]
+                    },
+                    fontSize: {
+                        "label-caps": ["11px", { lineHeight: "12px", letterSpacing: "0.05em", fontWeight: "700" }],
+                        "display-rf": ["32px", { lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "700" }],
+                        "headline-lg": ["24px", { lineHeight: "32px", fontWeight: "600" }],
+                        "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+                        "data-tabular": ["13px", { lineHeight: "16px", fontWeight: "500" }],
+                        "headline-md": ["18px", { lineHeight: "24px", fontWeight: "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #0A0A0B;
+            color: #e5e2e3;
+        }
+        .glass-panel {
+            background: rgba(22, 22, 24, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid #262629;
+        }
+        .critical-border { border-top: 2px solid #ffb4ab; }
+        .warning-border { border-top: 2px solid #ffcfb8; } /* Using tertiary for orange-ish warning */
+        .info-border { border-top: 2px solid #00dbe9; }
+        
+        .btn-glow {
+            box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.1);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-body-md text-body-md bg-background antialiased min-h-screen flex flex-col selection:bg-primary-fixed-dim selection:text-on-primary">
+<!-- TopAppBar -->
+<header class="bg-surface dark:bg-surface w-full top-0 sticky border-b border-outline-variant transition-colors duration-200 flex justify-between items-center px-margin h-16 z-40">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary-fixed-dim dark:text-primary-fixed-dim hover:bg-surface-variant dark:hover:bg-surface-variant p-2 rounded-full cursor-pointer transition-colors duration-200" data-icon="settings_input_antenna">settings_input_antenna</span>
+<h1 class="font-display-rf text-display-rf text-primary-fixed-dim tracking-tighter">RF COMMAND</h1>
+</div>
+<span class="material-symbols-outlined text-primary-fixed-dim dark:text-primary-fixed-dim hover:bg-surface-variant dark:hover:bg-surface-variant p-2 rounded-full cursor-pointer transition-colors duration-200" data-icon="signal_cellular_alt">signal_cellular_alt</span>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 px-margin py-6 pb-28 flex flex-col gap-4 overflow-y-auto w-full max-w-2xl mx-auto md:max-w-4xl">
+<div class="flex justify-between items-end mb-2">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Active Alerts</h2>
+<p class="font-data-tabular text-data-tabular text-on-surface-variant mt-1">4 Issues Detected</p>
+</div>
+<button class="font-label-caps text-label-caps text-on-surface-variant border border-outline-variant px-density-comfortable py-1 rounded hover:bg-surface-variant transition-colors btn-glow">
+                CLEAR ALL
+            </button>
+</div>
+<!-- Alert Card: Critical -->
+<article class="glass-panel critical-border rounded-lg p-4 flex flex-col gap-3 relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-2 opacity-10 text-error pointer-events-none">
+<span class="material-symbols-outlined text-[64px]" style="font-variation-settings: 'FILL' 1;">warning</span>
+</div>
+<div class="flex justify-between items-start z-10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-error text-xl" style="font-variation-settings: 'FILL' 1;">error</span>
+<span class="font-label-caps text-label-caps text-error bg-error-container/20 px-2 py-0.5 rounded">CRITICAL</span>
+</div>
+<span class="font-data-tabular text-data-tabular text-on-surface-variant">14:22:05</span>
+</div>
+<div class="z-10 mt-1">
+<div class="flex items-baseline gap-2 mb-1">
+<h3 class="font-headline-md text-headline-md text-on-surface">RF Interference Detected</h3>
+</div>
+<div class="flex gap-4 font-data-tabular text-data-tabular text-on-surface-variant mb-2">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">router</span> Rack A</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">settings_input_component</span> Ch 12</span>
+<span class="text-error font-bold">542.125 MHz</span>
+</div>
+<p class="text-on-surface-variant">Severe intermodulation detected on primary vocal channel. Carrier-to-Noise ratio dropped below acceptable threshold (12dB).</p>
+</div>
+<div class="flex gap-2 mt-2 z-10">
+<button class="flex-1 bg-error text-on-error font-data-tabular text-data-tabular py-2 rounded font-bold hover:opacity-90 transition-opacity btn-glow flex justify-center items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">swap_horiz</span> RE-ALLOCATE FREQ
+                </button>
+<button class="px-4 border border-outline-variant text-on-surface rounded hover:bg-surface-variant transition-colors flex justify-center items-center" title="Snooze">
+<span class="material-symbols-outlined text-[18px]">notifications_paused</span>
+</button>
+</div>
+</article>
+<!-- Alert Card: Warning -->
+<article class="glass-panel warning-border rounded-lg p-4 flex flex-col gap-3 relative overflow-hidden">
+<div class="flex justify-between items-start z-10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-tertiary-container text-xl" style="font-variation-settings: 'FILL' 1;">battery_alert</span>
+<span class="font-label-caps text-label-caps text-tertiary-container bg-tertiary-container/10 px-2 py-0.5 rounded">WARNING</span>
+</div>
+<span class="font-data-tabular text-data-tabular text-on-surface-variant">14:15:30</span>
+</div>
+<div class="z-10 mt-1">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-1">Low Battery Warning</h3>
+<div class="flex gap-4 font-data-tabular text-data-tabular text-on-surface-variant mb-2">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">person</span> Talent B (Guitar)</span>
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">settings_input_component</span> Ch 04</span>
+</div>
+<div class="w-full bg-surface-container-high h-2 rounded-full overflow-hidden mt-1 mb-2">
+<div class="bg-tertiary-container h-full w-[15%]"></div>
+</div>
+<p class="text-on-surface-variant">Transmitter battery level at 15%. Estimated remaining time: 45 minutes.</p>
+</div>
+<div class="flex gap-2 mt-2 z-10">
+<button class="flex-1 border border-outline-variant text-on-surface font-data-tabular text-data-tabular py-2 rounded hover:bg-surface-variant transition-colors btn-glow flex justify-center items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">location_on</span> LOCATE HARDWARE
+                </button>
+<button class="px-4 border border-outline-variant text-on-surface rounded hover:bg-surface-variant transition-colors flex justify-center items-center" title="Dismiss">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+</article>
+<!-- Alert Card: Info -->
+<article class="glass-panel info-border rounded-lg p-4 flex flex-col gap-3 relative overflow-hidden">
+<div class="flex justify-between items-start z-10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-fixed-dim text-xl" style="font-variation-settings: 'FILL' 1;">info</span>
+<span class="font-label-caps text-label-caps text-primary-fixed-dim bg-primary-fixed-dim/10 px-2 py-0.5 rounded">INFO</span>
+</div>
+<span class="font-data-tabular text-data-tabular text-on-surface-variant">13:45:12</span>
+</div>
+<div class="z-10 mt-1">
+<h3 class="font-headline-md text-headline-md text-on-surface mb-1">Network Topology Change</h3>
+<div class="flex gap-4 font-data-tabular text-data-tabular text-on-surface-variant mb-2">
+<span class="flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">lan</span> Switch Core-2</span>
+</div>
+<p class="text-on-surface-variant">Secondary antenna distribution node came online. System recalibrating diversity metrics.</p>
+</div>
+<div class="flex gap-2 mt-2 z-10">
+<button class="w-full border border-outline-variant text-on-surface font-data-tabular text-data-tabular py-2 rounded hover:bg-surface-variant transition-colors btn-glow flex justify-center items-center gap-2">
+                     ACKNOWLEDGE
+                </button>
+</div>
+</article>
+</main>
+<!-- BottomNavBar -->
+<nav class="bg-surface-container-lowest dark:bg-surface-container-lowest fixed bottom-0 w-full z-50 border-t border-outline-variant flex justify-around items-center h-20 pb-safe px-gutter md:hidden">
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-secondary transition-all active:scale-95 duration-100 w-20">
+<span class="material-symbols-outlined text-2xl mb-1" data-icon="monitoring">monitoring</span>
+<span class="font-label-caps text-label-caps">Monitoring</span>
+</button>
+<!-- Active Tab: Alerts -->
+<button class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 hover:text-secondary transition-all active:scale-95 duration-100">
+<span class="material-symbols-outlined text-2xl mb-1" data-icon="notifications_active" style="font-variation-settings: 'FILL' 1;">notifications_active</span>
+<span class="font-label-caps text-label-caps">Alerts</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-secondary transition-all active:scale-95 duration-100 w-20">
+<span class="material-symbols-outlined text-2xl mb-1" data-icon="inventory_2">inventory_2</span>
+<span class="font-label-caps text-label-caps">Inventory</span>
+</button>
+</nav>
+</body></html>

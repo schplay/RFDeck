@@ -1,0 +1,10 @@
+appId: com.rfdeck.desktop
+productName: RFDeck
+directories:
+  output: release
+  buildResources: resources
+files:
+  - dist/**/*
+  - package.json
+win:
+  target: nsis

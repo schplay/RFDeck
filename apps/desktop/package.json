@@ -1,0 +1,20 @@
+{
+  "name": "@rfdeck/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "package": "tsc && electron-builder",
+    "dev": "tsc && electron .",
+    "predev": "pnpm --filter @rfdeck/server build"
+  },
+  "dependencies": {
+    "@rfdeck/server": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "^42.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.0.0"
+  }
+}

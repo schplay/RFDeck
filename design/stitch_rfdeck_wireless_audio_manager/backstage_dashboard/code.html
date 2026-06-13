@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RFDeck - High-Density Monitoring</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&amp;family=JetBrains+Mono:wght@500;700&amp;family=Inter:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-error-container": "#ffdad6",
+                        "on-error": "#690005",
+                        "primary-fixed-dim": "#00dbe9",
+                        "on-background": "#e5e2e3",
+                        "surface-dim": "#131314",
+                        "on-secondary": "#003915",
+                        "tertiary": "#fff3ef",
+                        "on-tertiary-fixed-variant": "#783200",
+                        "surface-container-high": "#2a2a2b",
+                        "tertiary-fixed": "#ffdbca",
+                        "surface-container-highest": "#353436",
+                        "background": "#131314",
+                        "on-secondary-fixed": "#002109",
+                        "secondary-fixed": "#6bff8f",
+                        "secondary-container": "#00b954",
+                        "outline": "#849495",
+                        "on-surface": "#e5e2e3",
+                        "surface-container-low": "#1c1b1c",
+                        "tertiary-container": "#ffcfb8",
+                        "primary-fixed": "#7df4ff",
+                        "secondary": "#4ae176",
+                        "primary-container": "#00f0ff",
+                        "inverse-on-surface": "#313031",
+                        "error-container": "#93000a",
+                        "on-tertiary-container": "#9d4300",
+                        "surface-tint": "#00dbe9",
+                        "error": "#ffb4ab",
+                        "surface": "#131314",
+                        "surface-container": "#201f20",
+                        "surface-bright": "#3a393a",
+                        "primary": "#dbfcff",
+                        "surface-variant": "#353436",
+                        "on-tertiary": "#552100",
+                        "inverse-primary": "#006970",
+                        "on-tertiary-fixed": "#341100",
+                        "on-surface-variant": "#b9cacb",
+                        "on-primary-container": "#006970",
+                        "on-secondary-container": "#004119",
+                        "tertiary-fixed-dim": "#ffb690",
+                        "on-primary": "#00363a",
+                        "on-secondary-fixed-variant": "#005321",
+                        "secondary-fixed-dim": "#4ae176",
+                        "outline-variant": "#3b494b",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-primary-fixed": "#002022",
+                        "inverse-surface": "#e5e2e3",
+                        "surface-container-lowest": "#0e0e0f"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "unit": "4px",
+                        "gutter": "12px",
+                        "density-compact": "4px 8px",
+                        "density-comfortable": "12px 16px",
+                        "margin": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Geist"],
+                        "headline-lg": ["Geist"],
+                        "display-rf": ["JetBrains Mono"],
+                        "data-tabular": ["JetBrains Mono"],
+                        "label-caps": ["Inter"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-rf": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "data-tabular": ["13px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "label-caps": ["11px", {"lineHeight": "12px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #0A0A0B;
+            color: #e5e2e3;
+        }
+        /* Custom Scrollbar for dark theme */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #131314; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3b494b; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #849495; 
+        }
+        
+        .card-base {
+            background-color: #161618;
+            border: 1px solid #262629;
+            box-shadow: none;
+        }
+        
+        .rf-meter-segment {
+            width: 100%;
+            height: 4px;
+            margin-bottom: 2px;
+            background-color: #2a2a2b;
+            border-radius: 1px;
+        }
+        .rf-meter-segment.green { background-color: #4ae176; }
+        .rf-meter-segment.orange { background-color: #ffb690; }
+        .rf-meter-segment.red { background-color: #ffb4ab; }
+        
+        .btn-glow {
+            box-shadow: inset 0 0 4px rgba(255, 255, 255, 0.1);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="antialiased min-h-screen flex flex-col pb-24 md:pb-0">
+<!-- TopAppBar -->
+<header class="w-full top-0 sticky z-40 bg-surface dark:bg-surface border-b border-outline-variant/30 flex items-center justify-between px-margin py-density-comfortable">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">person</span>
+</div>
+<div class="flex flex-col">
+<span class="font-display-rf text-headline-md text-primary-fixed-dim tracking-tighter">RFDECK_SYSTEMS</span>
+<div class="flex items-center gap-1.5 mt-0.5">
+<div class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></div>
+<span class="font-label-caps text-label-caps text-secondary">System Ready</span>
+</div>
+</div>
+</div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high transition-colors active:scale-95 duration-100 text-on-surface-variant">
+<span class="material-symbols-outlined text-primary-fixed-dim">sensors</span>
+</button>
+</header>
+<!-- Main Canvas -->
+<main class="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8 flex flex-col gap-4">
+<!-- Header Section -->
+<div class="flex items-end justify-between mb-2">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface">Active Channels</h1>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1">Live FOH Monitoring feed.</p>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-outline text-sm">sort</span>
+<span class="font-label-caps text-label-caps text-outline">FREQ ASC</span>
+</div>
+</div>
+<!-- Telemetry Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+<!-- Card 1: Lead Vocal 1 (Healthy) -->
+<div class="card-base rounded-lg p-density-comfortable border-t-2 border-t-secondary relative overflow-hidden group">
+<div class="absolute top-0 right-0 p-3 opacity-20 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-on-surface-variant">more_vert</span>
+</div>
+<div class="flex justify-between items-start mb-3">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface">Lead Vocal 1</h2>
+<div class="font-data-tabular text-data-tabular text-primary-fixed-dim mt-1">518.200 MHz</div>
+</div>
+<div class="flex flex-col items-end">
+<div class="flex items-center gap-1.5 text-secondary">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">battery_6_bar</span>
+<span class="font-data-tabular text-data-tabular font-bold">85%</span>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant mt-1">AXT Digital</span>
+</div>
+</div>
+<div class="flex items-end gap-4 mt-4">
+<!-- RF Meter -->
+<div class="w-6 flex flex-col justify-end h-16">
+<div class="rf-meter-segment red"></div>
+<div class="rf-meter-segment orange"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+</div>
+<!-- Sparkline placeholder -->
+<div class="flex-1 h-16 bg-[#050505] border border-outline-variant/30 rounded flex items-end p-1 relative overflow-hidden">
+<div class="absolute inset-0 opacity-10 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxyZWN0IHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSIvPjwvc3ZnPg==')]"></div>
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 100 20">
+<polyline fill="none" points="0,15 10,12 20,16 30,5 40,8 50,14 60,10 70,12 80,4 90,8 100,10" stroke="#4ae176" stroke-width="2"></polyline>
+</svg>
+</div>
+</div>
+<div class="flex gap-2 mt-4 pt-4 border-t border-outline-variant/20">
+<button class="flex-1 bg-surface-container-highest hover:bg-surface-variant border border-outline-variant text-on-surface py-2 rounded font-label-caps text-label-caps transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">volume_off</span> MUTE
+                    </button>
+<button class="flex-1 bg-primary-container text-on-primary-container hover:bg-primary py-2 rounded font-label-caps text-label-caps btn-glow transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">headphones</span> LISTEN
+                    </button>
+</div>
+</div>
+<!-- Card 2: Bass Wireless (Warning) -->
+<div class="card-base rounded-lg p-density-comfortable border-t-2 border-t-tertiary-fixed-dim relative overflow-hidden group">
+<div class="flex justify-between items-start mb-3">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface">Bass Wireless</h2>
+<div class="font-data-tabular text-data-tabular text-primary-fixed-dim mt-1">522.450 MHz</div>
+</div>
+<div class="flex flex-col items-end">
+<div class="flex items-center gap-1.5 text-tertiary-fixed-dim">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">battery_2_bar</span>
+<span class="font-data-tabular text-data-tabular font-bold">22%</span>
+</div>
+<span class="font-label-caps text-label-caps text-on-surface-variant mt-1">G4 IEM</span>
+</div>
+</div>
+<div class="flex items-end gap-4 mt-4">
+<!-- RF Meter -->
+<div class="w-6 flex flex-col justify-end h-16">
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+</div>
+<div class="flex-1 h-16 bg-[#050505] border border-outline-variant/30 rounded flex items-end p-1 relative">
+<svg class="w-full h-full" preserveaspectratio="none" viewbox="0 0 100 20">
+<polyline fill="none" points="0,10 10,14 20,8 30,16 40,12 50,18 60,14 70,10 80,15 90,12 100,16" stroke="#ffb690" stroke-width="2"></polyline>
+</svg>
+</div>
+</div>
+<div class="flex gap-2 mt-4 pt-4 border-t border-outline-variant/20">
+<button class="flex-1 bg-surface-container-highest hover:bg-surface-variant border border-outline-variant text-on-surface py-2 rounded font-label-caps text-label-caps transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">volume_off</span> MUTE
+                    </button>
+<button class="flex-1 bg-primary-container text-on-primary-container hover:bg-primary py-2 rounded font-label-caps text-label-caps btn-glow transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">headphones</span> LISTEN
+                    </button>
+</div>
+</div>
+<!-- Card 3: IEM Mix 1 (Critical) -->
+<div class="card-base rounded-lg p-density-comfortable border-t-2 border-t-error relative overflow-hidden group">
+<div class="flex justify-between items-start mb-3">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface">IEM Mix 1</h2>
+<div class="font-data-tabular text-data-tabular text-primary-fixed-dim mt-1">470.125 MHz</div>
+</div>
+<div class="flex flex-col items-end">
+<div class="flex items-center gap-1.5 text-error">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">battery_0_bar</span>
+<span class="font-data-tabular text-data-tabular font-bold">5%</span>
+</div>
+<span class="font-label-caps text-label-caps text-error mt-1 animate-pulse">REPLACE BATT</span>
+</div>
+</div>
+<div class="flex items-end gap-4 mt-4">
+<!-- RF Meter - weak -->
+<div class="w-6 flex flex-col justify-end h-16">
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+<div class="rf-meter-segment green"></div>
+</div>
+<div class="flex-1 h-16 bg-[#050505] border border-outline-variant/30 rounded flex items-end p-1 relative">
+<svg class="w-full h-full opacity-50" preserveaspectratio="none" viewbox="0 0 100 20">
+<polyline fill="none" points="0,18 10,19 20,17 30,19 40,18 50,19 60,18 70,19 80,17 90,19 100,18" stroke="#ffb4ab" stroke-width="1.5"></polyline>
+</svg>
+<div class="absolute inset-0 flex items-center justify-center">
+<span class="font-label-caps text-label-caps text-error bg-[#050505]/80 px-2 rounded">LOW SIGNAL</span>
+</div>
+</div>
+</div>
+<div class="flex gap-2 mt-4 pt-4 border-t border-outline-variant/20">
+<button class="flex-1 bg-error-container text-on-error-container hover:bg-error hover:text-on-error border border-error/50 py-2 rounded font-label-caps text-label-caps transition-colors flex items-center justify-center gap-2">
+                         MUTE ALL
+                    </button>
+<button class="flex-1 bg-surface-container-highest hover:bg-surface-variant border border-outline-variant text-on-surface py-2 rounded font-label-caps text-label-caps transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">settings</span> CFG
+                    </button>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-surface-container-lowest dark:bg-surface-container-lowest border-t border-outline-variant/20 bg-surface-container-lowest/80 backdrop-blur-xl rounded-t-full">
+<!-- Active Tab: Monitoring -->
+<button class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 hover:text-primary-fixed transition-all Active: scale-90 duration-150 ease-in-out">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<span class="font-label-caps text-label-caps mt-1">Monitoring</span>
+</button>
+<!-- Inactive Tab: Alerts -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant opacity-70 hover:text-primary-fixed transition-all Active: scale-90 duration-150 ease-in-out px-4 py-1">
+<div class="relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"></span>
+</div>
+<span class="font-label-caps text-label-caps mt-1">Alerts</span>
+</button>
+<!-- Inactive Tab: Inventory -->
+<button class="flex flex-col items-center justify-center text-on-surface-variant opacity-70 hover:text-primary-fixed transition-all Active: scale-90 duration-150 ease-in-out px-4 py-1">
+<span class="material-symbols-outlined">inventory_2</span>
+<span class="font-label-caps text-label-caps mt-1">Inventory</span>
+</button>
+</nav>
+</body></html>

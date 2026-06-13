@@ -1,0 +1,20 @@
+node_modules
+dist
+build
+.turbo
+.DS_Store
+.env
+.env.local
+*.log
+
+# Electron Builder / Compiled output
+release
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.zip
+*.tar.gz
+*.app

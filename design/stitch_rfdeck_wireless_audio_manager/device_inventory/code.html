@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RFDeck Pro - Hardware Inventory</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-container": "#00f0ff",
+                        "on-tertiary-fixed-variant": "#783200",
+                        "tertiary-container": "#ffcfb8",
+                        "surface-dim": "#131314",
+                        "on-secondary-fixed": "#002109",
+                        "on-error": "#690005",
+                        "secondary-fixed-dim": "#4ae176",
+                        "error-container": "#93000a",
+                        "surface-container-low": "#1c1b1c",
+                        "on-surface": "#e5e2e3",
+                        "tertiary": "#fff3ef",
+                        "on-primary-fixed": "#002022",
+                        "primary-fixed-dim": "#00dbe9",
+                        "on-primary-fixed-variant": "#004f54",
+                        "primary": "#dbfcff",
+                        "secondary": "#4ae176",
+                        "background": "#131314",
+                        "surface": "#131314",
+                        "on-error-container": "#ffdad6",
+                        "on-tertiary": "#552100",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-container-highest": "#353436",
+                        "inverse-primary": "#006970",
+                        "on-secondary-container": "#004119",
+                        "secondary-container": "#00b954",
+                        "outline-variant": "#3b494b",
+                        "surface-container-high": "#2a2a2b",
+                        "on-secondary": "#003915",
+                        "secondary-fixed": "#6bff8f",
+                        "error": "#ffb4ab",
+                        "surface-bright": "#3a393a",
+                        "surface-variant": "#353436",
+                        "on-secondary-fixed-variant": "#005321",
+                        "on-tertiary-fixed": "#341100",
+                        "primary-fixed": "#7df4ff",
+                        "tertiary-fixed-dim": "#ffb690",
+                        "inverse-on-surface": "#313031",
+                        "surface-tint": "#00dbe9",
+                        "on-primary-container": "#006970",
+                        "on-background": "#e5e2e3",
+                        "on-primary": "#00363a",
+                        "outline": "#849495",
+                        "surface-container": "#201f20",
+                        "tertiary-fixed": "#ffdbca",
+                        "on-tertiary-container": "#9d4300",
+                        "inverse-surface": "#e5e2e3",
+                        "surface-container-lowest": "#0e0e0f"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "density-comfortable": "12px 16px",
+                        "margin": "16px",
+                        "unit": "4px",
+                        "density-compact": "4px 8px",
+                        "gutter": "12px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "display-rf": ["JetBrains Mono"],
+                        "headline-lg": ["Geist"],
+                        "label-caps": ["Inter"],
+                        "data-tabular": ["JetBrains Mono"],
+                        "headline-md": ["Geist"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "display-rf": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "label-caps": ["11px", { "lineHeight": "12px", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "data-tabular": ["13px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "headline-md": ["18px", { "lineHeight": "24px", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom scrollbar for technical feel */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #131314; }
+        ::-webkit-scrollbar-thumb { background: #3b494b; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #849495; }
+        
+        /* Glassmorphism utility for Level 2 */
+        .glass-panel {
+            background-color: rgba(20, 20, 22, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface h-screen w-full flex overflow-hidden font-body-md">
+<!-- SideNavBar (Shared Component) -->
+<aside class="bg-surface-container-low dark:bg-surface-container-low border-r border-outline-variant flex flex-col h-screen w-64 left-0 sticky py-margin gap-unit z-40">
+<!-- Header -->
+<div class="px-margin mb-8">
+<h1 class="font-display-rf text-headline-lg text-primary-container tracking-tighter">RFDeck Pro</h1>
+<div class="flex items-center gap-2 mt-2">
+<div class="w-2 h-2 rounded-full bg-secondary-fixed shadow-[0_0_8px_rgba(74,225,118,0.6)]"></div>
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Local Network: Active</span>
+</div>
+<div class="mt-1 font-body-md text-body-md text-on-surface-variant hidden">System Operator</div>
+</div>
+<!-- Navigation Links -->
+<nav class="flex-1 flex flex-col gap-1 px-2">
+<!-- Inactive -->
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant font-medium hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">analytics</span>
+<span class="font-label-caps text-label-caps uppercase">Monitoring</span>
+</a>
+<!-- Inactive -->
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant font-medium hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">waves</span>
+<span class="font-label-caps text-label-caps uppercase">Coordination</span>
+</a>
+<!-- Active (Inventory Page) -->
+<a class="flex items-center gap-3 px-3 py-2 rounded text-secondary border-r-4 border-secondary bg-secondary-container/10 translate-x-1 duration-150" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">inventory_2</span>
+<span class="font-label-caps text-label-caps uppercase">Inventory</span>
+</a>
+<!-- Inactive -->
+<a class="flex items-center gap-3 px-3 py-2 rounded text-on-surface-variant font-medium hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span class="font-label-caps text-label-caps uppercase">Settings</span>
+</a>
+</nav>
+<!-- CTA & Footer -->
+<div class="px-margin mt-auto flex flex-col gap-4">
+<button class="w-full bg-surface-container-highest text-primary-fixed-dim border border-outline-variant py-2 rounded font-label-caps text-label-caps uppercase tracking-wider hover:bg-surface-variant transition-colors flex justify-center items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">download</span>
+                Export Report
+            </button>
+<div class="flex flex-col gap-1 border-t border-outline-variant pt-4">
+<a class="flex items-center gap-3 px-2 py-1.5 text-on-surface-variant hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">history_edu</span>
+<span class="font-label-caps text-label-caps uppercase">Logs</span>
+</a>
+<a class="flex items-center gap-3 px-2 py-1.5 text-on-surface-variant hover:text-on-surface transition-colors" href="#">
+<span class="material-symbols-outlined text-[18px]">help_outline</span>
+<span class="font-label-caps text-label-caps uppercase">Help</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Content Wrapper -->
+<div class="flex-1 flex flex-col w-full relative">
+<!-- TopNavBar (Shared Component) -->
+<header class="bg-surface-dim dark:bg-surface-dim border-b border-outline-variant w-full top-0 sticky z-30 flex justify-between items-center px-margin h-16">
+<div class="flex items-center gap-4">
+<!-- Brand text handled in SideNav for this layout, but TopNav could have breadcrumbs here -->
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Hardware Management</h2>
+</div>
+<div class="flex items-center gap-6 text-primary-container dark:text-primary-fixed-dim">
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container rounded-full border border-outline-variant">
+<div class="w-1.5 h-1.5 rounded-full bg-secondary-fixed animate-pulse"></div>
+<span class="font-data-tabular text-data-tabular text-secondary-fixed">System Ready</span>
+</div>
+<div class="flex items-center gap-4 border-l border-outline-variant pl-6">
+<button class="hover:text-primary hover:bg-surface-container-highest/50 transition-colors p-1.5 rounded-full">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="hover:text-primary hover:bg-surface-container-highest/50 transition-colors p-1.5 rounded-full">
+<span class="material-symbols-outlined">sync</span>
+</button>
+<button class="hover:text-primary hover:bg-surface-container-highest/50 transition-colors p-1.5 rounded-full">
+<span class="material-symbols-outlined">settings_input_component</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Page Content -->
+<main class="flex-1 overflow-y-auto p-margin relative">
+<!-- Filters Toolbar -->
+<div class="flex flex-wrap gap-4 mb-6 items-end bg-surface-container-low p-4 rounded border border-outline-variant">
+<div class="flex flex-col gap-1 min-w-[200px]">
+<label class="font-label-caps text-label-caps text-on-surface-variant uppercase">Manufacturer</label>
+<div class="relative">
+<select class="w-full bg-[#050505] border border-outline-variant text-on-surface rounded font-body-md text-body-md p-2 appearance-none focus:border-primary-container focus:ring-1 focus:ring-primary-container outline-none">
+<option>All Manufacturers</option>
+<option>Shure</option>
+<option>Sennheiser</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-2 text-on-surface-variant pointer-events-none">arrow_drop_down</span>
+</div>
+</div>
+<div class="flex flex-col gap-1 min-w-[200px]">
+<label class="font-label-caps text-label-caps text-on-surface-variant uppercase">Model Family</label>
+<div class="relative">
+<select class="w-full bg-[#050505] border border-outline-variant text-on-surface rounded font-body-md text-body-md p-2 appearance-none focus:border-primary-container focus:ring-1 focus:ring-primary-container outline-none">
+<option>All Models</option>
+<option>Axient Digital</option>
+<option>Digital 6000</option>
+<option>PSM 1000</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-2 text-on-surface-variant pointer-events-none">arrow_drop_down</span>
+</div>
+</div>
+<div class="flex flex-col gap-1 min-w-[200px]">
+<label class="font-label-caps text-label-caps text-on-surface-variant uppercase">Location</label>
+<div class="relative">
+<select class="w-full bg-[#050505] border border-outline-variant text-on-surface rounded font-body-md text-body-md p-2 appearance-none focus:border-primary-container focus:ring-1 focus:ring-primary-container outline-none">
+<option>All Locations</option>
+<option>Stage Left</option>
+<option>Stage Right</option>
+<option>FOH</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-2 text-on-surface-variant pointer-events-none">arrow_drop_down</span>
+</div>
+</div>
+<div class="flex-1"></div>
+<div class="flex gap-2">
+<button class="bg-surface-container-highest border border-outline-variant text-on-surface p-2 rounded hover:bg-surface-variant transition-colors" title="List View">
+<span class="material-symbols-outlined text-[20px]">view_list</span>
+</button>
+<button class="bg-primary-container/10 border border-primary-container text-primary-container p-2 rounded" title="Grid View">
+<span class="material-symbols-outlined text-[20px]">grid_view</span>
+</button>
+</div>
+</div>
+<!-- Hardware Grid (Bento Style) -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+<!-- Card 1: Online Shure -->
+<div class="bg-[#161618] border border-[#262629] rounded relative overflow-hidden cursor-pointer hover:border-outline transition-colors group" onclick="openDrawer('Stage Left Rack A', 'Shure Axient Digital AD4Q', '192.168.1.101', 'Online', '1.2.34', '4.0.1')">
+<!-- Status Indicator Bar -->
+<div class="absolute top-0 left-0 w-full h-[2px] bg-secondary-fixed"></div>
+<div class="p-density-comfortable flex flex-col h-full justify-between gap-4">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface truncate pr-2">Stage Left Rack A</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase mt-1">Shure AD4Q</p>
+</div>
+<span class="material-symbols-outlined text-secondary-fixed text-[18px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="grid grid-cols-2 gap-2 bg-[#0A0A0B] p-2 rounded border border-outline-variant/50 mt-2">
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-0.5">IP Address</span>
+<span class="font-data-tabular text-data-tabular text-primary-fixed-dim">192.168.1.101</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-0.5">Channels</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">4 / 4 Active</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 2: Online Sennheiser -->
+<div class="bg-[#161618] border border-[#262629] rounded relative overflow-hidden cursor-pointer hover:border-outline transition-colors group" onclick="openDrawer('FOH Comms Hub', 'Sennheiser EM 6000', '10.0.0.50', 'Online', '3.1.0', 'N/A')">
+<div class="absolute top-0 left-0 w-full h-[2px] bg-secondary-fixed"></div>
+<div class="p-density-comfortable flex flex-col h-full justify-between gap-4">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface truncate pr-2">FOH Comms Hub</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase mt-1">Sennheiser EM 6000</p>
+</div>
+<span class="material-symbols-outlined text-secondary-fixed text-[18px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="grid grid-cols-2 gap-2 bg-[#0A0A0B] p-2 rounded border border-outline-variant/50 mt-2">
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-0.5">IP Address</span>
+<span class="font-data-tabular text-data-tabular text-primary-fixed-dim">10.0.0.50</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-0.5">Channels</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">2 / 2 Active</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 3: Offline Shure -->
+<div class="bg-[#161618] border border-error-container rounded relative overflow-hidden cursor-pointer hover:border-error transition-colors group" onclick="openDrawer('Stage Right IEM 1', 'Shure PSM1000', '192.168.1.201', 'Offline', 'Unknown', 'Unknown')">
+<div class="absolute top-0 left-0 w-full h-[2px] bg-error"></div>
+<div class="p-density-comfortable flex flex-col h-full justify-between gap-4">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md text-error truncate pr-2">Stage Right IEM 1</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase mt-1">Shure PSM1000</p>
+</div>
+<span class="material-symbols-outlined text-error text-[18px]" style="font-variation-settings: 'FILL' 1;">error</span>
+</div>
+<div class="grid grid-cols-2 gap-2 bg-[#0A0A0B] p-2 rounded border border-error-container/50 mt-2 opacity-60">
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-0.5">IP Address</span>
+<span class="font-data-tabular text-data-tabular text-on-surface-variant line-through">192.168.1.201</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-0.5">Channels</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">0 / 2 Active</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Card 4: Online Shure -->
+<div class="bg-[#161618] border border-[#262629] rounded relative overflow-hidden cursor-pointer hover:border-outline transition-colors group" onclick="openDrawer('Stage Left Rack B', 'Shure Axient Digital AD4Q', '192.168.1.102', 'Online', '1.2.34', '4.0.1')">
+<div class="absolute top-0 left-0 w-full h-[2px] bg-secondary-fixed"></div>
+<div class="p-density-comfortable flex flex-col h-full justify-between gap-4">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface truncate pr-2">Stage Left Rack B</h3>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase mt-1">Shure AD4Q</p>
+</div>
+<span class="material-symbols-outlined text-secondary-fixed text-[18px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="grid grid-cols-2 gap-2 bg-[#0A0A0B] p-2 rounded border border-outline-variant/50 mt-2">
+<div class="flex flex-col">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-0.5">IP Address</span>
+<span class="font-data-tabular text-data-tabular text-primary-fixed-dim">192.168.1.102</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase mb-0.5">Channels</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">4 / 4 Active</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Detail Drawer Overlay (Level 2 Elevation / Glassmorphism) -->
+<div class="fixed inset-0 bg-background/50 backdrop-blur-sm z-50 hidden opacity-0 transition-opacity duration-300" id="detailDrawerOverlay">
+<div class="absolute right-0 top-0 h-full w-full max-w-md glass-panel border-l border-outline-variant shadow-2xl transform translate-x-full transition-transform duration-300 flex flex-col" id="detailDrawer">
+<!-- Drawer Header -->
+<div class="flex justify-between items-center p-margin border-b border-outline-variant/50">
+<div class="flex items-center gap-3">
+<div class="w-2.5 h-2.5 rounded-full bg-secondary-fixed shadow-[0_0_8px_rgba(74,225,118,0.6)]" id="drawerStatusDot"></div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface" id="drawerTitle">Device Details</h2>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface p-1 rounded-full hover:bg-surface-container-highest transition-colors" onclick="closeDrawer()">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Drawer Content -->
+<div class="flex-1 overflow-y-auto p-margin flex flex-col gap-6">
+<!-- Identity Block -->
+<div>
+<p class="font-label-caps text-label-caps text-primary-container uppercase tracking-wider mb-1" id="drawerModel">Manufacturer &amp; Model</p>
+<div class="h-px w-full bg-gradient-to-r from-outline-variant to-transparent mb-4"></div>
+<div class="bg-[#050505] border border-outline-variant/50 rounded p-4 flex flex-col gap-3">
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-body-md text-body-md">Hostname</span>
+<span class="font-data-tabular text-data-tabular text-on-surface" id="drawerHostname">RACK-A-AD4Q</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-body-md text-body-md">MAC Address</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">00:1A:79:4B:2C:99</span>
+</div>
+</div>
+</div>
+<!-- Network Settings -->
+<div>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider mb-1">Network Configuration</p>
+<div class="h-px w-full bg-gradient-to-r from-outline-variant to-transparent mb-4"></div>
+<div class="bg-[#050505] border border-outline-variant/50 rounded p-4 flex flex-col gap-3">
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-body-md text-body-md">IP Address</span>
+<span class="font-data-tabular text-data-tabular text-primary-fixed-dim" id="drawerIP">192.168.1.101</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-body-md text-body-md">Subnet Mask</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">255.255.255.0</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-body-md text-body-md">Gateway</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">192.168.1.1</span>
+</div>
+<div class="flex justify-between items-center pt-2 mt-2 border-t border-outline-variant/30">
+<span class="text-on-surface-variant font-body-md text-body-md">Mode</span>
+<span class="font-label-caps text-label-caps bg-surface-container px-2 py-0.5 rounded text-on-surface border border-outline-variant/50">Manual</span>
+</div>
+</div>
+</div>
+<!-- Firmware -->
+<div>
+<p class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider mb-1">Firmware Status</p>
+<div class="h-px w-full bg-gradient-to-r from-outline-variant to-transparent mb-4"></div>
+<div class="bg-[#050505] border border-outline-variant/50 rounded p-4 flex flex-col gap-3">
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-body-md text-body-md">Main Version</span>
+<span class="font-data-tabular text-data-tabular text-on-surface" id="drawerFwMain">1.2.34</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-on-surface-variant font-body-md text-body-md">Dante Version</span>
+<span class="font-data-tabular text-data-tabular text-on-surface" id="drawerFwDante">4.0.1</span>
+</div>
+<div class="mt-2 flex justify-end">
+<button class="text-primary-container font-label-caps text-label-caps uppercase hover:underline">Check for Updates</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Drawer Actions -->
+<div class="p-margin border-t border-outline-variant/50 bg-surface/50 flex gap-4">
+<button class="flex-1 bg-surface-container border border-outline-variant text-on-surface py-2 rounded font-headline-md text-[14px] hover:bg-surface-variant transition-colors">
+                        Identify Device
+                    </button>
+<!-- Primary Button with Inner Glow simulation -->
+<button class="flex-1 bg-primary-container text-on-primary-fixed-variant py-2 rounded font-headline-md text-[14px] shadow-[inset_0_1px_1px_rgba(255,255,255,0.4)] hover:bg-primary transition-colors flex justify-center items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">sync</span>
+                        Sync Network
+                    </button>
+</div>
+</div>
+</div>
+</div>
+<script>
+        const overlay = document.getElementById('detailDrawerOverlay');
+        const drawer = document.getElementById('detailDrawer');
+
+        function openDrawer(title, model, ip, status, fwMain, fwDante) {
+            // Populate data (simple simulation)
+            document.getElementById('drawerTitle').innerText = title || 'Device Details';
+            document.getElementById('drawerModel').innerText = model || 'Unknown Model';
+            document.getElementById('drawerIP').innerText = ip || '0.0.0.0';
+            document.getElementById('drawerHostname').innerText = (title || 'DEVICE').replace(/\s+/g, '-').toUpperCase();
+            document.getElementById('drawerFwMain').innerText = fwMain || 'Unknown';
+            document.getElementById('drawerFwDante').innerText = fwDante || 'Unknown';
+
+            const dot = document.getElementById('drawerStatusDot');
+            if(status === 'Offline') {
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-error shadow-[0_0_8px_rgba(255,180,171,0.6)]';
+            } else {
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-secondary-fixed shadow-[0_0_8px_rgba(107,255,143,0.6)]';
+            }
+
+            // Animate in
+            overlay.classList.remove('hidden');
+            // small delay to allow display:block to apply before opacity transition
+            setTimeout(() => {
+                overlay.classList.remove('opacity-0');
+                drawer.classList.remove('translate-x-full');
+            }, 10);
+        }
+
+        function closeDrawer() {
+            // Animate out
+            overlay.classList.add('opacity-0');
+            drawer.classList.add('translate-x-full');
+            
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+            }, 300); // match duration-300
+        }
+
+        // Close on overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeDrawer();
+            }
+        });
+    </script>
+</body></html>

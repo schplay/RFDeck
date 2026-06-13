@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Hardware Detail - RACK-01-A</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary": "#003915",
+                        "surface-container-high": "#2a2a2b",
+                        "error": "#ffb4ab",
+                        "secondary-fixed": "#6bff8f",
+                        "outline-variant": "#3b494b",
+                        "on-tertiary-fixed": "#341100",
+                        "on-secondary-fixed-variant": "#005321",
+                        "surface-variant": "#353436",
+                        "surface-bright": "#3a393a",
+                        "inverse-on-surface": "#313031",
+                        "on-primary-container": "#006970",
+                        "on-background": "#e5e2e3",
+                        "surface-tint": "#00dbe9",
+                        "tertiary-fixed-dim": "#ffb690",
+                        "primary-fixed": "#7df4ff",
+                        "surface-container-lowest": "#0e0e0f",
+                        "inverse-surface": "#e5e2e3",
+                        "outline": "#849495",
+                        "on-primary": "#00363a",
+                        "on-tertiary-container": "#9d4300",
+                        "tertiary-fixed": "#ffdbca",
+                        "surface-container": "#201f20",
+                        "secondary-fixed-dim": "#4ae176",
+                        "error-container": "#93000a",
+                        "on-secondary-fixed": "#002109",
+                        "on-error": "#690005",
+                        "surface-container-low": "#1c1b1c",
+                        "surface-dim": "#131314",
+                        "tertiary-container": "#ffcfb8",
+                        "primary-container": "#00f0ff",
+                        "on-tertiary-fixed-variant": "#783200",
+                        "secondary": "#4ae176",
+                        "primary": "#dbfcff",
+                        "on-primary-fixed-variant": "#004f54",
+                        "on-surface": "#e5e2e3",
+                        "primary-fixed-dim": "#00dbe9",
+                        "on-primary-fixed": "#002022",
+                        "tertiary": "#fff3ef",
+                        "on-tertiary": "#552100",
+                        "on-error-container": "#ffdad6",
+                        "surface": "#131314",
+                        "background": "#131314",
+                        "secondary-container": "#00b954",
+                        "on-secondary-container": "#004119",
+                        "inverse-primary": "#006970",
+                        "surface-container-highest": "#353436",
+                        "on-surface-variant": "#b9cacb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin": "16px",
+                        "density-comfortable": "12px 16px",
+                        "gutter": "12px",
+                        "unit": "4px",
+                        "density-compact": "4px 8px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Geist"],
+                        "label-caps": ["Inter"],
+                        "headline-lg": ["Geist"],
+                        "data-tabular": ["JetBrains Mono"],
+                        "body-md": ["Inter"],
+                        "display-rf": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "label-caps": ["11px", {"lineHeight": "12px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "data-tabular": ["13px", {"lineHeight": "16px", "fontWeight": "500"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "display-rf": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .glow-cyan { text-shadow: 0 0 8px rgba(0, 240, 255, 0.5); }
+        .border-glow { box-shadow: 0 0 4px rgba(0, 240, 255, 0.3) inset; }
+        .rf-meter-bar { transition: height 0.2s ease-in-out; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-surface font-body-md text-body-md antialiased pb-24 md:pb-0">
+<!-- TopAppBar Mobile (Destination Screen, but detailed so we keep it minimal) -->
+<header class="w-full top-0 sticky bg-surface dark:bg-surface border-b border-outline-variant/30 flex items-center justify-between px-margin py-density-comfortable z-40">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer" onclick="history.back()">arrow_back</span>
+<div class="font-display-rf text-headline-md text-primary-fixed-dim tracking-tighter">RFDECK_SYSTEMS</div>
+</div>
+<span class="material-symbols-outlined text-primary-fixed-dim">sensors</span>
+</header>
+<main class="max-w-4xl mx-auto px-margin pt-4 space-y-6">
+<!-- Header Section -->
+<section class="bg-[#161618] border border-[#262629] rounded-lg p-density-comfortable flex flex-col gap-4 relative overflow-hidden">
+<!-- Status indicator line -->
+<div class="absolute top-0 left-0 w-full h-[2px] bg-secondary-fixed"></div>
+<div class="flex justify-between items-start">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface">RACK-01-A</h1>
+<div class="flex items-center gap-2 mt-1">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed animate-pulse"></span>
+<span class="font-label-caps text-label-caps text-secondary-fixed">ONLINE</span>
+</div>
+</div>
+<button class="bg-primary-container/10 border border-primary-container text-primary-container px-3 py-1.5 rounded hover:bg-primary-container/20 transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">flare</span>
+<span class="font-label-caps text-label-caps">IDENTIFY</span>
+</button>
+</div>
+</section>
+<!-- Technical Specs Bento -->
+<section class="grid grid-cols-2 gap-gutter">
+<div class="bg-[#161618] border border-[#262629] rounded-lg p-density-comfortable">
+<div class="text-on-surface-variant font-label-caps text-label-caps mb-1">MODEL</div>
+<div class="font-data-tabular text-data-tabular">AD4Q-US</div>
+</div>
+<div class="bg-[#161618] border border-[#262629] rounded-lg p-density-comfortable">
+<div class="text-on-surface-variant font-label-caps text-label-caps mb-1">FIRMWARE</div>
+<div class="font-data-tabular text-data-tabular">v1.2.45</div>
+</div>
+<div class="bg-[#161618] border border-[#262629] rounded-lg p-density-comfortable col-span-2 flex justify-between items-center">
+<div>
+<div class="text-on-surface-variant font-label-caps text-label-caps mb-1">MAC ADDRESS</div>
+<div class="font-data-tabular text-data-tabular">00:1A:2B:3C:4D:5E</div>
+</div>
+<div>
+<div class="text-on-surface-variant font-label-caps text-label-caps mb-1 text-right">SERIAL</div>
+<div class="font-data-tabular text-data-tabular text-right">SN-882910</div>
+</div>
+</div>
+</section>
+<!-- Telemetry Channels -->
+<section class="space-y-gutter">
+<h2 class="font-headline-md text-headline-md text-on-surface-variant mb-2">Channel Telemetry</h2>
+<!-- Channel 1 -->
+<div class="bg-[#161618] border border-[#262629] border-l-4 border-l-secondary-fixed rounded-lg p-density-comfortable">
+<div class="flex justify-between items-center mb-3 border-b border-[#262629] pb-2">
+<div class="flex items-center gap-2">
+<span class="font-data-tabular text-data-tabular text-primary-fixed-dim">CH1</span>
+<span class="font-headline-md text-headline-md">LEAD_VOX</span>
+</div>
+<div class="font-data-tabular text-data-tabular text-on-surface-variant">470.125 MHz</div>
+</div>
+<div class="grid grid-cols-4 gap-4 items-end">
+<!-- RF Meters -->
+<div class="col-span-1 flex gap-1 h-16 items-end">
+<div class="w-2 bg-[#050505] border border-[#262629] h-full flex flex-col justify-end p-[1px]">
+<div class="w-full bg-secondary-fixed h-[80%] rf-meter-bar"></div>
+</div>
+<div class="w-2 bg-[#050505] border border-[#262629] h-full flex flex-col justify-end p-[1px]">
+<div class="w-full bg-secondary-fixed h-[90%] rf-meter-bar"></div>
+</div>
+<span class="text-[10px] text-on-surface-variant ml-1 self-start">RF</span>
+</div>
+<!-- Audio Meter -->
+<div class="col-span-2 flex flex-col justify-end h-16">
+<span class="text-[10px] text-on-surface-variant mb-1">AF</span>
+<div class="h-3 w-full bg-[#050505] border border-[#262629] flex p-[1px]">
+<div class="h-full bg-secondary-fixed w-[65%]"></div>
+</div>
+</div>
+<!-- Battery -->
+<div class="col-span-1 text-right flex flex-col items-end justify-center h-16">
+<span class="material-symbols-outlined text-secondary-fixed text-[20px]">battery_5_bar</span>
+<span class="font-data-tabular text-data-tabular">8h 12m</span>
+</div>
+</div>
+</div>
+<!-- Channel 2 -->
+<div class="bg-[#161618] border border-[#262629] border-l-4 border-l-secondary-fixed rounded-lg p-density-comfortable">
+<div class="flex justify-between items-center mb-3 border-b border-[#262629] pb-2">
+<div class="flex items-center gap-2">
+<span class="font-data-tabular text-data-tabular text-primary-fixed-dim">CH2</span>
+<span class="font-headline-md text-headline-md">BGV_1</span>
+</div>
+<div class="font-data-tabular text-data-tabular text-on-surface-variant">471.500 MHz</div>
+</div>
+<div class="grid grid-cols-4 gap-4 items-end">
+<div class="col-span-1 flex gap-1 h-16 items-end">
+<div class="w-2 bg-[#050505] border border-[#262629] h-full flex flex-col justify-end p-[1px]">
+<div class="w-full bg-secondary-fixed h-[75%] rf-meter-bar"></div>
+</div>
+<div class="w-2 bg-[#050505] border border-[#262629] h-full flex flex-col justify-end p-[1px]">
+<div class="w-full bg-secondary-fixed h-[70%] rf-meter-bar"></div>
+</div>
+<span class="text-[10px] text-on-surface-variant ml-1 self-start">RF</span>
+</div>
+<div class="col-span-2 flex flex-col justify-end h-16">
+<span class="text-[10px] text-on-surface-variant mb-1">AF</span>
+<div class="h-3 w-full bg-[#050505] border border-[#262629] flex p-[1px]">
+<div class="h-full bg-secondary-fixed w-[45%]"></div>
+</div>
+</div>
+<div class="col-span-1 text-right flex flex-col items-end justify-center h-16">
+<span class="material-symbols-outlined text-secondary-fixed text-[20px]">battery_4_bar</span>
+<span class="font-data-tabular text-data-tabular">6h 45m</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Network Settings -->
+<section class="bg-[#161618] border border-[#262629] rounded-lg p-density-comfortable space-y-4">
+<div class="flex justify-between items-center border-b border-[#262629] pb-2">
+<h2 class="font-headline-md text-headline-md">Network</h2>
+<div class="flex bg-[#050505] border border-[#262629] rounded p-[2px]">
+<button class="px-3 py-1 text-[11px] font-bold tracking-wider rounded bg-primary-container text-on-primary-container">DHCP</button>
+<button class="px-3 py-1 text-[11px] font-bold tracking-wider rounded text-on-surface-variant">STATIC</button>
+</div>
+</div>
+<div class="grid grid-cols-1 gap-3">
+<div class="flex justify-between items-center bg-[#050505] border border-[#262629] p-2 rounded">
+<span class="font-label-caps text-label-caps text-on-surface-variant">IP ADDRESS</span>
+<span class="font-data-tabular text-data-tabular">192.168.1.101</span>
+</div>
+<div class="flex justify-between items-center bg-[#050505] border border-[#262629] p-2 rounded">
+<span class="font-label-caps text-label-caps text-on-surface-variant">SUBNET</span>
+<span class="font-data-tabular text-data-tabular">255.255.255.0</span>
+</div>
+<div class="flex justify-between items-center bg-[#050505] border border-[#262629] p-2 rounded">
+<span class="font-label-caps text-label-caps text-on-surface-variant">GATEWAY</span>
+<span class="font-data-tabular text-data-tabular">192.168.1.1</span>
+</div>
+</div>
+</section>
+<!-- Maintenance -->
+<section class="bg-[#161618] border border-[#262629] rounded-lg p-density-comfortable space-y-4">
+<h2 class="font-headline-md text-headline-md border-b border-[#262629] pb-2">Maintenance</h2>
+<div class="space-y-2">
+<div class="flex items-center gap-3 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px] text-tertiary-fixed-dim">warning</span>
+<span class="font-data-tabular text-[11px]">10:42 AM - Interference detected on CH3</span>
+</div>
+<div class="flex items-center gap-3 text-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px] text-secondary-fixed">check_circle</span>
+<span class="font-data-tabular text-[11px]">08:00 AM - System boot successful</span>
+</div>
+</div>
+<button class="w-full bg-surface-container hover:bg-surface-container-high border border-outline-variant/50 text-error-container py-2 rounded font-label-caps text-label-caps flex items-center justify-center gap-2 mt-4 transition-colors">
+<span class="material-symbols-outlined text-[18px]">restart_alt</span>
+                 RESTART DEVICE
+             </button>
+</section>
+</main>
+<!-- BottomNavBar (Mobile only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-2 bg-surface-container-lowest/80 backdrop-blur-xl border-t border-outline-variant/20 rounded-t-full">
+<!-- Inactive -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant opacity-70 hover:text-primary-fixed transition-all" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span class="font-label-caps text-label-caps mt-1">Monitoring</span>
+</a>
+<!-- Inactive -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant opacity-70 hover:text-primary-fixed transition-all" href="#">
+<span class="material-symbols-outlined">notifications</span>
+<span class="font-label-caps text-label-caps mt-1">Alerts</span>
+</a>
+<!-- Active -->
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 hover:text-primary-fixed transition-all active:scale-90 duration-150 ease-in-out" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<span class="font-label-caps text-label-caps mt-1">Inventory</span>
+</a>
+</nav>
+<script>
+        // Simple script to randomly animate RF meters for realism
+        setInterval(() => {
+            const meters = document.querySelectorAll('.rf-meter-bar');
+            meters.forEach(meter => {
+                const currentHeight = parseInt(meter.style.height || meter.className.match(/h-\[([0-9]+)%\]/)?.[1] || 50);
+                const variance = Math.floor(Math.random() * 20) - 10;
+                let newHeight = currentHeight + variance;
+                if(newHeight > 100) newHeight = 100;
+                if(newHeight < 10) newHeight = 10;
+                
+                meter.style.height = `${newHeight}%`;
+                
+                // Color coding based on height
+                if(newHeight > 90) {
+                    meter.className = meter.className.replace(/bg-[a-z-]+/g, 'bg-error');
+                } else if (newHeight > 70) {
+                    meter.className = meter.className.replace(/bg-[a-z-]+/g, 'bg-tertiary-fixed-dim');
+                } else {
+                    meter.className = meter.className.replace(/bg-[a-z-]+/g, 'bg-secondary-fixed');
+                }
+            });
+        }, 800);
+    </script>
+</body></html>

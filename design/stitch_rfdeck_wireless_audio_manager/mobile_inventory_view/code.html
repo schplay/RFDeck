@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RF Command - Inventory</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&amp;family=Inter:wght@400;700&amp;family=Geist:wght@600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "outline-variant": "#3b494b",
+                      "on-secondary-fixed": "#002109",
+                      "on-primary-container": "#006970",
+                      "surface-tint": "#00dbe9",
+                      "error": "#ffb4ab",
+                      "surface-container-low": "#1c1b1c",
+                      "tertiary-fixed-dim": "#ffb690",
+                      "primary-container": "#00f0ff",
+                      "surface-container-highest": "#353436",
+                      "on-primary-fixed-variant": "#004f54",
+                      "surface-dim": "#131314",
+                      "surface-variant": "#353436",
+                      "surface-container-high": "#2a2a2b",
+                      "primary-fixed-dim": "#00dbe9",
+                      "on-surface": "#e5e2e3",
+                      "on-secondary-fixed-variant": "#005321",
+                      "tertiary": "#fff3ef",
+                      "outline": "#849495",
+                      "on-error-container": "#ffdad6",
+                      "on-tertiary": "#552100",
+                      "on-error": "#690005",
+                      "on-secondary": "#003915",
+                      "on-background": "#e5e2e3",
+                      "on-secondary-container": "#004119",
+                      "on-primary-fixed": "#002022",
+                      "inverse-surface": "#e5e2e3",
+                      "error-container": "#93000a",
+                      "on-tertiary-fixed-variant": "#783200",
+                      "tertiary-fixed": "#ffdbca",
+                      "surface-bright": "#3a393a",
+                      "primary-fixed": "#7df4ff",
+                      "surface": "#131314",
+                      "on-surface-variant": "#b9cacb",
+                      "background": "#131314",
+                      "on-tertiary-container": "#9d4300",
+                      "on-primary": "#00363a",
+                      "on-tertiary-fixed": "#341100",
+                      "inverse-on-surface": "#313031",
+                      "inverse-primary": "#006970",
+                      "primary": "#dbfcff",
+                      "secondary-container": "#00b954",
+                      "secondary": "#4ae176",
+                      "tertiary-container": "#ffcfb8",
+                      "secondary-fixed-dim": "#4ae176",
+                      "surface-container-lowest": "#0e0e0f",
+                      "surface-container": "#201f20",
+                      "secondary-fixed": "#6bff8f"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "density-compact": "4px 8px",
+                      "gutter": "12px",
+                      "unit": "4px",
+                      "margin": "16px",
+                      "density-comfortable": "12px 16px"
+              },
+              "fontFamily": {
+                      "data-tabular": [
+                              "JetBrains Mono"
+                      ],
+                      "label-caps": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "display-rf": [
+                              "JetBrains Mono"
+                      ],
+                      "headline-lg": [
+                              "Geist"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "data-tabular": [
+                              "13px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "label-caps": [
+                              "11px",
+                              {
+                                      "lineHeight": "12px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-md": [
+                              "18px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-rf": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-lg": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ]
+              }
+            },
+          }
+        }
+      </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.fill {
+            font-variation-settings: 'FILL' 1;
+        }
+        .glass-panel {
+            background: rgba(22, 22, 24, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen flex flex-col antialiased selection:bg-primary-container selection:text-on-primary-container overflow-x-hidden md:hidden pb-24">
+<!-- TopAppBar -->
+<header class="w-full top-0 sticky bg-surface dark:bg-surface border-b border-outline-variant flex justify-between items-center px-margin h-16 z-40">
+<button class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-variant p-2 rounded-full transition-colors duration-200 flex items-center justify-center">
+<span class="material-symbols-outlined">settings_input_antenna</span>
+</button>
+<h1 class="font-display-rf text-display-rf text-primary-fixed-dim tracking-tighter">RF COMMAND</h1>
+<button class="text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-variant p-2 rounded-full transition-colors duration-200 flex items-center justify-center">
+<span class="material-symbols-outlined">signal_cellular_alt</span>
+</button>
+</header>
+<main class="flex-1 flex flex-col p-margin gap-4">
+<!-- Search Bar -->
+<div class="relative w-full">
+<div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">search</span>
+</div>
+<input class="w-full bg-[#050505] border border-outline-variant text-on-surface rounded font-data-tabular text-data-tabular focus:ring-primary focus:border-primary block pl-10 p-2.5 placeholder-on-surface-variant/50" placeholder="Search Hardware ID..." type="text"/>
+<div class="absolute inset-y-0 right-0 flex items-center pr-2">
+<button class="p-1 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]">barcode_scanner</span>
+</button>
+</div>
+</div>
+<!-- Filter Chips -->
+<div class="flex overflow-x-auto gap-2 pb-2 scrollbar-hide -mx-margin px-margin">
+<button class="whitespace-nowrap px-4 py-1.5 rounded-full bg-primary-container text-on-primary-container font-label-caps text-label-caps border border-primary-container transition-all">ALL</button>
+<button class="whitespace-nowrap px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps border border-outline-variant hover:border-on-surface-variant transition-all">RECEIVERS</button>
+<button class="whitespace-nowrap px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps border border-outline-variant hover:border-on-surface-variant transition-all">IEMS</button>
+<button class="whitespace-nowrap px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps border border-outline-variant hover:border-on-surface-variant transition-all">NETWORKING</button>
+<button class="whitespace-nowrap px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-caps text-label-caps border border-outline-variant hover:border-on-surface-variant transition-all">ANTENNAS</button>
+</div>
+<!-- Inventory List -->
+<div class="flex flex-col gap-3 mt-2">
+<!-- Item Card 1 - Online -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg overflow-hidden flex flex-col">
+<div class="border-t-[2px] border-secondary w-full"></div>
+<div class="p-density-comfortable flex flex-col gap-2">
+<div class="flex justify-between items-start">
+<div>
+<div class="font-data-tabular text-data-tabular text-on-surface">RACK-01-A</div>
+<div class="font-body-md text-body-md text-on-surface-variant mt-0.5">Shure Axient AD4Q</div>
+</div>
+<div class="flex items-center gap-1.5 bg-secondary/10 px-2 py-0.5 rounded border border-secondary/20">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<span class="font-label-caps text-label-caps text-secondary">ONLINE</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 border-t border-outline-variant/30 pt-2">
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">IP</span>
+<span class="font-data-tabular text-[11px] text-on-surface">192.168.1.101</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">FW</span>
+<span class="font-data-tabular text-[11px] text-on-surface">1.4.22</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Item Card 2 - In Use -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg overflow-hidden flex flex-col">
+<div class="border-t-[2px] border-primary-fixed-dim w-full"></div>
+<div class="p-density-comfortable flex flex-col gap-2">
+<div class="flex justify-between items-start">
+<div>
+<div class="font-data-tabular text-data-tabular text-on-surface">RACK-02-B</div>
+<div class="font-body-md text-body-md text-on-surface-variant mt-0.5">Sennheiser EM 6000</div>
+</div>
+<div class="flex items-center gap-1.5 bg-primary-fixed-dim/10 px-2 py-0.5 rounded border border-primary-fixed-dim/20">
+<span class="material-symbols-outlined text-[12px] text-primary-fixed-dim">check_circle</span>
+<span class="font-label-caps text-label-caps text-primary-fixed-dim">IN USE</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 border-t border-outline-variant/30 pt-2">
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">IP</span>
+<span class="font-data-tabular text-[11px] text-on-surface">192.168.1.102</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">FW</span>
+<span class="font-data-tabular text-[11px] text-on-surface">2.1.0</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Item Card 3 - Offline -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg overflow-hidden flex flex-col opacity-75">
+<div class="border-t-[2px] border-error w-full"></div>
+<div class="p-density-comfortable flex flex-col gap-2">
+<div class="flex justify-between items-start">
+<div>
+<div class="font-data-tabular text-data-tabular text-on-surface">SW-CORE-01</div>
+<div class="font-body-md text-body-md text-on-surface-variant mt-0.5">Luminex GigaCore 14R</div>
+</div>
+<div class="flex items-center gap-1.5 bg-error/10 px-2 py-0.5 rounded border border-error/20">
+<span class="material-symbols-outlined text-[12px] text-error">warning</span>
+<span class="font-label-caps text-label-caps text-error">OFFLINE</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 border-t border-outline-variant/30 pt-2">
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">IP</span>
+<span class="font-data-tabular text-[11px] text-on-surface">10.0.0.1</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">FW</span>
+<span class="font-data-tabular text-[11px] text-on-surface">--</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Item Card 4 - Online -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg overflow-hidden flex flex-col">
+<div class="border-t-[2px] border-secondary w-full"></div>
+<div class="p-density-comfortable flex flex-col gap-2">
+<div class="flex justify-between items-start">
+<div>
+<div class="font-data-tabular text-data-tabular text-on-surface">IEM-TX-01</div>
+<div class="font-body-md text-body-md text-on-surface-variant mt-0.5">Shure PSM1000</div>
+</div>
+<div class="flex items-center gap-1.5 bg-secondary/10 px-2 py-0.5 rounded border border-secondary/20">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<span class="font-label-caps text-label-caps text-secondary">ONLINE</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-x-4 gap-y-1 mt-2 border-t border-outline-variant/30 pt-2">
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">IP</span>
+<span class="font-data-tabular text-[11px] text-on-surface">192.168.1.110</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant">FW</span>
+<span class="font-data-tabular text-[11px] text-on-surface">1.2.5</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- FAB -->
+<button aria-label="Scan Barcode" class="fixed bottom-24 right-margin w-14 h-14 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(0,240,255,0.3)] z-40 transition-transform active:scale-95 border border-primary-fixed/20">
+<span class="material-symbols-outlined text-[28px] fill" style="font-variation-settings: 'FILL' 1;">barcode_scanner</span>
+</button>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 w-full z-50 bg-surface-container-lowest dark:bg-surface-container-lowest border-t border-outline-variant flex justify-around items-center h-20 pb-safe px-gutter">
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-secondary transition-all active:scale-95 duration-100 w-20">
+<span class="material-symbols-outlined mb-1">monitoring</span>
+<span class="font-label-caps text-label-caps">Monitoring</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-secondary transition-all active:scale-95 duration-100 w-20">
+<span class="material-symbols-outlined mb-1">notifications_active</span>
+<span class="font-label-caps text-label-caps">Alerts</span>
+</button>
+<button class="flex flex-col items-center justify-center bg-secondary-container text-on-secondary-container rounded-full px-4 py-1 transition-all active:scale-95 duration-100 w-20">
+<span class="material-symbols-outlined mb-1 fill">inventory_2</span>
+<span class="font-label-caps text-label-caps">Inventory</span>
+</button>
+</nav>
+</body></html>

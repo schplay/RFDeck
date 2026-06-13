@@ -1,0 +1,23 @@
+{
+  "name": "rfdeck",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.1",
+  "scripts": {
+    "dev:server": "pnpm --filter @rfdeck/server dev",
+    "dev:desktop": "pnpm --filter @rfdeck/desktop dev",
+    "dev:web": "pnpm --filter @rfdeck/web dev",
+    "build:server": "pnpm --filter @rfdeck/server build",
+    "build:desktop": "pnpm --filter @rfdeck/desktop build",
+    "build:web": "pnpm --filter @rfdeck/web build",
+    "build:all": "turbo run build",
+    "lint": "turbo run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.0.0"
+  }
+}

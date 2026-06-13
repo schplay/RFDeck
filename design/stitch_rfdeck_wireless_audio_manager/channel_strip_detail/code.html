@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Channel Detail - Lead Vox A</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&amp;family=Inter:wght@400;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "error-container": "#93000a",
+                      "error": "#ffb4ab",
+                      "secondary": "#4ae176",
+                      "on-tertiary-fixed-variant": "#783200",
+                      "surface-container-high": "#2a2a2b",
+                      "inverse-surface": "#e5e2e3",
+                      "surface-container-lowest": "#0e0e0f",
+                      "on-error-container": "#ffdad6",
+                      "on-secondary": "#003915",
+                      "inverse-on-surface": "#313031",
+                      "on-secondary-container": "#004119",
+                      "on-primary-fixed-variant": "#004f54",
+                      "primary-container": "#00f0ff",
+                      "tertiary-fixed-dim": "#ffb690",
+                      "surface-container": "#201f20",
+                      "primary-fixed": "#7df4ff",
+                      "on-surface-variant": "#b9cacb",
+                      "on-error": "#690005",
+                      "tertiary": "#fff3ef",
+                      "on-tertiary-fixed": "#341100",
+                      "secondary-container": "#00b954",
+                      "surface-variant": "#353436",
+                      "on-primary": "#00363a",
+                      "tertiary-container": "#ffcfb8",
+                      "secondary-fixed": "#6bff8f",
+                      "inverse-primary": "#006970",
+                      "surface-tint": "#00dbe9",
+                      "surface-container-highest": "#353436",
+                      "on-secondary-fixed": "#002109",
+                      "primary-fixed-dim": "#00dbe9",
+                      "on-tertiary": "#552100",
+                      "on-primary-fixed": "#002022",
+                      "surface-container-low": "#1c1b1c",
+                      "outline-variant": "#3b494b",
+                      "outline": "#849495",
+                      "primary": "#dbfcff",
+                      "surface-dim": "#131314",
+                      "surface-bright": "#3a393a",
+                      "surface": "#131314",
+                      "on-background": "#e5e2e3",
+                      "on-secondary-fixed-variant": "#005321",
+                      "background": "#131314",
+                      "on-surface": "#e5e2e3",
+                      "tertiary-fixed": "#ffdbca",
+                      "secondary-fixed-dim": "#4ae176",
+                      "on-tertiary-container": "#9d4300",
+                      "on-primary-container": "#006970"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "unit": "4px",
+                      "density-compact": "4px 8px",
+                      "gutter": "12px",
+                      "density-comfortable": "12px 16px",
+                      "margin": "16px"
+              },
+              "fontFamily": {
+                      "display-rf": [
+                              "JetBrains Mono"
+                      ],
+                      "data-tabular": [
+                              "JetBrains Mono"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "label-caps": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Geist"
+                      ],
+                      "headline-lg": [
+                              "Geist"
+                      ]
+              },
+              "fontSize": {
+                      "display-rf": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "data-tabular": [
+                              "13px",
+                              {
+                                      "lineHeight": "16px",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "body-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-caps": [
+                              "11px",
+                              {
+                                      "lineHeight": "12px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-md": [
+                              "18px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "headline-lg": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        .inner-glow {
+            box-shadow: inset 0 0 4px 1px rgba(255, 255, 255, 0.1);
+        }
+        .meter-segment-green { background-color: theme('colors.secondary-fixed-dim'); }
+        .meter-segment-orange { background-color: theme('colors.tertiary-fixed-dim'); }
+        .meter-segment-red { background-color: theme('colors.error'); }
+        .meter-segment-off { background-color: theme('colors.surface-container-high'); }
+      </style>
+</head>
+<body class="bg-background text-on-surface font-body-md min-h-screen flex">
+<!-- Side Navigation Shell (Web Only) -->
+<nav class="hidden md:flex flex-col h-screen w-64 left-0 sticky py-margin gap-unit bg-surface-container-low dark:bg-surface-container-low border-r border-outline-variant z-40">
+<div class="px-margin pb-4">
+<h1 class="font-display-rf text-headline-lg text-primary-container tracking-tighter">RFDeck Pro</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">System Operator</p>
+<p class="font-label-caps text-label-caps text-on-surface-variant mt-1">Local Network: Active</p>
+</div>
+<div class="flex-1 px-unit space-y-1">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-secondary border-r-4 border-secondary bg-secondary-container/10 transition-all" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<span class="font-label-caps text-label-caps font-bold">Monitoring</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined">waves</span>
+<span class="font-label-caps text-label-caps">Coordination</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<span class="font-label-caps text-label-caps">Inventory</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-caps text-label-caps">Settings</span>
+</a>
+</div>
+<div class="px-margin pt-4 mt-auto">
+<button class="w-full py-2 bg-primary text-on-primary font-label-caps text-label-caps rounded font-bold inner-glow">Export Report</button>
+</div>
+<div class="px-unit mt-4 space-y-1 border-t border-outline-variant pt-4">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined">history_edu</span>
+<span class="font-label-caps text-label-caps">Logs</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined">help_outline</span>
+<span class="font-label-caps text-label-caps">Help</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col min-h-screen">
+<!-- Top App Bar (Mobile & Web Context) -->
+<header class="flex justify-between items-center px-margin h-16 w-full sticky top-0 z-30 bg-surface-dim dark:bg-surface-dim border-b border-outline-variant md:hidden">
+<div class="flex items-center gap-3">
+<h1 class="font-display-rf text-headline-lg tracking-tighter text-primary-container">RFDeck</h1>
+</div>
+<div class="flex items-center gap-4 text-primary-container dark:text-primary-fixed-dim">
+<span class="font-label-caps text-label-caps hidden sm:block">System Ready</span>
+<span class="material-symbols-outlined hover:text-primary transition-colors cursor-pointer">notifications</span>
+<span class="material-symbols-outlined hover:text-primary transition-colors cursor-pointer">sync</span>
+<span class="material-symbols-outlined hover:text-primary transition-colors cursor-pointer">settings_input_component</span>
+</div>
+</header>
+<!-- Content Area -->
+<div class="flex-1 p-gutter md:p-margin max-w-7xl mx-auto w-full flex flex-col gap-gutter">
+<!-- Context & Breadcrumb -->
+<div class="flex items-center gap-2 text-on-surface-variant font-body-md text-body-md mb-2">
+<span class="material-symbols-outlined text-[18px]">arrow_back</span>
+<a class="hover:text-primary-container transition-colors" href="#">Monitoring</a>
+<span>/</span>
+<span class="text-on-surface">Lead Vox A</span>
+</div>
+<!-- Global Status Header -->
+<section class="bg-[#161618] border border-[#262629] rounded-lg p-margin flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-t-2 border-t-secondary-fixed-dim">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-secondary-container/20 border border-secondary flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">mic</span>
+</div>
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface m-0">Lead Vox A</h2>
+<p class="font-data-tabular text-data-tabular text-on-surface-variant">Shure AD4Q (CH 1)</p>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Status</span>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-secondary-fixed-dim animate-pulse"></div>
+<span class="font-data-tabular text-data-tabular text-secondary-fixed-dim">ON AIR</span>
+</div>
+</div>
+<div class="h-8 w-px bg-outline-variant"></div>
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Battery</span>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary-fixed-dim">battery_6_bar</span>
+<span class="font-data-tabular text-data-tabular text-secondary-fixed-dim">84%</span>
+</div>
+</div>
+<div class="h-8 w-px bg-outline-variant hidden sm:block"></div>
+<div class="hidden sm:flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Tx Lock</span>
+<span class="material-symbols-outlined text-on-surface-variant">lock</span>
+</div>
+</div>
+</section>
+<!-- Main Layout Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-gutter flex-1">
+<!-- Left Column: Meters & Telemetry -->
+<div class="lg:col-span-8 flex flex-col gap-gutter">
+<!-- Meters Panel -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg p-margin flex flex-col gap-4">
+<h3 class="font-headline-md text-headline-md text-on-surface border-b border-outline-variant pb-2">Real-Time Telemetry</h3>
+<div class="flex flex-col sm:flex-row gap-6 justify-around items-center">
+<!-- RF A Meter -->
+<div class="flex flex-col items-center gap-2 w-full sm:w-auto">
+<span class="font-label-caps text-label-caps text-on-surface-variant">RF A</span>
+<div class="flex flex-col-reverse gap-[2px] h-48 w-8 bg-[#050505] border border-outline-variant rounded p-[2px]">
+<!-- 10 segments -->
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-orange rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+</div>
+<span class="font-data-tabular text-data-tabular text-secondary-fixed-dim">-42 dBm</span>
+</div>
+<!-- RF B Meter -->
+<div class="flex flex-col items-center gap-2 w-full sm:w-auto">
+<span class="font-label-caps text-label-caps text-on-surface-variant">RF B</span>
+<div class="flex flex-col-reverse gap-[2px] h-48 w-8 bg-[#050505] border border-outline-variant rounded p-[2px]">
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+</div>
+<span class="font-data-tabular text-data-tabular text-secondary-fixed-dim">-65 dBm</span>
+</div>
+<!-- Quality Meter -->
+<div class="flex flex-col items-center gap-2 w-full sm:w-auto">
+<span class="font-label-caps text-label-caps text-on-surface-variant">QUALITY</span>
+<div class="flex flex-col-reverse gap-[2px] h-48 w-8 bg-[#050505] border border-outline-variant rounded p-[2px]">
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+</div>
+<span class="font-data-tabular text-data-tabular text-secondary-fixed-dim">5/5</span>
+</div>
+<div class="hidden sm:block h-32 w-px bg-outline-variant"></div>
+<!-- Audio Meter -->
+<div class="flex flex-col items-center gap-2 w-full sm:w-auto">
+<span class="font-label-caps text-label-caps text-on-surface-variant">AUDIO</span>
+<div class="flex flex-col-reverse gap-[2px] h-48 w-12 bg-[#050505] border border-outline-variant rounded p-[2px]">
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-green rounded-sm"></div>
+<div class="h-full w-full meter-segment-orange rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+<div class="h-full w-full meter-segment-off rounded-sm"></div>
+</div>
+<span class="font-data-tabular text-data-tabular text-on-surface">-12 dBFS</span>
+</div>
+</div>
+</div>
+<!-- Telemetry History Chart -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg p-margin flex-1 min-h-[250px] flex flex-col">
+<div class="flex justify-between items-center border-b border-outline-variant pb-2 mb-4">
+<h3 class="font-headline-md text-headline-md text-on-surface">RF History (Last 10m)</h3>
+<span class="font-label-caps text-label-caps text-on-surface-variant flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-primary-container inline-block"></span> RF A <span class="w-2 h-2 rounded-full bg-outline inline-block ml-2"></span> RF B</span>
+</div>
+<!-- Placeholder for Chart -->
+<div class="flex-1 bg-[#050505] border border-outline-variant rounded relative overflow-hidden flex items-end">
+<!-- Simulated Chart Grid -->
+<div class="absolute inset-0" style="background-image: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px); background-size: 20px 20px;"></div>
+<!-- Simulated Lines -->
+<svg class="absolute inset-0 h-full w-full" preserveaspectratio="none" viewbox="0 0 100 100">
+<path d="M0,80 Q10,70 20,80 T40,60 T60,85 T80,50 T100,60" fill="none" stroke="theme('colors.primary-container')" stroke-width="1.5"></path>
+<path d="M0,90 Q15,85 30,95 T50,80 T70,90 T90,85 T100,90" fill="none" stroke="theme('colors.outline')" stroke-dasharray="2,2" stroke-width="1"></path>
+</svg>
+</div>
+</div>
+</div>
+<!-- Right Column: Config & Actions -->
+<div class="lg:col-span-4 flex flex-col gap-gutter">
+<!-- Hardware Config Details -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg p-margin flex flex-col gap-4">
+<h3 class="font-headline-md text-headline-md text-on-surface border-b border-outline-variant pb-2">Configuration</h3>
+<div class="grid grid-cols-2 gap-y-4 gap-x-2">
+<div>
+<span class="block font-label-caps text-label-caps text-on-surface-variant mb-1">Frequency</span>
+<div class="bg-[#050505] border border-outline-variant rounded p-2 flex items-center justify-between">
+<span class="font-data-tabular text-data-tabular text-primary-container">470.125</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant">MHz</span>
+</div>
+</div>
+<div>
+<span class="block font-label-caps text-label-caps text-on-surface-variant mb-1">Gain</span>
+<div class="bg-[#050505] border border-outline-variant rounded p-2 flex items-center justify-between">
+<span class="font-data-tabular text-data-tabular text-on-surface">+12</span>
+<span class="font-label-caps text-label-caps text-on-surface-variant">dB</span>
+</div>
+</div>
+<div class="col-span-2">
+<span class="block font-label-caps text-label-caps text-on-surface-variant mb-1">IP Address (Rx)</span>
+<div class="bg-[#050505] border border-outline-variant rounded p-2">
+<span class="font-data-tabular text-data-tabular text-on-surface">192.168.1.104</span>
+</div>
+</div>
+<div class="col-span-2">
+<span class="block font-label-caps text-label-caps text-on-surface-variant mb-1">Firmware</span>
+<div class="bg-[#050505] border border-outline-variant rounded p-2">
+<span class="font-data-tabular text-data-tabular text-on-surface">1.2.45-b</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Battery Health -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg p-margin flex flex-col gap-4">
+<h3 class="font-headline-md text-headline-md text-on-surface border-b border-outline-variant pb-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-[20px]">battery_charging_full</span> Battery Health
+                        </h3>
+<div class="space-y-3">
+<div class="flex justify-between items-center p-2 rounded hover:bg-surface-container-highest transition-colors">
+<span class="font-body-md text-body-md text-on-surface-variant">Est. Runtime</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">6h 15m</span>
+</div>
+<div class="flex justify-between items-center p-2 rounded hover:bg-surface-container-highest transition-colors">
+<span class="font-body-md text-body-md text-on-surface-variant">Charge Cycles</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">142</span>
+</div>
+<div class="flex justify-between items-center p-2 rounded hover:bg-surface-container-highest transition-colors">
+<span class="font-body-md text-body-md text-on-surface-variant">Health %</span>
+<span class="font-data-tabular text-data-tabular text-secondary-fixed-dim">98%</span>
+</div>
+<div class="flex justify-between items-center p-2 rounded hover:bg-surface-container-highest transition-colors">
+<span class="font-body-md text-body-md text-on-surface-variant">Temp</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">32°C</span>
+</div>
+</div>
+</div>
+<!-- Quick Actions -->
+<div class="bg-[#161618] border border-[#262629] rounded-lg p-margin flex flex-col gap-3 mt-auto">
+<button class="w-full py-3 bg-[#0A0A0B] border border-error text-error font-label-caps text-label-caps rounded flex items-center justify-center gap-2 hover:bg-error/10 transition-colors">
+<span class="material-symbols-outlined text-[18px]">mic_off</span>
+                            Mute Channel
+                        </button>
+<button class="w-full py-3 bg-[#0A0A0B] border border-outline-variant text-on-surface font-label-caps text-label-caps rounded flex items-center justify-center gap-2 hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[18px]">lightbulb</span>
+                            Identify Hardware
+                        </button>
+<button class="w-full py-3 bg-[#0A0A0B] border border-outline-variant text-on-surface font-label-caps text-label-caps rounded flex items-center justify-center gap-2 hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-[18px]">settings</span>
+                            Edit Settings
+                        </button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Nav Bar (Mobile Only) -->
+<nav class="md:hidden flex justify-around items-center h-16 bg-surface-container-low dark:bg-surface-container-low border-t border-outline-variant sticky bottom-0 z-40 px-2 w-full">
+<a class="flex flex-col items-center justify-center gap-1 w-16 h-full text-secondary opacity-80 scale-95 transition-all" href="#">
+<span class="material-symbols-outlined text-[24px]" style="font-variation-settings: 'FILL' 1;">analytics</span>
+<span class="font-label-caps text-label-caps">Monitoring</span>
+</a>
+<a class="flex flex-col items-center justify-center gap-1 w-16 h-full text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-[24px]">waves</span>
+<span class="font-label-caps text-label-caps">Coord.</span>
+</a>
+<a class="flex flex-col items-center justify-center gap-1 w-16 h-full text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-[24px]">inventory_2</span>
+<span class="font-label-caps text-label-caps">Inventory</span>
+</a>
+<a class="flex flex-col items-center justify-center gap-1 w-16 h-full text-on-surface-variant hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined text-[24px]">settings</span>
+<span class="font-label-caps text-label-caps">Settings</span>
+</a>
+</nav>
+</body></html>

@@ -1,0 +1,37 @@
+.audio-monitor {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background-color: var(--color-surface-container-high);
+  border-radius: var(--radius-full);
+  margin-left: auto;
+}
+
+.audio-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.control-btn {
+  background: none;
+  border: none;
+  color: var(--color-on-surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.control-btn:hover {
+  background-color: var(--color-surface-bright);
+}
+
+.status-text {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--color-on-surface-variant);
+}

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RFDeck Pro - Primary Dashboard</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&amp;family=Inter:wght@400;500;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "primary-container": "#00f0ff",
+                      "on-tertiary-fixed-variant": "#783200",
+                      "tertiary-container": "#ffcfb8",
+                      "surface-dim": "#131314",
+                      "on-secondary-fixed": "#002109",
+                      "on-error": "#690005",
+                      "secondary-fixed-dim": "#4ae176",
+                      "error-container": "#93000a",
+                      "surface-container-low": "#1c1b1c",
+                      "on-surface": "#e5e2e3",
+                      "tertiary": "#fff3ef",
+                      "on-primary-fixed": "#002022",
+                      "primary-fixed-dim": "#00dbe9",
+                      "on-primary-fixed-variant": "#004f54",
+                      "primary": "#dbfcff",
+                      "secondary": "#4ae176",
+                      "background": "#131314",
+                      "surface": "#131314",
+                      "on-error-container": "#ffdad6",
+                      "on-tertiary": "#552100",
+                      "on-surface-variant": "#b9cacb",
+                      "surface-container-highest": "#353436",
+                      "inverse-primary": "#006970",
+                      "on-secondary-container": "#004119",
+                      "secondary-container": "#00b954",
+                      "outline-variant": "#3b494b",
+                      "surface-container-high": "#2a2a2b",
+                      "on-secondary": "#003915",
+                      "secondary-fixed": "#6bff8f",
+                      "error": "#ffb4ab",
+                      "surface-bright": "#3a393a",
+                      "surface-variant": "#353436",
+                      "on-secondary-fixed-variant": "#005321",
+                      "on-tertiary-fixed": "#341100",
+                      "primary-fixed": "#7df4ff",
+                      "tertiary-fixed-dim": "#ffb690",
+                      "inverse-on-surface": "#313031",
+                      "surface-tint": "#00dbe9",
+                      "on-primary-container": "#006970",
+                      "on-background": "#e5e2e3",
+                      "on-primary": "#00363a",
+                      "outline": "#849495",
+                      "surface-container": "#201f20",
+                      "tertiary-fixed": "#ffdbca",
+                      "on-tertiary-container": "#9d4300",
+                      "inverse-surface": "#e5e2e3",
+                      "surface-container-lowest": "#0e0e0f"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.25rem",
+                      "xl": "0.5rem",
+                      "full": "0.75rem"
+              },
+              "spacing": {
+                      "density-comfortable": "12px 16px",
+                      "margin": "16px",
+                      "unit": "4px",
+                      "density-compact": "4px 8px",
+                      "gutter": "12px"
+              },
+              "fontFamily": {
+                      "body-md": ["Inter"],
+                      "display-rf": ["JetBrains Mono"],
+                      "headline-lg": ["Geist"],
+                      "label-caps": ["Inter"],
+                      "data-tabular": ["JetBrains Mono"],
+                      "headline-md": ["Geist"]
+              },
+              "fontSize": {
+                      "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "display-rf": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "label-caps": ["11px", {"lineHeight": "12px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                      "data-tabular": ["13px", {"lineHeight": "16px", "fontWeight": "500"}],
+                      "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        /* Meter specific styles */
+        .meter-segment { height: 10%; width: 100%; margin-bottom: 2px; border-radius: 1px; background-color: theme('colors.surface-container-highest'); transition: background-color 0.1s; }
+        .meter-segment.active-green { background-color: theme('colors.secondary-fixed-dim'); box-shadow: 0 0 4px theme('colors.secondary-fixed-dim'); }
+        .meter-segment.active-orange { background-color: #f59e0b; box-shadow: 0 0 4px #f59e0b; }
+        .meter-segment.active-red { background-color: theme('colors.error'); box-shadow: 0 0 4px theme('colors.error'); }
+        
+        /* Glass/Glow */
+        .btn-glow { box-shadow: inset 0 0 1px rgba(255,255,255,0.15); }
+    </style>
+</head>
+<body class="bg-background text-on-background h-screen flex flex-col overflow-hidden font-body-md">
+<!-- TopNavBar -->
+<header class="bg-surface-dim dark:bg-surface-dim w-full top-0 border-b border-outline-variant flex justify-between items-center px-margin h-16 sticky z-50 text-primary-container dark:text-primary-fixed-dim">
+<div class="flex items-center gap-margin">
+<h1 class="font-display-rf text-display-rf tracking-tighter text-primary-container">RFDeck</h1>
+</div>
+<div class="flex items-center gap-margin">
+<span class="font-body-md text-body-md text-on-surface-variant bg-surface-container py-1 px-3 rounded-full border border-outline-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed-dim animate-pulse"></span>
+                System Ready
+            </span>
+<div class="flex items-center gap-unit">
+<button class="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest/50 transition-colors rounded-full flex items-center justify-center opacity-80 scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest/50 transition-colors rounded-full flex items-center justify-center opacity-80 scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="sync">sync</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary hover:bg-surface-container-highest/50 transition-colors rounded-full flex items-center justify-center opacity-80 scale-95 transition-all">
+<span class="material-symbols-outlined" data-icon="settings_input_component">settings_input_component</span>
+</button>
+</div>
+</div>
+</header>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<aside class="bg-surface-container-low dark:bg-surface-container-low border-r border-outline-variant h-full w-64 left-0 sticky flex flex-col py-margin gap-unit hidden md:flex text-secondary dark:text-secondary-fixed-dim">
+<div class="px-margin mb-margin">
+<h2 class="font-display-rf text-headline-lg text-primary-container mb-1">RFDeck Pro</h2>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]">account_circle</span>
+<div>
+<p aria-label="System Operator" class="font-label-caps text-label-caps opacity-70">System Operator</p>
+<p class="font-body-md text-[12px]">Local Network: Active</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 flex flex-col gap-1 px-unit">
+<a class="flex items-center gap-3 px-3 py-2 text-secondary border-r-4 border-secondary bg-secondary-container/10 translate-x-1 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+<span class="font-label-caps text-label-caps">Monitoring</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="waves">waves</span>
+<span class="font-label-caps text-label-caps">Coordination</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-label-caps text-label-caps">Inventory</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-caps text-label-caps">Settings</span>
+</a>
+</nav>
+<div class="px-margin mt-auto flex flex-col gap-unit">
+<button class="w-full py-2 bg-surface-container-highest hover:bg-surface-bright text-on-surface font-label-caps text-label-caps border border-outline-variant transition-colors flex items-center justify-center gap-2 rounded">
+                    Export Report
+                </button>
+<div class="border-t border-outline-variant mt-2 pt-2 flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="history_edu">history_edu</span>
+<span class="font-label-caps text-label-caps">Logs</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+<span class="font-label-caps text-label-caps">Help</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Dashboard Canvas -->
+<main class="flex-1 overflow-y-auto p-margin bg-background">
+<div class="max-w-[1600px] mx-auto">
+<div class="flex justify-between items-end mb-margin">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Active Telemetry</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Live frequency monitoring and signal status.</p>
+</div>
+</div>
+<!-- High Density Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-gutter">
+<!-- Channel Card 1 (Healthy) -->
+<article class="bg-surface-container-low border border-outline-variant border-t-[2px] border-t-primary-container p-density-comfortable rounded flex flex-col gap-margin shadow-sm relative">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">CH 01</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Lead Vox A</p>
+</div>
+<span class="material-symbols-outlined text-primary-container">mic</span>
+</div>
+<div class="flex gap-margin h-24 items-end">
+<!-- Meters -->
+<div class="flex gap-2 h-full items-end">
+<div class="flex flex-col-reverse h-full w-3 gap-[1px]">
+<div class="meter-segment active-green"></div><div class="meter-segment active-green"></div>
+<div class="meter-segment active-green"></div><div class="meter-segment active-green"></div>
+<div class="meter-segment active-green"></div><div class="meter-segment active-green"></div>
+<div class="meter-segment active-green"></div><div class="meter-segment active-orange"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+</div>
+<div class="flex flex-col-reverse h-full w-3 gap-[1px]">
+<div class="meter-segment active-green"></div><div class="meter-segment active-green"></div>
+<div class="meter-segment active-green"></div><div class="meter-segment active-green"></div>
+<div class="meter-segment active-green"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+</div>
+</div>
+<!-- Data -->
+<div class="flex flex-col justify-between h-full flex-1 text-right">
+<div class="font-data-tabular text-[18px] text-primary-fixed tracking-tight">518.200 <span class="text-[10px] text-on-surface-variant">MHz</span></div>
+<div class="flex items-center justify-end gap-1 text-secondary-fixed-dim">
+<span class="font-data-tabular text-data-tabular">85%</span>
+<span class="material-symbols-outlined text-[16px]">battery_5_bar</span>
+</div>
+</div>
+</div>
+<div class="flex gap-2 pt-2 border-t border-outline-variant/50">
+<button class="flex-1 py-1 px-2 bg-surface-container border border-outline-variant text-on-surface hover:bg-surface-bright transition-colors rounded btn-glow font-label-caps text-label-caps flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">volume_off</span> Mute
+                            </button>
+<button class="flex-1 py-1 px-2 bg-primary-container/10 border border-primary-container/30 text-primary-container hover:bg-primary-container/20 transition-colors rounded btn-glow font-label-caps text-label-caps flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">headphones</span> Listen
+                            </button>
+</div>
+</article>
+<!-- Channel Card 2 (Warning) -->
+<article class="bg-surface-container-low border border-outline-variant border-t-[2px] border-t-[#f59e0b] p-density-comfortable rounded flex flex-col gap-margin shadow-sm relative">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">CH 02</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Backup Vox</p>
+</div>
+<span class="material-symbols-outlined text-[#f59e0b]">warning</span>
+</div>
+<div class="flex gap-margin h-24 items-end">
+<div class="flex gap-2 h-full items-end">
+<div class="flex flex-col-reverse h-full w-3 gap-[1px]">
+<div class="meter-segment active-green"></div><div class="meter-segment active-green"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+</div>
+<div class="flex flex-col-reverse h-full w-3 gap-[1px]">
+<div class="meter-segment active-green"></div><div class="meter-segment active-green"></div>
+<div class="meter-segment active-green"></div><div class="meter-segment active-green"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+</div>
+</div>
+<div class="flex flex-col justify-between h-full flex-1 text-right">
+<div class="font-data-tabular text-[18px] text-primary-fixed tracking-tight">522.450 <span class="text-[10px] text-on-surface-variant">MHz</span></div>
+<div class="flex items-center justify-end gap-1 text-[#f59e0b]">
+<span class="font-data-tabular text-data-tabular">22%</span>
+<span class="material-symbols-outlined text-[16px]">battery_2_bar</span>
+</div>
+</div>
+</div>
+<div class="flex gap-2 pt-2 border-t border-outline-variant/50">
+<button class="flex-1 py-1 px-2 bg-surface-container border border-outline-variant text-on-surface hover:bg-surface-bright transition-colors rounded btn-glow font-label-caps text-label-caps flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">volume_off</span> Mute
+                            </button>
+<button class="flex-1 py-1 px-2 bg-surface-container border border-outline-variant text-on-surface hover:bg-surface-bright transition-colors rounded btn-glow font-label-caps text-label-caps flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">headphones</span> Listen
+                            </button>
+</div>
+</article>
+<!-- Channel Card 3 (Error/Muted) -->
+<article class="bg-surface-container-low border border-outline-variant border-t-[2px] border-t-error p-density-comfortable rounded flex flex-col gap-margin shadow-sm relative opacity-80">
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">CH 03</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Guitar WL</p>
+</div>
+<span class="material-symbols-outlined text-error">error</span>
+</div>
+<div class="flex gap-margin h-24 items-end">
+<div class="flex gap-2 h-full items-end opacity-50">
+<div class="flex flex-col-reverse h-full w-3 gap-[1px]">
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+</div>
+<div class="flex flex-col-reverse h-full w-3 gap-[1px]">
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+<div class="meter-segment"></div><div class="meter-segment"></div>
+</div>
+</div>
+<div class="flex flex-col justify-between h-full flex-1 text-right">
+<div class="font-data-tabular text-[18px] text-on-surface-variant tracking-tight">530.100 <span class="text-[10px]">MHz</span></div>
+<div class="flex items-center justify-end gap-1 text-error">
+<span class="font-data-tabular text-data-tabular">TX OFF</span>
+<span class="material-symbols-outlined text-[16px]">battery_unknown</span>
+</div>
+</div>
+</div>
+<div class="flex gap-2 pt-2 border-t border-outline-variant/50">
+<button class="flex-1 py-1 px-2 bg-error-container/20 border border-error/50 text-error hover:bg-error-container/40 transition-colors rounded btn-glow font-label-caps text-label-caps flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">volume_off</span> Unmute
+                            </button>
+<button class="flex-1 py-1 px-2 bg-surface-container border border-outline-variant text-on-surface hover:bg-surface-bright transition-colors rounded btn-glow font-label-caps text-label-caps flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-[14px]">headphones</span> Listen
+                            </button>
+</div>
+</article>
+</div>
+</div>
+</main>
+</div>
+</body></html>

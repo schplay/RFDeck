@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>RFDeck - System Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&amp;family=Inter:wght@400;500;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-highest": "#353436",
+                        "outline": "#849495",
+                        "on-primary-fixed-variant": "#004f54",
+                        "inverse-surface": "#e5e2e3",
+                        "on-secondary-fixed": "#002109",
+                        "on-surface": "#e5e2e3",
+                        "on-secondary-container": "#004119",
+                        "primary-fixed-dim": "#00dbe9",
+                        "error": "#ffb4ab",
+                        "secondary-fixed": "#6bff8f",
+                        "primary-fixed": "#7df4ff",
+                        "on-error-container": "#ffdad6",
+                        "secondary": "#4ae176",
+                        "inverse-primary": "#006970",
+                        "background": "#131314",
+                        "surface-container-lowest": "#0e0e0f",
+                        "on-tertiary-fixed": "#341100",
+                        "on-primary-container": "#006970",
+                        "secondary-container": "#00b954",
+                        "on-primary-fixed": "#002022",
+                        "surface-container-high": "#2a2a2b",
+                        "secondary-fixed-dim": "#4ae176",
+                        "on-secondary": "#003915",
+                        "on-tertiary": "#552100",
+                        "error-container": "#93000a",
+                        "tertiary-container": "#ffcfb8",
+                        "surface-container-low": "#1c1b1c",
+                        "outline-variant": "#3b494b",
+                        "surface-container": "#201f20",
+                        "on-error": "#690005",
+                        "surface-variant": "#353436",
+                        "on-secondary-fixed-variant": "#005321",
+                        "tertiary-fixed": "#ffdbca",
+                        "surface": "#131314",
+                        "surface-dim": "#131314",
+                        "on-tertiary-fixed-variant": "#783200",
+                        "on-background": "#e5e2e3",
+                        "surface-tint": "#00dbe9",
+                        "inverse-on-surface": "#313031",
+                        "primary-container": "#00f0ff",
+                        "tertiary-fixed-dim": "#ffb690",
+                        "on-tertiary-container": "#9d4300",
+                        "on-primary": "#00363a",
+                        "surface-bright": "#3a393a",
+                        "primary": "#dbfcff",
+                        "tertiary": "#fff3ef",
+                        "on-surface-variant": "#b9cacb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin": "16px",
+                        "unit": "4px",
+                        "gutter": "12px",
+                        "density-compact": "4px 8px",
+                        "density-comfortable": "12px 16px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Geist"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["Inter"],
+                        "headline-lg": ["Geist"],
+                        "display-rf": ["JetBrains Mono"],
+                        "data-tabular": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "label-caps": ["11px", {"lineHeight": "12px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                        "headline-lg": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "display-rf": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "data-tabular": ["13px", {"lineHeight": "16px", "fontWeight": "500"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: #0A0A0B; color: #e5e2e3; }
+        .glass-panel {
+            background-color: #161618;
+            border: 1px solid #262629;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+        }
+        .btn-primary {
+            background-color: #00f0ff;
+            color: #002022;
+            box-shadow: inset 0 0.5px 0 rgba(255,255,255,0.8);
+        }
+        .btn-primary:hover { background-color: #7df4ff; }
+        .btn-secondary {
+            background-color: transparent;
+            border: 1px solid #3b494b;
+            color: #e5e2e3;
+        }
+        .btn-secondary:hover { background-color: #2a2a2b; }
+        .input-inset {
+            background-color: #050505;
+            border: 1px solid #262629;
+            color: #e5e2e3;
+        }
+        .input-inset:focus {
+            border-color: #00dbe9;
+            outline: none;
+        }
+        .toggle-switch-input:checked + .toggle-switch-bg {
+            background-color: #00dbe9;
+            box-shadow: 0 0 8px rgba(0, 219, 233, 0.4);
+        }
+        .toggle-switch-input:checked + .toggle-switch-bg .toggle-switch-knob {
+            transform: translateX(100%);
+        }
+        
+        /* Custom Scrollbar for dark theme */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0A0A0B; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #262629; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3b494b; 
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden antialiased font-body-md text-body-md selection:bg-primary-container selection:text-on-primary-container">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low dark:bg-surface-container-low text-secondary dark:text-secondary-fixed-dim h-screen w-64 left-0 sticky border-r border-outline-variant flat no shadows flex flex-col h-full py-margin gap-unit z-40 hidden md:flex shrink-0">
+<!-- Brand Header -->
+<div class="px-margin mb-8">
+<h1 class="font-display-rf text-headline-lg text-primary-container tracking-tighter">RFDeck</h1>
+<div class="flex items-center gap-2 mt-2">
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+<span class="font-label-caps text-label-caps text-on-surface-variant">System Operator</span>
+</div>
+<p class="font-label-caps text-label-caps text-on-surface-variant opacity-70 mt-1">Local Network: Active</p>
+</div>
+<!-- Main Navigation -->
+<div class="flex-1 flex flex-col gap-1 px-2">
+<a class="text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all flex items-center gap-3 px-3 py-2 rounded-DEFAULT group" href="#">
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface transition-colors" data-icon="analytics">analytics</span>
+<span class="font-label-caps text-label-caps">Monitoring</span>
+</a>
+<a class="text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all flex items-center gap-3 px-3 py-2 rounded-DEFAULT group" href="#">
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface transition-colors" data-icon="waves">waves</span>
+<span class="font-label-caps text-label-caps">Coordination</span>
+</a>
+<a class="text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-all flex items-center gap-3 px-3 py-2 rounded-DEFAULT group" href="#">
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface transition-colors" data-icon="inventory_2">inventory_2</span>
+<span class="font-label-caps text-label-caps">Inventory</span>
+</a>
+<a class="text-secondary border-r-4 border-secondary bg-secondary-container/10 flex items-center gap-3 px-3 py-2 rounded-l-DEFAULT group translate-x-1 duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="settings" style="font-variation-settings: 'FILL' 1;">settings</span>
+<span class="font-label-caps text-label-caps">Settings</span>
+</a>
+</div>
+<!-- CTA & Footer -->
+<div class="px-margin flex flex-col gap-4 mt-auto">
+<button class="w-full btn-secondary font-label-caps text-label-caps py-2 rounded-DEFAULT transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[16px]">download</span>
+                Export Report
+            </button>
+<div class="border-t border-outline-variant pt-4 flex flex-col gap-2">
+<a class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-3 px-2 py-1" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="history_edu">history_edu</span>
+<span class="font-label-caps text-label-caps">Logs</span>
+</a>
+<a class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-3 px-2 py-1" href="#">
+<span class="material-symbols-outlined text-[18px]" data-icon="help_outline">help_outline</span>
+<span class="font-label-caps text-label-caps">Help</span>
+</a>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col min-w-0 bg-background overflow-hidden relative">
+<!-- TopNavBar (Mobile mainly, or contextual tools on desktop) -->
+<header class="bg-surface-dim dark:bg-surface-dim w-full top-0 border-b border-outline-variant flat no shadows flex justify-between items-center px-margin h-16 sticky top-0 z-50 shrink-0">
+<div class="flex items-center gap-4">
+<button class="md:hidden text-on-surface-variant p-2 rounded-full hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined">menu</span>
+</button>
+<h2 class="font-headline-lg text-headline-lg text-primary-container">System Settings</h2>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden sm:flex items-center bg-surface-container-low px-3 py-1.5 rounded-DEFAULT border border-outline-variant">
+<div class="w-2 h-2 rounded-full bg-secondary mr-2"></div>
+<span class="font-data-tabular text-data-tabular text-on-surface">System Ready</span>
+</div>
+<div class="flex gap-1">
+<button class="text-on-surface-variant hover:text-primary hover:bg-surface-container-highest/50 transition-colors p-2 rounded-full relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-primary-container rounded-full"></span>
+</button>
+<button class="text-on-surface-variant hover:text-primary hover:bg-surface-container-highest/50 transition-colors p-2 rounded-full">
+<span class="material-symbols-outlined" data-icon="sync">sync</span>
+</button>
+<button class="text-on-surface-variant hover:text-primary hover:bg-surface-container-highest/50 transition-colors p-2 rounded-full">
+<span class="material-symbols-outlined" data-icon="settings_input_component">settings_input_component</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Scrollable Content -->
+<main class="flex-1 overflow-y-auto p-margin md:p-6 lg:p-8">
+<div class="max-w-7xl mx-auto space-y-8">
+<!-- Section 1: Network Configuration -->
+<section class="glass-panel rounded-lg overflow-hidden flex flex-col">
+<div class="bg-surface-container px-4 py-3 border-b border-outline-variant flex items-center justify-between">
+<h3 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">router</span>
+                            Network Configuration
+                        </h3>
+<span class="px-2 py-0.5 bg-secondary-container/20 text-secondary border border-secondary/30 rounded font-label-caps text-label-caps">ONLINE</span>
+</div>
+<div class="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+<!-- Interface Selection -->
+<div class="space-y-4">
+<h4 class="font-label-caps text-label-caps text-on-surface-variant">PRIMARY INTERFACE</h4>
+<div class="flex flex-col gap-2">
+<label class="flex items-center gap-3 p-3 rounded-DEFAULT border border-primary-container bg-surface-container-low cursor-pointer">
+<input checked="" class="form-radio text-primary-container focus:ring-primary-container bg-background border-outline-variant" name="network_interface" type="radio"/>
+<div class="flex-1">
+<div class="font-headline-md text-body-md font-semibold text-on-surface">Control Network (eth0)</div>
+<div class="font-data-tabular text-data-tabular text-on-surface-variant">192.168.1.100</div>
+</div>
+</label>
+<label class="flex items-center gap-3 p-3 rounded-DEFAULT border border-outline-variant bg-surface-container-low opacity-60 hover:opacity-100 transition-opacity cursor-pointer">
+<input class="form-radio text-primary-container focus:ring-primary-container bg-background border-outline-variant" name="network_interface" type="radio"/>
+<div class="flex-1">
+<div class="font-headline-md text-body-md font-semibold text-on-surface">Dante Primary (eth1)</div>
+<div class="font-data-tabular text-data-tabular text-on-surface-variant">10.0.0.50</div>
+</div>
+</label>
+</div>
+</div>
+<!-- IP Settings -->
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<h4 class="font-label-caps text-label-caps text-on-surface-variant">IP ADDRESSING</h4>
+<div class="flex items-center gap-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant">DHCP</span>
+<label class="relative inline-block w-8 h-4 cursor-pointer">
+<input checked="" class="sr-only toggle-switch-input" type="checkbox"/>
+<div class="w-full h-full bg-surface-container-highest rounded-full transition-colors toggle-switch-bg absolute top-0 left-0 border border-outline-variant">
+<div class="w-3 h-3 bg-on-surface rounded-full absolute top-[1px] left-[1px] transition-transform toggle-switch-knob"></div>
+</div>
+</label>
+<span class="font-label-caps text-label-caps text-primary-container">STATIC</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="space-y-1">
+<label class="font-label-caps text-label-caps text-on-surface-variant">IP Address</label>
+<input class="w-full input-inset p-2 rounded-DEFAULT font-data-tabular text-data-tabular" type="text" value="192.168.1.100"/>
+</div>
+<div class="space-y-1">
+<label class="font-label-caps text-label-caps text-on-surface-variant">Subnet Mask</label>
+<input class="w-full input-inset p-2 rounded-DEFAULT font-data-tabular text-data-tabular" type="text" value="255.255.255.0"/>
+</div>
+<div class="space-y-1">
+<label class="font-label-caps text-label-caps text-on-surface-variant">Gateway</label>
+<input class="w-full input-inset p-2 rounded-DEFAULT font-data-tabular text-data-tabular" type="text" value="192.168.1.1"/>
+</div>
+<div class="space-y-1">
+<label class="font-label-caps text-label-caps text-on-surface-variant">DNS Server</label>
+<input class="w-full input-inset p-2 rounded-DEFAULT font-data-tabular text-data-tabular" type="text" value="8.8.8.8"/>
+</div>
+</div>
+</div>
+</div>
+</section>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+<!-- Section 2: Global System Preferences -->
+<section class="glass-panel rounded-lg overflow-hidden flex flex-col">
+<div class="bg-surface-container px-4 py-3 border-b border-outline-variant">
+<h3 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">tune</span>
+                                Global Preferences
+                            </h3>
+</div>
+<div class="p-6 space-y-6">
+<div class="flex items-center justify-between border-b border-outline-variant/50 pb-4">
+<div>
+<div class="font-headline-md text-body-md font-semibold text-on-surface">Frequency Units</div>
+<div class="text-on-surface-variant text-[12px] mt-1">Global display format for RF tuning</div>
+</div>
+<select class="input-inset py-1.5 px-3 rounded-DEFAULT font-data-tabular text-data-tabular w-24">
+<option selected="">MHz</option>
+<option>kHz</option>
+</select>
+</div>
+<div class="flex items-center justify-between border-b border-outline-variant/50 pb-4">
+<div>
+<div class="font-headline-md text-body-md font-semibold text-on-surface">Auto-Save Interval</div>
+<div class="text-on-surface-variant text-[12px] mt-1">Background coordination backup frequency</div>
+</div>
+<select class="input-inset py-1.5 px-3 rounded-DEFAULT font-data-tabular text-data-tabular w-32">
+<option>1 Minute</option>
+<option selected="">5 Minutes</option>
+<option>15 Minutes</option>
+<option>Never</option>
+</select>
+</div>
+<div>
+<div class="flex justify-between items-center mb-2">
+<div class="font-headline-md text-body-md font-semibold text-on-surface">Hardware LED Brightness</div>
+<span class="font-data-tabular text-data-tabular text-primary-container">75%</span>
+</div>
+<input class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary-container" max="100" min="0" type="range" value="75"/>
+<div class="flex justify-between text-[10px] text-on-surface-variant mt-1 font-label-caps">
+<span>STEALTH</span>
+<span>FULL</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Section 5: Data Management (Moved up for grid balance) -->
+<section class="glass-panel rounded-lg overflow-hidden flex flex-col">
+<div class="bg-surface-container px-4 py-3 border-b border-outline-variant">
+<h3 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">storage</span>
+                                Data Management
+                            </h3>
+</div>
+<div class="p-6 space-y-6">
+<div class="space-y-3">
+<h4 class="font-label-caps text-label-caps text-on-surface-variant">LOCAL STORAGE PATH</h4>
+<div class="flex gap-2">
+<input class="flex-1 input-inset p-2 rounded-DEFAULT font-data-tabular text-data-tabular text-[12px]" readonly="" type="text" value="/var/lib/rfdeck/coordination_data"/>
+<button class="btn-secondary px-3 py-1 rounded-DEFAULT font-label-caps text-label-caps">BROWSE</button>
+</div>
+</div>
+<div class="space-y-3 border-t border-outline-variant/50 pt-4">
+<h4 class="font-label-caps text-label-caps text-on-surface-variant">DATABASE OPERATIONS</h4>
+<div class="grid grid-cols-2 gap-3">
+<button class="btn-secondary p-3 rounded-DEFAULT flex flex-col items-center justify-center gap-2 hover:bg-surface-container">
+<span class="material-symbols-outlined text-outline">backup</span>
+<span class="font-label-caps text-label-caps">CREATE BACKUP</span>
+</button>
+<button class="btn-secondary p-3 rounded-DEFAULT flex flex-col items-center justify-center gap-2 hover:bg-surface-container">
+<span class="material-symbols-outlined text-outline">restore</span>
+<span class="font-label-caps text-label-caps">RESTORE DB</span>
+</button>
+</div>
+<div class="flex items-center justify-between mt-2 px-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant">Last Backup:</span>
+<span class="font-data-tabular text-data-tabular text-on-surface">2023-10-24 14:32:01</span>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Section 3: User Management -->
+<section class="glass-panel rounded-lg overflow-hidden">
+<div class="bg-surface-container px-4 py-3 border-b border-outline-variant flex justify-between items-center">
+<h3 class="font-headline-md text-headline-md text-on-surface flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">group</span>
+                            Authorized Operators
+                        </h3>
+<button class="btn-primary px-3 py-1.5 rounded-DEFAULT font-label-caps text-label-caps text-[10px] flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">add</span> ADD USER
+                        </button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant font-label-caps text-label-caps text-on-surface-variant">
+<th class="py-2 px-4 font-normal">OPERATOR ID</th>
+<th class="py-2 px-4 font-normal">ROLE</th>
+<th class="py-2 px-4 font-normal">LAST ACTIVE</th>
+<th class="py-2 px-4 font-normal text-right">ACTIONS</th>
+</tr>
+</thead>
+<tbody class="font-data-tabular text-data-tabular text-[13px] divide-y divide-outline-variant/30">
+<tr class="hover:bg-white/[0.02] transition-colors">
+<td class="py-3 px-4 text-on-surface">sysadmin_root</td>
+<td class="py-3 px-4"><span class="px-2 py-0.5 bg-primary-container/20 text-primary-container border border-primary-container/30 rounded font-label-caps text-[10px]">ADMIN</span></td>
+<td class="py-3 px-4 text-on-surface-variant">Active Now</td>
+<td class="py-3 px-4 text-right">
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="hover:bg-white/[0.02] transition-colors">
+<td class="py-3 px-4 text-on-surface">a2_tech_lead</td>
+<td class="py-3 px-4"><span class="px-2 py-0.5 bg-secondary/20 text-secondary border border-secondary/30 rounded font-label-caps text-[10px]">TECH</span></td>
+<td class="py-3 px-4 text-on-surface-variant">2 hours ago</td>
+<td class="py-3 px-4 text-right">
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="hover:bg-white/[0.02] transition-colors">
+<td class="py-3 px-4 text-on-surface">foh_monitor_1</td>
+<td class="py-3 px-4"><span class="px-2 py-0.5 bg-surface-container-highest border border-outline-variant rounded font-label-caps text-[10px] text-on-surface-variant">MONITOR</span></td>
+<td class="py-3 px-4 text-on-surface-variant">Yesterday</td>
+<td class="py-3 px-4 text-right">
+<button class="text-outline hover:text-on-surface transition-colors p-1"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<!-- Section 4: Firmware & Updates -->
+<section class="glass-panel rounded-lg overflow-hidden border-l-2 border-l-primary-container">
+<div class="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+<div class="flex items-start gap-4">
+<div class="w-12 h-12 rounded-full bg-primary-container/10 border border-primary-container/30 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary-container">system_update_alt</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">Firmware Management</h3>
+<p class="text-on-surface-variant text-[13px] mt-1 max-w-lg">Manage software versions for the RFDeck core and connected hardware nodes. Fleet consistency is required for advanced coordination features.</p>
+<div class="flex gap-4 mt-3 font-data-tabular text-data-tabular text-[12px]">
+<div class="flex items-center gap-1">
+<span class="text-outline">Core OS:</span> <span class="text-on-surface">v2.4.1-stable</span>
+</div>
+<div class="flex items-center gap-1">
+<span class="text-outline">Nodes Sync:</span> <span class="text-secondary">100% (12/12)</span>
+</div>
+</div>
+</div>
+</div>
+<button class="btn-primary px-6 py-3 rounded-DEFAULT font-label-caps text-label-caps whitespace-nowrap shadow-[0_0_15px_rgba(0,240,255,0.2)]">
+                            CHECK FOR UPDATES
+                        </button>
+</div>
+</section>
+</div>
+<!-- Bottom Spacer -->
+<div class="h-12"></div>
+</main>
+</div>
+</body></html>

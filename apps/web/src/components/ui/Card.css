@@ -1,0 +1,26 @@
+.rfdeck-card {
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.rfdeck-card-default {
+  background-color: #161618;
+  border: 1px solid #262629;
+}
+
+.rfdeck-card-glass {
+  background: rgba(20, 20, 22, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--color-outline-variant);
+}
+
+/* Status Borders (top borders for telemetry cards) */
+.rfdeck-card-border-success {
+  border-top: 2px solid var(--color-success);
+}
+.rfdeck-card-border-warning {
+  border-top: 2px solid var(--color-warning);
+}
+.rfdeck-card-border-error {
+  border-top: 2px solid var(--color-error);
+}
