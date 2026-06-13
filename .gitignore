@@ -3,7 +3,6 @@ dist
 build
 .turbo
 .DS_Store
-.env
 .env.local
 *.log
 
