@@ -31,7 +31,7 @@ Real-time telemetry for all active wireless channels:
 
 ### Audio Monitoring
 - Route any channel to local audio output for real-time headphone monitoring
-- AES-67 network audio support (via GStreamer → WebRTC bridge)
+- AES-67 network audio support (native Node.js WebRTC bridge — no external dependencies)
 - OS audio device support on desktop (USB interfaces, WASAPI, CoreAudio)
 - Mobile audio monitoring via WebRTC stream over Wi-Fi (same path as browser)
 
@@ -141,9 +141,9 @@ RFDeck runs on a **single Node.js codebase** for both the desktop app and hosted
 | Layer | Technology | Version |
 |---|---|---|
 | **Runtime** | Node.js LTS | 24.x (Active LTS) |
-| **Package Manager** | pnpm (workspaces) | 9.x |
+| **Package Manager** | pnpm (workspaces) | 10.x |
 | **Backend Framework** | Fastify | 5.x |
-| **ORM** | Prisma | 7.x |
+| **ORM** | Prisma | 5.x |
 | **Database (Desktop)** | SQLite | via Prisma |
 | **Database (Web)** | PostgreSQL | 16+ |
 | **Frontend** | React + TypeScript | 19 / 5.x |
@@ -151,8 +151,7 @@ RFDeck runs on a **single Node.js codebase** for both the desktop app and hosted
 | **Real-time** | Socket.io | 4.x |
 | **Desktop Shell** | Electron | 42.x |
 | **Desktop Build** | electron-builder | 25.x |
-| **Audio Gateway** | GStreamer | 1.24+ |
-| **WebRTC** | gst-plugins-rs webrtcsink | latest |
+| **Audio / WebRTC** | @roamhq/wrtc (node-webrtc) | 0.10.x |
 | **Styling** | Vanilla CSS + Custom Properties | — |
 | **Testing** | Vitest + Playwright | — |
 
@@ -172,8 +171,8 @@ RFDeck runs on a **single Node.js codebase** for both the desktop app and hosted
 │              │    │                      │
 │  Fastify     │    │  Fastify (main proc) │
 │  PostgreSQL  │    │  SQLite              │
-│  GStreamer   │    │  GStreamer (sidecar)  │
-│  (sidecar)   │    │  OS audio devices    │
+│  AES-67/UDP  │    │  AES-67/UDP          │
+│  WebRTC      │    │  WebRTC + OS audio   │
 └──────────────┘    └──────────────────────┘
                │
                ▼
@@ -223,13 +222,20 @@ The RFDeck interface is engineered for **high-stakes live production environment
 
 ## Development
 
-> Prerequisites: Node.js 24 LTS, pnpm 9+, GStreamer 1.24+
+> Prerequisites: Node.js 24 LTS, pnpm 10+
 
 ```bash
 # 1. Install dependencies
 pnpm install
 
-# 2. Start the Desktop App (Recommended)
+# 2. Create the server environment file (first time only)
+cp apps/server/.env.example apps/server/.env   # or copy manually on Windows
+
+# 3. Set up the database (first time only)
+pnpm --filter @rfdeck/server prisma:generate
+pnpm --filter @rfdeck/server prisma:push
+
+# 4. Start the Desktop App (Recommended)
 # This will spawn the Fastify backend, load the Vite frontend, and open a native Electron window.
 pnpm --filter @rfdeck/desktop dev
 

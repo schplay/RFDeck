@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 import { DeviceManagerService } from '../hardware/sennheiser/DeviceManagerService';
 import { DiscoveredDevice } from '../hardware/sennheiser/DiscoveryService';
 import { WebRTCSignaling } from '../audio/WebRTCSignaling';
-import { GStreamerManager } from '../audio/GStreamerManager';
+import { AES67Manager } from '../audio/AES67Manager';
 
 export default fp(async (fastify, opts) => {
   const io = new Server(fastify.server, {
@@ -14,12 +14,12 @@ export default fp(async (fastify, opts) => {
   });
 
   const deviceManager = new DeviceManagerService(io);
-  const webrtcSignaling = new WebRTCSignaling(io);
-  const gstreamerManager = new GStreamerManager();
+  const audioManager = new AES67Manager();
+  const webrtcSignaling = new WebRTCSignaling(io, audioManager);
 
   fastify.decorate('io', io);
   fastify.decorate('deviceManager', deviceManager);
-  fastify.decorate('gstreamerManager', gstreamerManager);
+  fastify.decorate('audioManager', audioManager);
 
   // Forward mDNS discovery events to all connected frontend clients
   deviceManager.on('device:discovered', (device: DiscoveredDevice) => {
@@ -45,7 +45,7 @@ export default fp(async (fastify, opts) => {
 
   fastify.addHook('onClose', async () => {
     deviceManager.stop();
-    gstreamerManager.stop();
+    audioManager.stop();
     io.close();
   });
 
@@ -55,15 +55,15 @@ export default fp(async (fastify, opts) => {
     webrtcSignaling.attach(socket);
 
     socket.on('audio:start-test', () => {
-      gstreamerManager.startTestTone();
+      audioManager.startTestTone();
     });
 
     socket.on('audio:start-aes67', ({ ip, port }) => {
-      gstreamerManager.startAES67Stream(ip, port);
+      audioManager.startAES67Stream(ip, port);
     });
 
     socket.on('audio:stop', () => {
-      gstreamerManager.stop();
+      audioManager.stop();
     });
 
     // Hardware Control Commands
