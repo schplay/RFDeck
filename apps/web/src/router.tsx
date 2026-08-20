@@ -7,12 +7,19 @@ import BatteryDashboard from './pages/battery/BatteryDashboard';
 import Settings from './pages/settings/Settings';
 import BackstageView from './pages/backstage/BackstageView';
 import ShowManagement from './pages/shows/ShowManagement';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+// Each route is wrapped so a render error takes down one page, not the whole
+// application. Mid-show an unhandled error used to mean a black window.
+const guard = (label: string, element: React.ReactNode) => (
+  <ErrorBoundary label={label} variant="page">{element}</ErrorBoundary>
+);
 
 export const router = createHashRouter([
   // Backstage/Talent view — full-screen, no sidebar
   {
     path: '/backstage',
-    element: <BackstageView />
+    element: guard('Backstage view', <BackstageView />)
   },
   {
     path: '/',
@@ -20,29 +27,28 @@ export const router = createHashRouter([
     children: [
       {
         index: true,
-        element: <MonitoringDashboard />
+        element: guard('Monitoring Dashboard', <MonitoringDashboard />)
       },
       {
         path: 'inventory',
-        element: <InventoryManager />
+        element: guard('Hardware Inventory', <InventoryManager />)
       },
       {
         path: 'rf',
-        element: <RFScanner />
+        element: guard('RF Environment', <RFScanner />)
       },
       {
         path: 'battery',
-        element: <BatteryDashboard />
+        element: guard('Battery Management', <BatteryDashboard />)
       },
       {
         path: 'settings',
-        element: <Settings />
+        element: guard('Settings', <Settings />)
       },
       {
         path: 'shows',
-        element: <ShowManagement />
+        element: guard('Show & Mic Check', <ShowManagement />)
       }
     ]
   }
 ]);
-

@@ -3,6 +3,7 @@ import { ChannelStrip } from '../../components/channel/ChannelStrip';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { DeviceDrawer } from '../inventory/components/DeviceDrawer';
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
 import { LayoutGrid, List, Search, ArrowUpDown } from 'lucide-react';
 import './MonitoringDashboard.css';
@@ -128,11 +129,15 @@ export default function MonitoringDashboard() {
                 title="Double-click for device details"
                 {...dragHandlers(ch)}
               >
-                <ChannelStrip
-                  channel={ch}
-                  deviceType={dev?.deviceType}
-                  deviceOnline={dev?.online ?? true}
-                />
+                {/* Per-strip boundary: one malformed channel degrades to an
+                    error card instead of blanking the whole dashboard. */}
+                <ErrorBoundary label={ch.name || `CH ${ch.channelIndex}`} variant="card">
+                  <ChannelStrip
+                    channel={ch}
+                    deviceType={dev?.deviceType}
+                    deviceOnline={dev?.online ?? true}
+                  />
+                </ErrorBoundary>
               </div>
             );
           })

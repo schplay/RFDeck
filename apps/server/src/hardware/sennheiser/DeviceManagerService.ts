@@ -550,7 +550,20 @@ export class DeviceManagerService extends EventEmitter {
   }
 
 
+  // Clamp a hardware-reported figure into a sane 0–100 meter value.
+  // Everything arriving from a device is untrusted: firmware quirks and partial
+  // MCP frames have produced NaN and out-of-range values, which then render as
+  // broken meters or NaN% in the UI. Coercing here keeps malformed readings from
+  // ever reaching React.
+  private static meterValue(raw: unknown, fallback = 0): number {
+    const n = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(100, Math.max(0, n));
+  }
+
   private normalizeAndEmit(deviceId: string, sscState: any) {
+    if (!sscState || typeof sscState !== 'object') return;
+
     // Resolve the base device id (strip -legacy suffix added for G3/G4 clients)
     const baseId = deviceId.replace(/-legacy$/, '');
     const inventoryName = this.deviceNames.get(baseId);
@@ -558,7 +571,7 @@ export class DeviceManagerService extends EventEmitter {
     const receivers = ['rx1', 'rx2', 'rx3', 'rx4'];
 
     receivers.forEach((rx, index) => {
-      if (sscState[rx]) {
+      if (sscState[rx] && typeof sscState[rx] === 'object') {
         const rxData = sscState[rx];
 
         const channelId = `${deviceId}-${rx}`;
@@ -566,12 +579,18 @@ export class DeviceManagerService extends EventEmitter {
         // RF quality: G3/G4 sends 0-100 directly; SSCv2 also 0-100.
         // rf_quality may be undefined for IEM/output devices that don't receive RF —
         // only flag CRITICAL when we actually have RF data AND it's low.
-        const rfKnown = rxData.rf_quality !== undefined && rxData.rf_quality !== null;
-        const rfA = rfKnown ? (rxData.rf_quality as number) : 0;
-        const rfB = typeof rxData.rf_quality_b === 'number' ? rxData.rf_quality_b : rfA;
+        const rawRf = rxData.rf_quality;
+        const rfKnown = rawRf !== undefined && rawRf !== null && Number.isFinite(Number(rawRf));
+        const rfA = rfKnown ? DeviceManagerService.meterValue(rawRf) : 0;
+        const rfB = rxData.rf_quality_b !== undefined && rxData.rf_quality_b !== null
+          ? DeviceManagerService.meterValue(rxData.rf_quality_b, rfA)
+          : rfA;
 
         // AF level: raw dBFS (-60..0) → 0-100 display percentage
-        const afLevel = typeof rxData.af_level === 'number' ? Math.max(0, 100 + rxData.af_level) : 0;
+        const rawAf = Number(rxData.af_level);
+        const afLevel = Number.isFinite(rawAf)
+          ? DeviceManagerService.meterValue(100 + rawAf)
+          : 0;
 
         // Channel name priority: device-reported name → inventory device name → generic label
         const channelCount = Object.keys(sscState).filter(k => /^rx\d+$/.test(k)).length;
@@ -589,18 +608,31 @@ export class DeviceManagerService extends EventEmitter {
                      : isSquelch ? 'WARNING'
                      : 'ACTIVE';
 
+        // Battery may be absent (no transmitter paired) — distinguish that from
+        // a reported zero, and reject non-finite values outright.
+        const rawBattery = rxData.battery?.percent;
+        const batteryPercent =
+          rawBattery === undefined || rawBattery === null || !Number.isFinite(Number(rawBattery))
+            ? undefined
+            : DeviceManagerService.meterValue(rawBattery);
+
+        const rawFreq = Number(rxData.frequency);
+        const rawGain = Number(rxData.audio?.gain);
+
         const newChannel: Channel = {
           id: channelId,
           deviceId: deviceId,
           channelIndex: index + 1,
-          name: rxData.name || fallbackName,
-          frequency: rxData.frequency || 0,
+          name: typeof rxData.name === 'string' && rxData.name.trim()
+            ? rxData.name
+            : fallbackName,
+          frequency: Number.isFinite(rawFreq) && rawFreq > 0 ? rawFreq : 0,
           rfLevelA: rfA,
           rfLevelB: rfB,
           afLevel: afLevel,
-          batteryPercent: rxData.battery?.percent,
+          batteryPercent,
           isMuted,
-          gain: rxData.audio?.gain || 0,
+          gain: Number.isFinite(rawGain) ? rawGain : 0,
           status,
         };
 
