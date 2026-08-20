@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { CheckCircle, XCircle, PowerOff } from 'lucide-react';
 import { InventoryDevice } from '../../../stores/deviceStore';
 import './HardwareCard.css';
 
@@ -8,31 +8,58 @@ interface Props {
   device: InventoryDevice;
   viewMode: 'grid' | 'list';
   onClick: () => void;
+  onToggleActive: () => void;
 }
 
-export function HardwareCard({ device, viewMode, onClick }: Props) {
-  const statusColor = device.online ? 'var(--color-success)' : 'var(--color-error)';
-  const borderColor = device.online
-    ? 'rgba(107, 255, 143, 0.2)'
-    : 'rgba(255, 180, 171, 0.2)';
-  const topBarColor = device.online ? 'var(--color-success)' : 'var(--color-error)';
+export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Props) {
+  // Inactive devices are intentionally powered off — show them as dimmed/neutral
+  // rather than as an error state, so real offline faults still stand out.
+  const isInactive = device.active === false;
+  const borderColor = isInactive
+    ? 'rgba(132, 148, 149, 0.2)'
+    : device.online
+      ? 'rgba(107, 255, 143, 0.2)'
+      : 'rgba(255, 180, 171, 0.2)';
+  const topBarColor = isInactive
+    ? 'var(--color-on-surface-variant)'
+    : device.online ? 'var(--color-success)' : 'var(--color-error)';
+
+  const StatusIcon = isInactive ? (
+    <PowerOff size={16} color="var(--color-on-surface-variant)" />
+  ) : device.online ? (
+    <CheckCircle size={16} color="var(--color-success)" />
+  ) : (
+    <XCircle size={16} color="var(--color-error)" />
+  );
+
+  // Inline active switch. stopPropagation keeps a toggle click from also
+  // opening the device drawer behind it.
+  const ActiveSwitch = (
+    <button
+      className={`card-active-switch ${isInactive ? 'off' : 'on'}`}
+      role="switch"
+      aria-checked={!isInactive}
+      aria-label={isInactive ? `Activate ${device.name}` : `Deactivate ${device.name}`}
+      title={isInactive ? 'Set active' : 'Set inactive'}
+      onClick={(e) => { e.stopPropagation(); onToggleActive(); }}
+    >
+      <span className="card-active-knob" />
+    </button>
+  );
 
   if (viewMode === 'list') {
     return (
       <div
-        className="hardware-list-row"
+        className={`hardware-list-row ${isInactive ? 'is-inactive' : ''}`}
         onClick={onClick}
         style={{ borderLeft: `3px solid ${topBarColor}` }}
       >
-        <div className="list-row-status">
-          {device.online ? (
-            <CheckCircle size={16} color="var(--color-success)" />
-          ) : (
-            <XCircle size={16} color="var(--color-error)" />
-          )}
-        </div>
+        <div className="list-row-status">{StatusIcon}</div>
         <div className="list-row-name">
-          <span className="card-name">{device.name}</span>
+          <span className="card-name">
+            {device.name}
+            {isInactive && <span className="inactive-tag">Inactive</span>}
+          </span>
           <span className="card-model">{device.manufacturer} · {device.model}</span>
         </div>
         <div className="list-row-ip">
@@ -42,19 +69,20 @@ export function HardwareCard({ device, viewMode, onClick }: Props) {
           <span className="tag">{device.location || '—'}</span>
         </div>
         <div className="list-row-channels">
-          {device.online && device.channelCount != null ? (
+          {!isInactive && device.online && device.channelCount != null ? (
             <span className="mono-bright">{device.activeChannelCount ?? 0} / {device.channelCount} ch</span>
           ) : (
             <span className="mono-dim">—</span>
           )}
         </div>
+        <div className="list-row-toggle">{ActiveSwitch}</div>
       </div>
     );
   }
 
   return (
     <div
-      className="hardware-card"
+      className={`hardware-card ${isInactive ? 'is-inactive' : ''}`}
       onClick={onClick}
       style={{ borderColor, '--top-bar': topBarColor } as React.CSSProperties}
     >
@@ -64,14 +92,13 @@ export function HardwareCard({ device, viewMode, onClick }: Props) {
       <div className="card-body">
         <div className="card-header">
           <div>
-            <h3 className="card-name">{device.name}</h3>
+            <h3 className="card-name">
+              {device.name}
+              {isInactive && <span className="inactive-tag">Inactive</span>}
+            </h3>
             <p className="card-model">{device.manufacturer} · {device.model}</p>
           </div>
-          {device.online ? (
-            <CheckCircle size={18} color="var(--color-success)" />
-          ) : (
-            <XCircle size={18} color="var(--color-error)" />
-          )}
+          {StatusIcon}
         </div>
 
         <div className="card-meta">
@@ -83,7 +110,7 @@ export function HardwareCard({ device, viewMode, onClick }: Props) {
             <span className="meta-label">Location</span>
             <span className="meta-value">{device.location || '—'}</span>
           </div>
-          {device.online && device.channelCount != null && (
+          {!isInactive && device.online && device.channelCount != null && (
             <div className="meta-row">
               <span className="meta-label">Channels</span>
               <span className="meta-value mono">
@@ -93,11 +120,17 @@ export function HardwareCard({ device, viewMode, onClick }: Props) {
           )}
         </div>
 
-        {device.firmware && (
-          <div className="card-firmware">
+        <div className="card-footer">
+          {device.firmware ? (
             <span className="firmware-label">FW {device.firmware}</span>
+          ) : (
+            <span />
+          )}
+          <div className="card-footer-toggle">
+            <span className="card-toggle-label">{isInactive ? 'Inactive' : 'Active'}</span>
+            {ActiveSwitch}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

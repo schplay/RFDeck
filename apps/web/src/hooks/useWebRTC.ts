@@ -8,9 +8,8 @@ export const useWebRTC = (socket: Socket | null) => {
   useEffect(() => {
     if (!socket) return;
 
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    });
+    // No external STUN needed — app runs entirely on the local LAN.
+    const pc = new RTCPeerConnection({ iceServers: [] });
     pcRef.current = pc;
 
     pc.ontrack = (event) => {

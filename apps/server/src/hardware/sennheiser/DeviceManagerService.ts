@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 import { Server } from 'socket.io';
 import { Device, Channel } from '@rfdeck/shared-types';
 import { prisma } from '../../db';
+import { getMacByIp } from '../../utils/arp';
 
 type ClientType = SSCClient | G3G4Client;
 
@@ -14,6 +15,31 @@ export class DeviceManagerService extends EventEmitter {
   private io: Server;
   private clients: Map<string, ClientType> = new Map();
   private channelCache: Map<string, Channel> = new Map();
+  private deviceNames: Map<string, string> = new Map(); // base id → user-assigned name
+  private discoveredCache: Map<string, any> = new Map(); // key → discovered device payload
+  // IPs that have had at least one successful connection — used to distinguish
+  // a real "went offline" from an initial SSCv2 probe failure before G3/G4 fallback.
+  private genuinelyOnlineIps = new Set<string>();
+  // Pending device:lost timers — cancelled if the device reconnects within the grace period.
+  // This prevents brief SSE drops / network hiccups from causing visible offline flashes.
+  private lostTimers = new Map<string, NodeJS.Timeout>();
+  private readonly LOST_DEBOUNCE_MS = 2000;
+  // Debounce: avoid triggering multiple scans in quick succession when several
+  // devices drop at once (e.g. network switch reboot).
+  private lastAutoScanAt = 0;
+  private readonly AUTO_SCAN_COOLDOWN_MS = 20_000;
+  // RF dropout alert debounce: EW-DX diversity switching can report 0% then 100%
+  // within the same second. Only alert when the signal stays low for the confirm
+  // window, and don't re-alert the same channel more than once a minute.
+  private pendingDropouts = new Map<string, NodeJS.Timeout>();
+  private lastDropoutAlertAt = new Map<string, number>();
+  private readonly DROPOUT_CONFIRM_MS = 3_000;
+  private readonly DROPOUT_REALERT_MS = 60_000;
+  // Secondary (e.g. Dante) IPs of tracked devices, learned by asking each
+  // connected SSC device for its own network config.  Discovery hits on these
+  // IPs are suppressed instead of shown as phantom devices.
+  // Maps secondary IP → control IP of the owning device.
+  private secondaryIps = new Map<string, string>();
 
   constructor(io: Server) {
     super();
@@ -23,16 +49,53 @@ export class DeviceManagerService extends EventEmitter {
     this.discovery.on('discovered', (device: DiscoveredDevice) => {
       this.handleDiscovered(device);
     });
+
+    // After every scan, re-attempt reconciliation for devices that were discovered
+    // but never matched to inventory.  Without this, a failed first reconcile
+    // (e.g. ARP race) leaves the IP in seenIps and it is never retried — the
+    // device stays "discovered" forever while its inventory entry stays offline.
+    this.discovery.on('scan:complete', () => {
+      this.reconcileUntrackedDiscoveries().catch(() => {});
+    });
+  }
+
+  private async reconcileUntrackedDiscoveries(): Promise<void> {
+    for (const device of this.discoveredCache.values()) {
+      const id = `${device.ip}:${device.port}`;
+      if (this.clients.has(id) || this.clients.has(`${id}-legacy`)) continue;
+      await this.tryAutoReconcile(device.ip, device.port).catch(() => {});
+    }
   }
 
   async start() {
-    // Load inventory from DB on startup and begin tracking
+    // Fix legacy G3/G4 records added via discovery before manufacturer inference was corrected.
+    // MCP-discovered devices have port 53212; records with manufacturer='Unknown' got that value
+    // because the old heuristic couldn't match a channel label like "Vocal 1".
+    await prisma.inventoryDevice.updateMany({
+      where: { port: 53212, manufacturer: 'Unknown' },
+      data:  { manufacturer: 'Sennheiser', model: 'EW G3/G4' },
+    });
+
+    // Load inventory from DB on startup and begin tracking.
+    // Devices the operator marked inactive are intentionally powered off — don't
+    // track them, so they raise no dropout alerts and show no dashboard cards.
     const inventory = await prisma.inventoryDevice.findMany();
     for (const dev of inventory) {
+      if (dev.active === false) {
+        console.log(`[DeviceManager] Skipping inactive device "${dev.name}" (${dev.ip})`);
+        continue;
+      }
       this.trackDevice(dev);
     }
-    
+
     this.discovery.start();
+    // Trigger startup scans to find devices that may have changed IP after a power cycle
+    // or DHCP reassignment. Three passes cover already-booted devices, slow-booting devices,
+    // and devices that finish booting after the second scan.
+    const startupScan = () => this.discovery.scan().catch(() => {});
+    setTimeout(startupScan, 2_000);
+    setTimeout(startupScan, 30_000);
+    setTimeout(startupScan, 75_000);
   }
 
   stop() {
@@ -45,16 +108,28 @@ export class DeviceManagerService extends EventEmitter {
   // Called via REST API when user adds a device
   public trackDevice(device: { ip: string; port: number; name?: string }) {
     const id = `${device.ip}:${device.port}`;
-    if (this.clients.has(id)) return;
+    console.log(`[DeviceManager] trackDevice called for ${device.name ?? id} at ${id}`);
+    if (this.clients.has(id)) {
+      console.log(`[DeviceManager] Already tracking ${id}, skipping`);
+      return;
+    }
 
-    // First try SSCv2 (HTTPS)
-    const client = new SSCClient(device.ip, device.port);
+    // Store user-assigned name for use in channel labels
+    if (device.name) this.deviceNames.set(id, device.name);
+
+    // First try SSCv2 (HTTPS), passing password if one is stored
+    const client = new SSCClient(device.ip, device.port, (device as any).password ?? null);
     this.setupClientListeners(client, device.ip, device.port, id);
-    
+
     client.on('disconnected', () => {
-      // If SSCv2 fails, let's try falling back to G3/G4 legacy TCP client
+      // If SSCv2 fails, immediately stop it and fall back to G3/G4 MCP.
+      // Don't keep SSCClient probing while G3G4Client is running — it floods the log.
       if (!this.clients.get(`${id}-legacy`)) {
-        console.log(`[DeviceManager] SSCv2 failed for ${device.ip}, falling back to G3/G4 legacy protocol`);
+        const ssc = this.clients.get(id);
+        if (ssc instanceof SSCClient) {
+          ssc.stopPolling();
+        }
+        console.log(`[DeviceManager] SSCv2 failed for ${device.ip}, falling back to G3/G4 MCP`);
         const legacyClient = new G3G4Client(device.ip, device.port);
         this.clients.set(`${id}-legacy`, legacyClient);
         this.setupClientListeners(legacyClient, device.ip, device.port, `${id}-legacy`);
@@ -66,9 +141,35 @@ export class DeviceManagerService extends EventEmitter {
     client.startPolling(250);
   }
 
-  public updateTrackedDevice(device: { ip: string; port: number }) {
+  public updateTrackedDevice(device: { ip: string; port: number; active?: boolean }) {
     this.untrackDevice(device.ip, device.port);
+    if (device.active === false) return; // inactive devices are never tracked
     this.trackDevice(device);
+  }
+
+  // Operator marked a device active/inactive.  Inactive devices are fully
+  // untracked: no polling, no telemetry, no dropout or battery alerts, and their
+  // channel strips are removed from the dashboard.
+  public setDeviceActive(
+    device: { ip: string; port: number; name?: string; password?: string | null },
+    active: boolean,
+  ) {
+    const id = `${device.ip}:${device.port}`;
+    if (active) {
+      console.log(`[DeviceManager] Activating "${device.name ?? id}" — resuming tracking`);
+      this.trackDevice(device);
+    } else {
+      console.log(`[DeviceManager] Deactivating "${device.name ?? id}" — stopping tracking`);
+      // Cancel any pending dropout timers for this device's channels so a
+      // deactivation mid-dropout can't fire an alert after the fact.
+      for (const [channelId, timer] of this.pendingDropouts) {
+        if (channelId.startsWith(id)) {
+          clearTimeout(timer);
+          this.pendingDropouts.delete(channelId);
+        }
+      }
+      this.untrackDevice(device.ip, device.port);
+    }
   }
 
   public untrackDevice(ip: string, port: number) {
@@ -83,6 +184,20 @@ export class DeviceManagerService extends EventEmitter {
       legacy.stopPolling();
       this.clients.delete(`${id}-legacy`);
     }
+    // Clear server-side channel cache so the snapshot doesn't replay stale channels
+    this.clearChannelsForDevice(id);
+    this.genuinelyOnlineIps.delete(ip);
+    const pendingLost = this.lostTimers.get(ip);
+    if (pendingLost) { clearTimeout(pendingLost); this.lostTimers.delete(ip); }
+    // Allow the device to be re-discovered (clears seenIps in DiscoveryService)
+    this.discovery.forgetDevice(ip, port);
+    this.discovery.forgetDevice(ip, 53212); // also clear MCP port for G3/G4 devices
+    // Release any secondary (Dante) IPs owned by this device
+    for (const [sIp, owner] of this.secondaryIps) {
+      if (owner === ip) this.secondaryIps.delete(sIp);
+    }
+    // Tell the frontend to remove channel strips for this device
+    this.io.emit('device:untracked', { ip, port });
   }
 
   private setupClientListeners(client: ClientType, ip: string, port: number, id: string) {
@@ -90,26 +205,356 @@ export class DeviceManagerService extends EventEmitter {
       this.normalizeAndEmit(id, stateTree);
     });
 
-    client.on('connected', () => {
+    client.on('connected', async () => {
       console.log(`[DeviceManager] Connected to ${ip} via ${client instanceof SSCClient ? 'SSCv2' : 'G3/G4'}`);
+      // Cancel any pending lost timer — device reconnected within the grace period
+      const pendingLost = this.lostTimers.get(ip);
+      if (pendingLost) {
+        clearTimeout(pendingLost);
+        this.lostTimers.delete(ip);
+      }
+      this.genuinelyOnlineIps.add(ip);
+      this.emit('device:online', { ip, port });
+
+      // Ask connected SSC devices for their own network config so we can
+      // suppress their secondary (Dante) IPs from discovery.
+      if (client instanceof SSCClient) {
+        this.registerSecondaryIps(client, ip, port).catch(() => {});
+      }
+
+      // For G3/G4 (MCP) devices the API doesn't provide a MAC, so we read
+      // the OS ARP cache which is populated as soon as UDP packets are exchanged.
+      if (client instanceof G3G4Client) {
+        const mac = await getMacByIp(ip);
+        if (mac) {
+          // Store the MAC on the inventory row so future lookups work
+          await prisma.inventoryDevice.updateMany({
+            where: { ip, mac: null },
+            data: { mac },
+          });
+          await this.reconcileByMac(mac, ip, port);
+        }
+      }
     });
 
     client.on('disconnected', (err: any) => {
-      console.log(`[DeviceManager] Disconnected from ${ip} - ${err}`);
-      this.emit('device:lost', { ip, port });
+      console.log(`[DeviceManager] Disconnected from ${ip} — ${err}`);
+      this.clearChannelsForDevice(id);
+      // Only notify the frontend when a device that was genuinely connected goes offline.
+      // Debounced: if the device reconnects within LOST_DEBOUNCE_MS the timer is cancelled
+      // so brief SSE drops / network hiccups don't cause a visible offline flash.
+      if (this.genuinelyOnlineIps.delete(ip)) {
+        // Clear discovery state so the next scan can find the device at its new IP
+        // if DHCP assigned a different address after the power cycle.
+        this.discovery.forgetDevice(ip, port);
+        this.discovery.forgetDevice(ip, 53212);
+        const timer = setTimeout(() => {
+          this.lostTimers.delete(ip);
+          this.emit('device:lost', { ip, port });
+          this.maybeAutoScan();
+        }, this.LOST_DEBOUNCE_MS);
+        this.lostTimers.set(ip, timer);
+      }
+    });
+
+    // SSCv2 only: forward device identity metadata to the frontend and reconcile by MAC
+    if (client instanceof SSCClient) {
+      client.on('metadata', async (meta: any) => {
+        // Persist identity fields so they survive server restarts
+        const patch: Record<string, string> = {};
+        if (meta.mac)      patch.mac      = meta.mac;
+        if (meta.serial)   patch.serial   = meta.serial;
+        if (meta.firmware) patch.firmware = meta.firmware;
+        if (Object.keys(patch).length > 0) {
+          await prisma.inventoryDevice.updateMany({
+            where: { ip },
+            data: patch,
+          });
+        }
+        if (meta.mac) {
+          await this.reconcileByMac(meta.mac, ip, port);
+        }
+        this.io.emit('device:metadata', { ip, port, ...meta });
+      });
+    }
+  }
+
+  // If an inventory device with `mac` exists at a different IP, it has changed
+  // address (DHCP re-assignment after power cycle).  Update the DB and re-route
+  // any active client so the frontend and future connections use the new IP.
+  private async reconcileByMac(mac: string, currentIp: string, currentPort: number) {
+    const stale = await prisma.inventoryDevice.findFirst({
+      where: { mac, NOT: { ip: currentIp } },
+    });
+    if (!stale) return;
+
+    const oldIp = stale.ip;
+    console.log(
+      `[DeviceManager] MAC ${mac} moved: ${oldIp} → ${currentIp} ` +
+      `(device: "${stale.name}"). Updating inventory.`,
+    );
+
+    // Update the canonical record to the new IP
+    await prisma.inventoryDevice.update({
+      where: { id: stale.id },
+      data: { ip: currentIp, port: currentPort },
+    });
+
+    // Stop any client still trying to reach the old IP
+    const oldId       = `${oldIp}:${stale.port}`;
+    const oldLegacyId = `${oldId}-legacy`;
+    for (const key of [oldId, oldLegacyId]) {
+      const old = this.clients.get(key);
+      if (old) { old.stopPolling(); this.clients.delete(key); }
+    }
+
+    // If the discovery created a *duplicate* inventory entry at the new IP
+    // (user hadn't deleted the old one yet), remove the redundant row.
+    const duplicate = await prisma.inventoryDevice.findFirst({
+      where: { ip: currentIp, id: { not: stale.id } },
+    });
+    if (duplicate) {
+      await prisma.inventoryDevice.delete({ where: { id: duplicate.id } });
+      this.io.emit('device:removed', { id: duplicate.id });
+    }
+
+    // Tell the frontend: the device previously at oldIp is now at currentIp
+    this.io.emit('device:ip-changed', {
+      id:     stale.id,
+      oldIp,
+      newIp:  currentIp,
+      port:   currentPort,
+      name:   stale.name,
     });
   }
 
+  private clearChannelsForDevice(deviceId: string) {
+    const baseId = deviceId.replace(/-legacy$/, '');
+    const toDelete: string[] = [];
+    for (const channelId of this.channelCache.keys()) {
+      if (channelId.startsWith(baseId)) toDelete.push(channelId);
+    }
+    for (const channelId of toDelete) {
+      this.channelCache.delete(channelId);
+    }
+  }
+
+  // Query a connected SSC device for its network config and register its
+  // secondary (Dante) addresses so discovery never shows them as new devices.
+  private async registerSecondaryIps(client: SSCClient, ip: string, port: number): Promise<void> {
+    const net = await SSCClient.fetchNetworkAddresses(ip, port, client.getPassword());
+    if (!net) return;
+
+    // Prefer address-named keys; fall back to all IPv4s in the Dante payload
+    // minus obvious non-host values (netmasks, unconfigured 0.0.0.0).
+    const candidates = net.danteAddrs.length > 0 ? net.danteAddrs : net.danteAll;
+    const secondaries = candidates.filter(a =>
+      a !== ip && a !== '0.0.0.0' && !a.startsWith('255.') && !a.startsWith('127.')
+    );
+
+    for (const sIp of secondaries) {
+      if (this.secondaryIps.get(sIp) !== ip) {
+        console.log(`[DeviceManager] ${ip}: secondary (Dante) IP ${sIp} registered — suppressed from discovery`);
+        this.secondaryIps.set(sIp, ip);
+      }
+      // Retract any discovery entries already emitted for this IP (any port).
+      for (const key of [...this.discoveredCache.keys()]) {
+        if (key.startsWith(`${sIp}:`)) {
+          const cachedPort = parseInt(key.slice(key.lastIndexOf(':') + 1), 10);
+          this.suppressDiscovered(sIp, cachedPort);
+        }
+      }
+    }
+  }
+
   private handleDiscovered(device: DiscoveredDevice) {
-    // Notify the socket plugin so it can forward to the frontend's mDNS discovery list
+    // Known secondary interface of a tracked device — never surface it.
+    if (this.secondaryIps.has(device.ip)) {
+      console.log(`[DeviceManager] Discovery hit on ${device.ip} — known secondary of ${this.secondaryIps.get(device.ip)}, suppressing`);
+      this.suppressDiscovered(device.ip, device.port);
+      return;
+    }
+    this.discoveredCache.set(`${device.ip}:${device.port}`, device);
     this.emit('device:discovered', device);
-    // If it's not in our tracked clients, maybe we auto-track? 
-    // Or we leave it to the user to add it via the UI.
+    // If this IP isn't already tracked, check whether it's a known inventory
+    // device that changed IP (e.g. DHCP re-assignment after power cycle).
+    this.tryAutoReconcile(device.ip, device.port)
+      .then(() => {
+        // If the first attempt failed (e.g. ARP cache not yet populated on Windows),
+        // schedule a retry after 3s without going through the seenIps-gated discovery
+        // path again.  The retry is a no-op if the device was already reconciled.
+        const tracked = this.clients.has(`${device.ip}:${device.port}`) ||
+                        this.clients.has(`${device.ip}:${device.port}-legacy`);
+        if (!tracked) {
+          setTimeout(() => {
+            this.tryAutoReconcile(device.ip, device.port).catch(() => {});
+          }, 3_000);
+        }
+      })
+      .catch(() => {});
+  }
+
+  // Probe a newly-discovered IP against offline inventory devices to detect
+  // IP changes without requiring the user to manually edit the inventory.
+  private async tryAutoReconcile(ip: string, port: number): Promise<void> {
+    if (this.clients.has(`${ip}:${port}`)) return; // already tracked
+
+    if (port === 443) {
+      // SSC device: probe the discovered IP's /api/device/identity with each
+      // known inventory password until one works, then match by MAC/serial.
+      const inventory = await prisma.inventoryDevice.findMany({ where: { port, active: true } });
+      const passwords = [...new Set(inventory.map(d => d.password ?? null))];
+
+      for (const password of passwords) {
+        const identity = await SSCClient.fetchIdentity(ip, port, password);
+        if (!identity?.mac && !identity?.serial) continue;
+
+        // Match by MAC first (most specific), then fall back to serial.
+        // EW-DX firmware omits the MAC from /api/device/identity but always includes serial.
+        let known = identity.mac
+          ? await prisma.inventoryDevice.findFirst({ where: { mac: identity.mac, active: true, NOT: { ip } } })
+          : null;
+        if (!known && identity.serial) {
+          known = await prisma.inventoryDevice.findFirst({ where: { serial: identity.serial, active: true, NOT: { ip } } });
+        }
+        if (!known) return; // identity readable but not an inventory device — genuinely new
+
+        // The EW-DX Dante NIC serves the same identity (same serial) as the control
+        // NIC, so a serial match alone can't tell the interfaces apart — after a
+        // power cycle we could migrate the record to the Dante IP by mistake.
+        // Primary discriminator: ask the device for its own network config. This is
+        // authoritative even in switched (single-cable) mode where both logical
+        // interfaces share the physical port and possibly the MAC.
+        const net = await SSCClient.fetchNetworkAddresses(ip, port, password);
+        if (net) {
+          if (net.controlAll.includes(ip)) {
+            // This IP is the device's control interface. Migrate even if a client is
+            // currently "connected" at known.ip — that connection may be to the Dante
+            // NIC from an earlier mis-migration, and this corrects it.
+            console.log(`[DeviceManager] ${ip} is the control interface of "${known.name}" (record had ${known.ip}) — migrating`);
+            await this.migrateDeviceIp(known, ip, port);
+            return;
+          }
+          if (net.danteAll.includes(ip)) {
+            // Secondary (Dante) interface. If the inventory record itself is sitting
+            // on a non-control IP (earlier mis-migration), heal it using the control
+            // address the device just reported.
+            const trueControl = net.controlAddrs.find(a => a !== ip);
+            if (trueControl && known.ip !== trueControl) {
+              console.log(`[DeviceManager] Healing "${known.name}": record at ${known.ip}, device reports control IP ${trueControl}`);
+              await this.migrateDeviceIp(known, trueControl, port);
+            }
+            console.log(`[DeviceManager] ${ip} is the Dante interface of "${known.name}" — suppressing`);
+            this.suppressDiscovered(ip, port);
+            return;
+          }
+          // IP in neither list — fall through to weaker heuristics.
+        }
+
+        // Fallback 1: MAC comparison via ARP (works in split-port mode where each
+        // interface has its own NIC; inconclusive when the physical port is shared).
+        const arpMac = await getMacByIp(ip);
+        const storedMac = known.mac?.toLowerCase() ?? null;
+        if (storedMac && arpMac && arpMac !== storedMac) {
+          console.log(`[DeviceManager] ${ip} has different MAC than "${known.name}" control NIC — secondary interface, suppressing`);
+          this.suppressDiscovered(ip, port);
+          return;
+        }
+
+        // Fallback 2: reachability. Never steal the record from a live connection,
+        // and never migrate while the recorded IP still answers with the same serial.
+        if (this.clients.get(`${known.ip}:${known.port}`)?.isConnected) {
+          console.log(`[DeviceManager] ${ip} matches connected "${known.name}" (${known.ip}) — suppressing`);
+          this.suppressDiscovered(ip, port);
+          return;
+        }
+        const atOldIp = await SSCClient.fetchIdentity(known.ip, known.port, password);
+        if (atOldIp?.serial && atOldIp.serial === identity.serial) {
+          console.log(`[DeviceManager] "${known.name}" still answers at ${known.ip}; ${ip} is its secondary interface — suppressing`);
+          this.suppressDiscovered(ip, port);
+          return;
+        }
+
+        console.log(`[DeviceManager] Auto-reconnect: "${known.name}" found at new IP ${ip} (was ${known.ip})`);
+        await this.migrateDeviceIp(known, ip, port);
+        return;
+      }
+    } else if (port === 53212) {
+      // G3/G4 MCP device: ARP cache is populated once we send a UDP probe to this IP.
+      // On Windows, the cache entry can take a moment to appear — retry a few times.
+      let mac: string | null = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        mac = await getMacByIp(ip);
+        if (mac) break;
+        await new Promise<void>(r => setTimeout(r, 400));
+      }
+      if (!mac) {
+        console.log(`[DeviceManager] tryAutoReconcile: ARP miss for ${ip} after retries — cannot reconcile`);
+        return;
+      }
+
+      // Store MAC against any inventory record that already sits at this IP but
+      // hasn't had its MAC recorded yet (e.g. device added manually then reconnected).
+      await prisma.inventoryDevice.updateMany({ where: { ip, mac: null }, data: { mac } });
+
+      const stale = await prisma.inventoryDevice.findFirst({
+        where: { mac, active: true, NOT: { ip } },
+      });
+      if (!stale) {
+        console.log(`[DeviceManager] tryAutoReconcile: no offline record with mac=${mac} at a different IP`);
+        return;
+      }
+      if (this.clients.get(`${stale.ip}:${stale.port}`)?.isConnected) {
+        console.log(`[DeviceManager] tryAutoReconcile: old client at ${stale.ip}:${stale.port} still connected`);
+        return;
+      }
+
+      console.log(`[DeviceManager] Auto-reconnect: G3/G4 "${stale.name}" found at new IP ${ip} (was ${stale.ip})`);
+      await this.migrateDeviceIp(stale, ip, port);
+    }
+  }
+
+  private async migrateDeviceIp(
+    dev: { id: string; name: string; ip: string; port: number },
+    newIp: string,
+    newPort: number,
+  ): Promise<void> {
+    const oldIp = dev.ip;
+    const oldPort = dev.port;
+
+    await prisma.inventoryDevice.update({
+      where: { id: dev.id },
+      data: { ip: newIp, port: newPort },
+    });
+
+    this.untrackDevice(oldIp, oldPort);
+
+    // Reload full row from DB so trackDevice gets password, mac, etc.
+    const updated = await prisma.inventoryDevice.findUnique({ where: { id: dev.id } });
+    if (updated) this.trackDevice(updated);
+
+    this.io.emit('device:ip-changed', {
+      id: dev.id, oldIp, newIp, port: newPort, name: dev.name,
+    });
+  }
+
+  // Remove a discovered entry that turned out to be a secondary interface of an
+  // already-tracked device (e.g. the Dante NIC of a connected EW-DX).
+  private suppressDiscovered(ip: string, port: number) {
+    this.discoveredCache.delete(`${ip}:${port}`);
+    this.io.emit('device:undiscovered', { ip, port });
+  }
+
+  getDiscoveredSnapshot(): any[] {
+    return Array.from(this.discoveredCache.values());
   }
 
 
   private normalizeAndEmit(deviceId: string, sscState: any) {
-    // Iterate over possible receivers in the state (e.g. rx1, rx2)
+    // Resolve the base device id (strip -legacy suffix added for G3/G4 clients)
+    const baseId = deviceId.replace(/-legacy$/, '');
+    const inventoryName = this.deviceNames.get(baseId);
+
     const receivers = ['rx1', 'rx2', 'rx3', 'rx4'];
 
     receivers.forEach((rx, index) => {
@@ -118,26 +563,45 @@ export class DeviceManagerService extends EventEmitter {
 
         const channelId = `${deviceId}-${rx}`;
 
-        // Convert RF levels (often 0-100 or dBm) to a 0-100 percentage for UI
-        const rfA = typeof rxData.rf_quality === 'number' ? rxData.rf_quality : 0;
+        // RF quality: G3/G4 sends 0-100 directly; SSCv2 also 0-100.
+        // rf_quality may be undefined for IEM/output devices that don't receive RF —
+        // only flag CRITICAL when we actually have RF data AND it's low.
+        const rfKnown = rxData.rf_quality !== undefined && rxData.rf_quality !== null;
+        const rfA = rfKnown ? (rxData.rf_quality as number) : 0;
         const rfB = typeof rxData.rf_quality_b === 'number' ? rxData.rf_quality_b : rfA;
 
-        // Convert AF level to percentage
+        // AF level: raw dBFS (-60..0) → 0-100 display percentage
         const afLevel = typeof rxData.af_level === 'number' ? Math.max(0, 100 + rxData.af_level) : 0;
+
+        // Channel name priority: device-reported name → inventory device name → generic label
+        const channelCount = Object.keys(sscState).filter(k => /^rx\d+$/.test(k)).length;
+        const deviceLabel = inventoryName ?? baseId;
+        const fallbackName = channelCount > 1
+          ? `${deviceLabel} CH${index + 1}`
+          : deviceLabel;
+
+        // isMuted = user-requested mute only (not TX squelch)
+        const isMuted = rxData.mute === true;
+        // squelch = transmitter below threshold (TX_Mute from device)
+        const isSquelch = rxData.squelch === true;
+        const status = isMuted ? 'WARNING'
+                     : (rfKnown && rfA < 20) ? 'CRITICAL'
+                     : isSquelch ? 'WARNING'
+                     : 'ACTIVE';
 
         const newChannel: Channel = {
           id: channelId,
           deviceId: deviceId,
           channelIndex: index + 1,
-          name: rxData.name || `Channel ${index + 1}`,
+          name: rxData.name || fallbackName,
           frequency: rxData.frequency || 0,
           rfLevelA: rfA,
           rfLevelB: rfB,
           afLevel: afLevel,
           batteryPercent: rxData.battery?.percent,
-          isMuted: rxData.mute === true,
+          isMuted,
           gain: rxData.audio?.gain || 0,
-          status: rxData.mute ? 'WARNING' : (rfA < 20 ? 'CRITICAL' : 'ACTIVE')
+          status,
         };
 
 
@@ -186,21 +650,62 @@ export class DeviceManagerService extends EventEmitter {
               }
             }
 
-            // RF Dropout
+            // RF Dropout — confirmed only after the signal stays low for
+            // DROPOUT_CONFIRM_MS.  Sub-second 0%→100% flaps (diversity antenna
+            // switching) cancel the pending timer and never produce an alert.
             if (oldChannel.rfLevelA >= 20 && newChannel.rfLevelA < 20 && !newChannel.isMuted) {
-               this.emitAlert({
-                 severity: 'CRITICAL',
-                 type: 'DROPOUT',
-                 message: `RF Dropout detected`,
-                 channelId,
-                 channelName: newChannel.name,
-                 deviceId
-               });
+              if (!this.pendingDropouts.has(channelId)) {
+                const timer = setTimeout(() => {
+                  this.pendingDropouts.delete(channelId);
+                  const current = this.channelCache.get(channelId);
+                  if (!current || current.rfLevelA >= 20 || current.isMuted) return;
+                  const lastAlert = this.lastDropoutAlertAt.get(channelId) ?? 0;
+                  if (Date.now() - lastAlert < this.DROPOUT_REALERT_MS) return;
+                  this.lastDropoutAlertAt.set(channelId, Date.now());
+                  this.emitAlert({
+                    severity: 'CRITICAL',
+                    type: 'DROPOUT',
+                    message: `RF Dropout detected`,
+                    channelId,
+                    channelName: current.name,
+                    deviceId
+                  });
+                }, this.DROPOUT_CONFIRM_MS);
+                this.pendingDropouts.set(channelId, timer);
+              }
+            } else if (newChannel.rfLevelA >= 20) {
+              const pending = this.pendingDropouts.get(channelId);
+              if (pending) {
+                clearTimeout(pending);
+                this.pendingDropouts.delete(channelId);
+              }
             }
           }
         }
       }
     });
+  }
+
+  // --- Discovery ---
+
+  // Trigger a full network scan (UDP probes + HTTP sweep).
+  // Called externally when the user opens the Add Device dialog.
+  async triggerScan(): Promise<void> {
+    await this.discovery.scan();
+  }
+
+  get isScanInProgress(): boolean {
+    return this.discovery.isScanning;
+  }
+
+  // Auto-triggered when a device goes offline; debounced to avoid hammering
+  // the network when several devices drop at the same time.
+  private maybeAutoScan() {
+    const now = Date.now();
+    if (now - this.lastAutoScanAt < this.AUTO_SCAN_COOLDOWN_MS) return;
+    this.lastAutoScanAt = now;
+    console.log('[DeviceManager] Device went offline — triggering discovery scan (cooldown: 60s)');
+    this.discovery.scan().catch(() => {});
   }
 
   private emitAlert(params: { severity: any, type: any, message: string, detail?: string, channelId?: string, channelName?: string, deviceId?: string, deviceName?: string }) {
@@ -212,6 +717,28 @@ export class DeviceManagerService extends EventEmitter {
       ...params
     };
     this.io.emit('alert:new', alert);
+  }
+
+  // --- State snapshot (for replaying to newly-connected frontend clients) ---
+
+  getChannelSnapshot(): Channel[] {
+    return Array.from(this.channelCache.values());
+  }
+
+  getOnlineDevices(): Array<{ ip: string; port: number }> {
+    const seen = new Set<string>();
+    const result: Array<{ ip: string; port: number }> = [];
+    for (const [id, client] of this.clients.entries()) {
+      if (!client.isConnected) continue;
+      const baseId = id.replace(/-legacy$/, '');
+      if (seen.has(baseId)) continue;
+      seen.add(baseId);
+      const colonIdx = baseId.lastIndexOf(':');
+      const ip   = baseId.slice(0, colonIdx);
+      const port = parseInt(baseId.slice(colonIdx + 1), 10);
+      result.push({ ip, port });
+    }
+    return result;
   }
 
   // --- External Control APIs ---

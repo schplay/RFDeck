@@ -84,6 +84,13 @@
   color: #00dbe9;
 }
 
+.bs-order-btn {
+  width: auto;
+  padding: 0 12px;
+  font-size: 12px;
+  margin-right: 8px;
+}
+
 .bs-exit-btn {
   margin-left: 12px;
   padding: 6px 14px;

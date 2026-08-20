@@ -16,6 +16,15 @@ model InventoryDevice {
   port               Int
   location           String?
   notes              String?
+  password           String?
+  deviceType         String   @default("input")
+  // Operator-controlled: inactive devices are intentionally powered off / not in
+  // use for this show.  They are not tracked, not shown on the dashboard, and
+  // never raise dropout or battery alerts.
+  active             Boolean  @default(true)
+  mac                String?
+  serial             String?
+  firmware           String?
   addedAt            DateTime @default(now())
 }
 
@@ -27,5 +36,6 @@ model Settings {
   batteryCriticalPct Int      @default(5)
   dropoutSensitivity Int      @default(20)
   bindInterface      String   @default("0.0.0.0")
+  defaultPassword    String?
 }
 

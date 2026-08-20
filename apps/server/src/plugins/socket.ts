@@ -2,6 +2,7 @@ import fp from 'fastify-plugin';
 import { Server } from 'socket.io';
 import { DeviceManagerService } from '../hardware/sennheiser/DeviceManagerService';
 import { DiscoveredDevice } from '../hardware/sennheiser/DiscoveryService';
+import { mcpBus } from '../hardware/sennheiser/McpBus';
 import { WebRTCSignaling } from '../audio/WebRTCSignaling';
 import { AES67Manager } from '../audio/AES67Manager';
 
@@ -28,29 +29,59 @@ export default fp(async (fastify, opts) => {
       name: device.name,
       ip: device.ip,
       port: device.port,
-      // Attempt to infer manufacturer from service name; refine as more hardware is tested
       manufacturer: inferManufacturer(device.name, device.protocol),
-      model: inferModel(device.name),
+      model: inferModel(device.name, device.protocol),
     });
   });
 
-  deviceManager.on('device:lost', (device: DiscoveredDevice) => {
+  deviceManager.on('device:online', (device: { ip: string; port: number }) => {
+    io.emit('device:online', { ip: device.ip, port: device.port });
+  });
+
+  deviceManager.on('device:lost', (device: { ip: string; port: number }) => {
     io.emit('device:lost', { ip: device.ip, port: device.port });
   });
 
+  // Forward discovery scan progress to the frontend so it can show/hide a spinner.
+  (deviceManager as any).discovery.on('scan:start',    () => io.emit('discovery:scan-start'));
+  (deviceManager as any).discovery.on('scan:complete', () => io.emit('discovery:scan-complete'));
+
   fastify.addHook('onReady', async () => {
+    await mcpBus.init(); // shared UDP :53212 must be ready before any G3G4Client or DiscoveryService
     deviceManager.start();
     fastify.log.info('Socket.io server listening and DeviceManager started');
   });
 
   fastify.addHook('onClose', async () => {
     deviceManager.stop();
+    mcpBus.close();
     audioManager.stop();
     io.close();
   });
 
   io.on('connection', (socket) => {
     fastify.log.info(`Client connected: ${socket.id}`);
+
+    // Replay current state so a freshly-connected (or reconnected) frontend
+    // immediately shows the right device online/discovered status and channel data.
+    // Online status MUST arrive before channel telemetry so ChannelStrip doesn't
+    // flash the "Device Offline" overlay while the device is actually connected.
+    for (const device of deviceManager.getOnlineDevices()) {
+      socket.emit('device:online', device);
+    }
+    for (const channel of deviceManager.getChannelSnapshot()) {
+      socket.emit('channel:telemetry', channel);
+    }
+    for (const device of deviceManager.getDiscoveredSnapshot()) {
+      socket.emit('device:discovered', {
+        key: `${device.ip}:${device.port}`,
+        name: device.name,
+        ip: device.ip,
+        port: device.port,
+        manufacturer: inferManufacturer(device.name, device.protocol),
+        model: inferModel(device.name, device.protocol),
+      });
+    }
 
     webrtcSignaling.attach(socket);
 
@@ -96,6 +127,8 @@ export default fp(async (fastify, opts) => {
 
 
 function inferManufacturer(name: string, protocol: string): string {
+  // MCP is exclusively used by Sennheiser G3/G4 EW-series hardware
+  if (protocol === 'mcp') return 'Sennheiser';
   const n = name.toLowerCase();
   if (n.includes('sennheiser') || n.includes('ew-dx') || n.includes('em ') || protocol.includes('ssc')) {
     return 'Sennheiser';
@@ -106,7 +139,10 @@ function inferManufacturer(name: string, protocol: string): string {
   return 'Unknown';
 }
 
-function inferModel(name: string): string {
+function inferModel(name: string, protocol: string): string {
+  // For MCP devices the device-reported `name` is the channel label ("Vocal 1"),
+  // not the hardware model. Return a generic model string instead.
+  if (protocol === 'mcp') return 'EW G3/G4';
   // Strip common suffixes like hostname appended via Bonjour (_ssc._tcp.local etc.)
   return name.replace(/\s*\(.*?\)\s*/g, '').trim() || 'Unknown Model';
 }

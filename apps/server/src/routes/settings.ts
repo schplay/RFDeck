@@ -23,12 +23,15 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
     settings = await prisma.settings.update({
       where: { id: settings.id },
       data: {
-        aes67MulticastIp: data.aes67MulticastIp,
-        aes67Port: data.aes67Port,
-        batteryWarningPct: data.batteryWarningPct,
-        batteryCriticalPct: data.batteryCriticalPct,
-        dropoutSensitivity: data.dropoutSensitivity,
-        bindInterface: data.bindInterface
+        aes67MulticastIp:   data.aes67MulticastIp,
+        aes67Port:           data.aes67Port,
+        batteryWarningPct:   data.batteryWarningPct,
+        batteryCriticalPct:  data.batteryCriticalPct,
+        dropoutSensitivity:  data.dropoutSensitivity,
+        bindInterface:       data.bindInterface,
+        defaultPassword:     Object.prototype.hasOwnProperty.call(data, 'defaultPassword')
+                               ? (data.defaultPassword ?? null)
+                               : undefined,
       }
     });
 

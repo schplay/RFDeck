@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Settings as SettingsIcon, Volume2, BellRing, Network } from 'lucide-react';
+import { Volume2, BellRing, Network, RefreshCw } from 'lucide-react';
+import { useAudioStore } from '../../stores/audioStore';
+import { useAudioDevice } from '../../hooks/useAudioDevice';
 import './Settings.css';
 
 interface AppSettings {
@@ -10,6 +12,61 @@ interface AppSettings {
   batteryCriticalPct: number;
   dropoutSensitivity: number;
   bindInterface: string;
+  defaultPassword: string;
+}
+
+interface NetworkInterface {
+  name: string;
+  address: string;
+  label: string;
+}
+
+function AudioDeviceSettings() {
+  const { selectedDeviceId, setSelectedDevice } = useAudioStore();
+  const { availableDevices, refreshDevices } = useAudioDevice();
+
+  return (
+    <div className="settings-card">
+      <div className="settings-card-header">
+        <h3>Audio Interface</h3>
+        <button className="btn-icon" onClick={refreshDevices} title="Refresh device list">
+          <RefreshCw size={14} />
+        </button>
+      </div>
+      <p className="settings-desc">
+        Select the audio interface whose inputs are connected to your wireless receivers.
+        After selecting an interface, open each device in the Inventory to assign its channels to specific inputs.
+      </p>
+
+      {availableDevices.length === 0 ? (
+        <p className="settings-desc settings-warn">
+          No audio input devices found. Make sure your interface is connected and the browser has microphone permission.
+        </p>
+      ) : (
+        <div className="settings-form">
+          <div className="form-group">
+            <label>Audio Input Device</label>
+            <select
+              value={selectedDeviceId ?? ''}
+              onChange={e => setSelectedDevice(e.target.value || null)}
+            >
+              <option value="">— Select an interface —</option>
+              {availableDevices.map(d => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || `Audio Input ${d.deviceId.slice(0, 8)}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          {selectedDeviceId && (
+            <p className="settings-desc settings-ok">
+              Interface selected. Open a device in Inventory to map its channels to audio inputs.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Settings() {
@@ -21,14 +78,19 @@ export default function Settings() {
     batteryCriticalPct: 5,
     dropoutSensitivity: 20,
     bindInterface: '0.0.0.0',
+    defaultPassword: '',
   });
   const [loading, setLoading] = useState(true);
+  const [networkInterfaces, setNetworkInterfaces] = useState<NetworkInterface[]>([]);
 
   useEffect(() => {
-    fetch('http://localhost:3000/api/settings')
-      .then(res => res.json())
-      .then(data => {
-        setSettings(data);
+    Promise.all([
+      fetch('http://localhost:3000/api/settings').then(res => res.json()),
+      fetch('http://localhost:3000/api/system/network-interfaces').then(res => res.json()),
+    ])
+      .then(([settingsData, interfacesData]) => {
+        setSettings({ ...settingsData, defaultPassword: settingsData.defaultPassword ?? '' });
+        setNetworkInterfaces(interfacesData);
         setLoading(false);
       })
       .catch(err => {
@@ -72,30 +134,7 @@ export default function Settings() {
         </Tabs.List>
 
         <Tabs.Content value="audio" className="tabs-content">
-          <div className="settings-card">
-            <h3>Audio Gateway Settings</h3>
-            <p className="settings-desc">Configure the GStreamer AES-67 to WebRTC bridge.</p>
-            
-            <div className="settings-form">
-              <div className="form-group">
-                <label>AES-67 Multicast IP</label>
-                <input 
-                  type="text" 
-                  value={settings.aes67MulticastIp}
-                  onChange={e => setSettings({ ...settings, aes67MulticastIp: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>AES-67 Port</label>
-                <input 
-                  type="number" 
-                  value={settings.aes67Port}
-                  onChange={e => setSettings({ ...settings, aes67Port: parseInt(e.target.value) })}
-                />
-              </div>
-              <button className="btn-primary" onClick={handleSave}>Save & Restart Gateway</button>
-            </div>
-          </div>
+          <AudioDeviceSettings />
         </Tabs.Content>
 
         <Tabs.Content value="alerts" className="tabs-content">
@@ -143,17 +182,41 @@ export default function Settings() {
           <div className="settings-card">
             <h3>Server Network Configuration</h3>
             <p className="settings-desc">Used for mDNS discovery and hardware communication.</p>
-            
+
             <div className="settings-form">
               <div className="form-group">
                 <label>Bind Interface</label>
-                <select 
+                <select
                   value={settings.bindInterface}
                   onChange={e => setSettings({ ...settings, bindInterface: e.target.value })}
                 >
-                  <option value="0.0.0.0">0.0.0.0 (All Interfaces)</option>
-                  <option value="192.168.1.0">192.168.1.0 (Ethernet)</option>
+                  {networkInterfaces.map(iface => (
+                    <option key={iface.address} value={iface.address}>
+                      {iface.label}
+                    </option>
+                  ))}
                 </select>
+              </div>
+              <button className="btn-primary" onClick={handleSave}>Save Settings</button>
+            </div>
+          </div>
+
+          <div className="settings-card mt-4">
+            <h3>Device Authentication</h3>
+            <p className="settings-desc">
+              Default password for devices with authentication enabled (e.g. Sennheiser EW-DX V4+).
+              Pre-filled when adding devices — override per device in the Add Device dialog or device settings.
+            </p>
+            <div className="settings-form">
+              <div className="form-group">
+                <label>Default Password</label>
+                <input
+                  type="password"
+                  value={settings.defaultPassword}
+                  onChange={e => setSettings({ ...settings, defaultPassword: e.target.value })}
+                  placeholder="Leave blank if not required"
+                  autoComplete="new-password"
+                />
               </div>
               <button className="btn-primary" onClick={handleSave}>Save Settings</button>
             </div>

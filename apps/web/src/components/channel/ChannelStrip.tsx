@@ -1,45 +1,51 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
-import { Mic, AlertTriangle, AlertCircle, VolumeX, Headphones } from 'lucide-react';
+import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff } from 'lucide-react';
 import { useSocket } from '../../hooks/useSocket';
-import { useFrequencyHistoryStore } from '../../stores/frequencyHistoryStore';
+import { useAudioStore } from '../../stores/audioStore';
+import { useAudioDevice } from '../../hooks/useAudioDevice';
 import './ChannelStrip.css';
 
 interface ChannelStripProps {
   channel: Channel;
+  deviceType?: 'input' | 'output';
+  deviceOnline?: boolean;
 }
 
-export const ChannelStrip: React.FC<ChannelStripProps> = ({ channel }) => {
+export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, deviceType = 'input', deviceOnline = true }) => {
   const { socket, isConnected } = useSocket();
-  const statusBorder = channel.status === 'ACTIVE' ? 'success' :
-                       channel.status === 'WARNING' ? 'warning' : 'error';
+  const { channelAssignments } = useAudioStore();
+  const { monitorChannel, stopMonitoring, monitoringChannelId } = useAudioDevice();
+  const [isListening, setIsListening] = useState(false);
+  const assignedInput = channelAssignments[channel.id];
+  const isOutput = deviceType === 'output';
+
+  const statusBorder = !deviceOnline ? 'error'
+                     : channel.status === 'ACTIVE' ? 'success'
+                     : channel.status === 'WARNING' ? 'warning' : 'error';
 
   // Helper to render segmented meter
   const renderMeter = (level: number, type: 'rf' | 'af') => {
     const segments = 10;
     const activeCount = Math.floor((level / 100) * segments);
-    
     return (
       <div className="meter-stack">
         {Array.from({ length: segments }).map((_, i) => {
-          // index from bottom up: 0 is bottom, 9 is top
           const index = segments - 1 - i;
           const isActive = index < activeCount;
-          
           let colorClass = 'meter-segment';
           if (isActive) {
             if (type === 'rf') {
-               if (index >= 9) colorClass += ' active-red';
-               else if (index >= 7) colorClass += ' active-orange';
-               else colorClass += ' active-green';
-            } else { // af
-               if (index >= 8) colorClass += ' active-red';
-               else if (index >= 6) colorClass += ' active-orange';
-               else colorClass += ' active-green';
+              if (index < 2) colorClass += ' active-red';
+              else if (index < 4) colorClass += ' active-orange';
+              else colorClass += ' active-green';
+            } else {
+              if (index >= 8) colorClass += ' active-red';
+              else if (index >= 6) colorClass += ' active-orange';
+              else colorClass += ' active-green';
             }
           }
-          
           return <div key={i} className={colorClass} />;
         })}
       </div>
@@ -47,9 +53,12 @@ export const ChannelStrip: React.FC<ChannelStripProps> = ({ channel }) => {
   };
 
   const StatusIcon = () => {
+    if (!deviceOnline) return <WifiOff size={18} className="text-muted" />;
     if (channel.status === 'CRITICAL') return <AlertCircle size={18} className="text-error" />;
     if (channel.status === 'WARNING') return <AlertTriangle size={18} className="text-warning" />;
-    return <Mic size={18} className="text-primary" />;
+    return isOutput
+      ? <Headphones size={18} className="text-primary" />
+      : <Mic size={18} className="text-primary" />;
   };
 
   const handleMuteToggle = () => {
@@ -61,6 +70,50 @@ export const ChannelStrip: React.FC<ChannelStripProps> = ({ channel }) => {
       });
     }
   };
+
+  const handleListen = () => {
+    if (isListening) {
+      stopMonitoring();
+      setIsListening(false);
+    } else if (assignedInput != null) {
+      monitorChannel(channel.id, assignedInput);
+      setIsListening(true);
+    }
+  };
+
+  // Offline overlay — device disconnected, show stale data dimmed with a banner
+  if (!deviceOnline) {
+    return (
+      <Card statusBorder="error" className="channel-strip is-offline">
+        <div className="cs-offline-banner">
+          <WifiOff size={13} />
+          Device Offline
+        </div>
+        <div className="cs-header cs-header-dimmed">
+          <div>
+            <h3 className="cs-title">{channel.name || `CH ${channel.channelIndex}`}</h3>
+            <p className="cs-subtitle">{channel.deviceId.split(':')[0]}</p>
+          </div>
+          {isOutput ? <Headphones size={18} className="text-muted" /> : <Mic size={18} className="text-muted" />}
+        </div>
+        <div className="cs-body cs-body-dimmed">
+          <div className="cs-meters">
+            {renderMeter(0, 'rf')}
+            {renderMeter(0, 'rf')}
+            <div className="meter-spacer" />
+            {renderMeter(0, 'af')}
+          </div>
+          <div className="cs-data">
+            <div className="cs-freq">
+              <span className="freq-display">{channel.frequency > 0 ? (channel.frequency / 1000).toFixed(3) : '—'}</span>
+              <span>MHz</span>
+            </div>
+            <div className="cs-batt">—%</div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card statusBorder={statusBorder} className={`channel-strip ${channel.isMuted ? 'is-muted' : ''}`}>
@@ -74,46 +127,23 @@ export const ChannelStrip: React.FC<ChannelStripProps> = ({ channel }) => {
 
       <div className="cs-body">
         <div className="cs-meters">
+          <div className="meter-label">{isOutput ? 'TX' : 'A'}</div>
           {renderMeter(channel.rfLevelA, 'rf')}
           {renderMeter(channel.rfLevelB, 'rf')}
           <div className="meter-spacer" />
+          <div className="meter-label">{isOutput ? 'MON' : 'AF'}</div>
           {renderMeter(channel.afLevel, 'af')}
         </div>
-        
+
         <div className="cs-data">
           <div className="cs-freq">
-            <input 
-              type="number" 
-              className="freq-input"
-              defaultValue={(channel.frequency / 1000).toFixed(3)} 
-              onBlur={(e) => {
-                const val = parseFloat(e.target.value);
-                const newHz = Math.round(val * 1000);
-                if (!isNaN(val) && socket && isConnected && newHz !== channel.frequency) {
-                  // Log the manual change before emitting
-                  if (channel.frequency > 0) {
-                    useFrequencyHistoryStore.getState().addEvent({
-                      channelId: channel.id,
-                      channelName: channel.name || `CH ${channel.channelIndex}`,
-                      deviceId: channel.deviceId,
-                      previousFrequencyHz: channel.frequency,
-                      newFrequencyHz: newHz,
-                      timestamp: new Date().toISOString(),
-                      source: 'MANUAL',
-                    });
-                  }
-                  socket.emit('channel:frequency', {
-                    deviceId: channel.deviceId,
-                    rxIndex: channel.channelIndex,
-                    frequencyHz: newHz,
-                  });
-                }
-              }}
-            /> 
+            <span className="freq-display">
+              {channel.frequency > 0 ? (channel.frequency / 1000).toFixed(3) : '—'}
+            </span>
             <span>MHz</span>
           </div>
           <div className={`cs-batt ${channel.batteryPercent && channel.batteryPercent <= 20 ? 'batt-low' : ''}`}>
-            {channel.batteryPercent ?? '--'}%
+            {channel.batteryPercent != null ? Math.round(channel.batteryPercent) : '--'}%
             <div className="batt-icon" />
           </div>
         </div>
@@ -122,8 +152,8 @@ export const ChannelStrip: React.FC<ChannelStripProps> = ({ channel }) => {
       <div className="cs-actions">
         <div className="cs-gain">
           <span className="gain-label">Gain</span>
-          <input 
-            type="number" 
+          <input
+            type="number"
             className="gain-input"
             defaultValue={channel.gain ?? 0}
             onBlur={(e) => {
@@ -142,11 +172,15 @@ export const ChannelStrip: React.FC<ChannelStripProps> = ({ channel }) => {
         <button className="cs-btn btn-secondary" onClick={handleMuteToggle}>
           <VolumeX size={14} /> {channel.isMuted ? 'Unmute' : 'Mute'}
         </button>
-        <button className="cs-btn btn-primary">
-          <Headphones size={14} /> Listen
+        <button
+          className={`cs-btn ${isListening ? 'btn-active' : 'btn-primary'}`}
+          onClick={handleListen}
+          disabled={assignedInput == null}
+          title={assignedInput == null ? 'Assign an audio input in device settings first' : undefined}
+        >
+          <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
         </button>
       </div>
     </Card>
   );
-};
-
+});

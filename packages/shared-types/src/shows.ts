@@ -5,20 +5,30 @@ export interface Show {
   date?: string;
   venue?: string;
   notes?: string;
-  slots: ShowSlot[];
+  players: Player[];
+  micCheck: ShowMicCheck;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface ShowSlot {
+export interface Player {
   id: string;
   showId: string;
-  name: string;           // e.g. "Act 1 – Opening Number"
-  order: number;
-  assignedChannelIds: string[];  // Channel IDs from inventory/live channels
-  micCheckStatus: 'PENDING' | 'CHECKED' | 'ISSUE' | 'SKIPPED';
-  micCheckNotes?: string;
-  micCheckTimestamp?: string;
+  realName: string;
+  characterName: string;
+  notes: string;
+  assignedChannelId: string | null;
 }
 
-export type MicCheckStatus = ShowSlot['micCheckStatus'];
+export type MicCheckAct = 1 | 2 | 3 | 4;
+
+export interface ShowMicCheck {
+  currentAct: MicCheckAct;
+  acts: Partial<Record<MicCheckAct, Record<string, ChannelCheckEntry>>>;
+}
+
+export interface ChannelCheckEntry {
+  checked: boolean;
+  checkedAt?: string;
+  notes?: string;
+}

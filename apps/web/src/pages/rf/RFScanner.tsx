@@ -1,12 +1,50 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Radio, Download, RefreshCw, Wifi, History } from 'lucide-react';
+import { Radio, Download, Wifi, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 import { useChannelStore } from '../../stores/channelStore';
 import { useDeviceStore } from '../../stores/deviceStore';
-import { useFrequencyHistoryStore } from '../../stores/frequencyHistoryStore';
+import { useRfEventStore } from '../../stores/rfEventStore';
 import { SpectrumCanvas } from './components/SpectrumCanvas';
 import { FrequencyTable } from './components/FrequencyTable';
-import { FrequencyHistory } from './components/FrequencyHistory';
 import './RFScanner.css';
+
+function RfEventLog() {
+  const { events, clearAll } = useRfEventStore();
+  const formatTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  return (
+    <div className="rf-event-log">
+      <div className="rf-event-log-toolbar">
+        <span className="rf-event-log-count">{events.length} events</span>
+        <button className="fh-action-btn danger" onClick={() => events.length && window.confirm('Clear RF event log?') && clearAll()} disabled={events.length === 0} title="Clear log">
+          <Trash2 size={13} />
+        </button>
+      </div>
+      {events.length === 0 ? (
+        <div className="rf-event-empty">No RF events recorded — dropouts and recoveries will appear here</div>
+      ) : (
+        <div className="rf-event-list">
+          {events.map((e) => (
+            <div key={e.id} className={`rf-event-row rf-event-${e.type.toLowerCase()}`}>
+              <div className="rf-event-icon">
+                {e.type === 'DROPOUT' ? <AlertTriangle size={13} /> : <CheckCircle size={13} />}
+              </div>
+              <div className="rf-event-body">
+                <span className="rf-event-ch">{e.channelName}</span>
+                <span className="rf-event-type">{e.type === 'DROPOUT' ? 'Signal Dropout' : 'Signal Recovered'}</span>
+              </div>
+              <div className="rf-event-levels">
+                <span>A: {Math.round(e.rfLevelA)}%</span>
+                <span>B: {Math.round(e.rfLevelB)}%</span>
+              </div>
+              <div className="rf-event-time">{formatTime(e.timestamp)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RFScanner() {
   const { channels } = useChannelStore();
@@ -23,8 +61,8 @@ export default function RFScanner() {
         (c.frequency / 1000).toFixed(3),
         c.deviceId,
         c.status,
-        String(c.rfLevelA),
-        String(c.rfLevelB),
+        String(Math.round(c.rfLevelA)),
+        String(Math.round(c.rfLevelB)),
       ]),
     ];
     const csv = rows.map((r) => r.join(',')).join('\n');
@@ -93,15 +131,15 @@ export default function RFScanner() {
             <FrequencyTable channels={channels} />
           </section>
 
-          {/* Frequency History Log */}
+          {/* RF Signal Event Log */}
           <section className="rf-card history-card">
             <div className="rf-card-header">
               <div className="rf-card-title">
-                <History size={16} className="card-icon" />
-                Frequency Change Log
+                <AlertTriangle size={16} className="card-icon" />
+                RF Signal Events
               </div>
             </div>
-            <FrequencyHistory />
+            <RfEventLog />
           </section>
         </div>
 
@@ -168,9 +206,6 @@ export default function RFScanner() {
             </p>
           </div>
 
-          <div className="rf-card sidebar-card">
-            <FrequencyHistory compact />
-          </div>
         </aside>
       </div>
     </div>

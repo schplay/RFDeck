@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useChannelStore } from '../../stores/channelStore';
+import { useActiveChannels } from '../../hooks/useActiveChannels';
+import { useLayoutStore, useOrderedChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
 import { useSocket } from '../../hooks/useSocket';
 import { Channel } from '@rfdeck/shared-types';
 import './BackstageView.css';
@@ -33,8 +36,26 @@ function rfBar(level: number) {
   );
 }
 
+// AF uses audio-level semantics (matches dashboard ChannelStrip): high level =
+// hot/clipping, so the TOP segments go orange (≥60%) and red (≥80%) — unlike RF
+// where a LOW level is the problem.
+function afBar(level: number) {
+  const segs = 8;
+  const active = Math.round((level / 100) * segs);
+  return (
+    <div className="bs-rf-bar" aria-label={`AF ${level}%`}>
+      {Array.from({ length: segs }).map((_, i) => (
+        <div
+          key={i}
+          className={`bs-rf-seg ${i < active ? (i / segs >= 0.8 ? 'crit' : i / segs >= 0.6 ? 'warn' : 'good') : ''}`}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function BackstageView() {
-  const channels = useChannelStore((s) => s.channels);
+  const channels = useActiveChannels();
   const { socket } = useSocket();
 
   // Subscribe to channel telemetry
@@ -46,7 +67,9 @@ export default function BackstageView() {
     return () => { socket.off('channel:telemetry', handler); };
   }, [socket, updateChannel]);
 
-  const [cols, setCols] = useState(2);
+  // Column count is persisted in the layout store so it survives navigation.
+  const cols = useLayoutStore(s => s.backstageCols);
+  const setCols = useLayoutStore(s => s.setBackstageCols);
 
   // Pressing 1-4 changes column layout; Escape exits full-screen hint
   useEffect(() => {
@@ -55,16 +78,28 @@ export default function BackstageView() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [setCols]);
 
-  const displayChannels = channels.length > 0 ? channels : demoChannels;
+  const orderMode = useLayoutStore(s => s.orderMode);
+  const setOrderMode = useLayoutStore(s => s.setOrderMode);
+  const orderedChannels = useOrderedChannels(channels);
+  const displayChannels = orderedChannels.length > 0 ? orderedChannels : demoChannels;
+  const { enabled: dragEnabled, handlers: dragHandlers } = useDragReorder(orderedChannels);
+  const setFlipRef = useFlipAnimation(displayChannels.map(ch => ch.id).join('|'));
 
   return (
     <div className="bs-root">
       <div className="bs-topbar">
         <div className="bs-brand">RFDeck <span className="bs-brand-sub">BACKSTAGE</span></div>
         <div className="bs-controls">
-          <span className="bs-hint">Press 1–4 to change columns</span>
+          <span className="bs-hint">{dragEnabled ? 'Drag cards to reorder' : 'Press 1–4 to change columns'}</span>
+          <button
+            className={`bs-col-btn bs-order-btn ${orderMode === 'custom' ? 'active' : ''}`}
+            onClick={() => setOrderMode(orderMode === 'custom' ? 'alpha' : 'custom')}
+            title={orderMode === 'custom' ? 'Using custom order — click for A-Z' : 'Using A-Z order — click for custom'}
+          >
+            {orderMode === 'custom' ? 'Custom' : 'A–Z'}
+          </button>
           {[1, 2, 3, 4].map(n => (
             <button
               key={n}
@@ -74,7 +109,7 @@ export default function BackstageView() {
               {n}
             </button>
           ))}
-          <a href="/" className="bs-exit-btn">← Operator View</a>
+          <Link to="/" className="bs-exit-btn">← Operator View</Link>
         </div>
       </div>
 
@@ -83,7 +118,7 @@ export default function BackstageView() {
           const st = statusLabel(ch);
           const stClass = ch.isMuted ? 'muted' : ch.status === 'CRITICAL' ? 'critical' : ch.status === 'WARNING' ? 'warning' : 'active';
           return (
-            <div key={ch.id} className={`bs-card ${stClass}`}>
+            <div key={ch.id} ref={setFlipRef(ch.id)} className={`bs-card ${stClass}`} {...dragHandlers(ch)}>
               <div className="bs-card-header">
                 <div className="bs-ch-name">{ch.name || `CH ${ch.channelIndex}`}</div>
                 <div className={`bs-status-pill ${stClass}`}>{st}</div>
@@ -98,17 +133,17 @@ export default function BackstageView() {
                 <div className="bs-meter-group">
                   <div className="bs-meter-label">RF A</div>
                   {rfBar(ch.rfLevelA)}
-                  <div className="bs-meter-val">{ch.rfLevelA}%</div>
+                  <div className="bs-meter-val">{Math.round(ch.rfLevelA)}%</div>
                 </div>
                 <div className="bs-meter-group">
                   <div className="bs-meter-label">RF B</div>
                   {rfBar(ch.rfLevelB)}
-                  <div className="bs-meter-val">{ch.rfLevelB}%</div>
+                  <div className="bs-meter-val">{Math.round(ch.rfLevelB)}%</div>
                 </div>
                 <div className="bs-meter-group">
                   <div className="bs-meter-label">AF</div>
-                  {rfBar(ch.afLevel)}
-                  <div className="bs-meter-val">{ch.afLevel}%</div>
+                  {afBar(ch.afLevel)}
+                  <div className="bs-meter-val">{Math.round(ch.afLevel)}%</div>
                 </div>
               </div>
 
@@ -120,7 +155,7 @@ export default function BackstageView() {
                       style={{ width: `${ch.batteryPercent}%` }}
                     />
                   </div>
-                  <span className="bs-batt-label">{ch.batteryPercent}%</span>
+                  <span className="bs-batt-label">{Math.round(ch.batteryPercent)}%</span>
                 </div>
               )}
             </div>

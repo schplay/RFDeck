@@ -7,6 +7,10 @@
   overflow: hidden;
   cursor: pointer;
   transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  /* Flex column so .card-body can fill the card and pin the footer to the
+     bottom — grid rows stretch cards to equal height. */
+  display: flex;
+  flex-direction: column;
 }
 
 .hardware-card:hover {
@@ -24,6 +28,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 1;
 }
 
 .card-header {
@@ -105,7 +110,7 @@
 /* Hardware List Row */
 .hardware-list-row {
   display: grid;
-  grid-template-columns: 24px 1fr 140px 120px 100px;
+  grid-template-columns: 24px 1fr 140px 120px 100px 52px;
   align-items: center;
   gap: 16px;
   padding: 12px 16px;
@@ -165,4 +170,114 @@
   border: 1px solid var(--color-surface-container-highest);
   border-radius: 999px;
   color: var(--color-on-surface-variant);
+}
+
+/* ── Inactive devices ──
+   Intentionally powered off: dimmed so genuine offline faults still stand out. */
+/* Whole-card dimming is applied per-child below so the active switch stays
+   fully legible; see the .is-inactive content rules at the end of this file. */
+
+.inactive-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  border-radius: 999px;
+  background: var(--color-surface-container-highest);
+  color: var(--color-on-surface-variant);
+}
+
+/* ── Inline Active Switch (on cards + list rows) ── */
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-surface-container-high);
+}
+
+.card-footer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-toggle-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-on-surface-variant);
+}
+
+.list-row-toggle {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.card-active-switch {
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  border-radius: 99px;
+  border: 1px solid var(--color-surface-container-highest);
+  background: var(--color-surface-container);
+  padding: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: background 0.18s, border-color 0.18s;
+}
+
+.card-active-switch:hover {
+  border-color: var(--color-primary);
+}
+
+.card-active-switch.on {
+  background: rgba(0, 219, 233, 0.25);
+  border-color: var(--color-primary);
+}
+
+.card-active-knob {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-on-surface-variant);
+  transition: transform 0.18s cubic-bezier(0.2, 0, 0.2, 1), background 0.18s;
+}
+
+.card-active-switch.on .card-active-knob {
+  transform: translateX(16px);
+  background: var(--color-primary);
+}
+
+/* Dim the CONTENT of an inactive card, never the switch — a child cannot be
+   more opaque than its parent, so dimming the whole card would make the control
+   the user needs to click the hardest thing to see. */
+.hardware-card.is-inactive .card-header,
+.hardware-card.is-inactive .card-meta,
+.hardware-card.is-inactive .firmware-label,
+.hardware-list-row.is-inactive .list-row-status,
+.hardware-list-row.is-inactive .list-row-name,
+.hardware-list-row.is-inactive .list-row-ip,
+.hardware-list-row.is-inactive .list-row-location,
+.hardware-list-row.is-inactive .list-row-channels {
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.hardware-card.is-inactive:hover .card-header,
+.hardware-card.is-inactive:hover .card-meta,
+.hardware-card.is-inactive:hover .firmware-label,
+.hardware-list-row.is-inactive:hover .list-row-status,
+.hardware-list-row.is-inactive:hover .list-row-name,
+.hardware-list-row.is-inactive:hover .list-row-ip,
+.hardware-list-row.is-inactive:hover .list-row-location,
+.hardware-list-row.is-inactive:hover .list-row-channels {
+  opacity: 0.75;
 }

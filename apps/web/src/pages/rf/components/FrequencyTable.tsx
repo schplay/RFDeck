@@ -83,7 +83,7 @@ export function FrequencyTable({ channels }: Props) {
                         : 'var(--color-error)',
                     }}
                   />
-                  <span className="rf-bar-label">{ch.rfLevelA}%</span>
+                  <span className="rf-bar-label">{Math.round(ch.rfLevelA)}%</span>
                 </div>
               </td>
               <td className="td td-status">

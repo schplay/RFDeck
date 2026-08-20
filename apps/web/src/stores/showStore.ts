@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Show, ShowSlot, MicCheckStatus } from '@rfdeck/shared-types';
+import { Show, Player, MicCheckAct } from '@rfdeck/shared-types';
 
 function uuid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -10,26 +10,23 @@ interface ShowStore {
   shows: Show[];
   activeShowId: string | null;
 
-  // Show CRUD
   createShow: (name: string, mode: Show['environmentMode']) => Show;
-  updateShow: (id: string, partial: Partial<Omit<Show, 'id' | 'slots' | 'createdAt'>>) => void;
   deleteShow: (id: string) => void;
   setActiveShow: (id: string | null) => void;
 
-  // Slot management
-  addSlot: (showId: string, name: string) => void;
-  updateSlot: (showId: string, slotId: string, partial: Partial<ShowSlot>) => void;
-  deleteSlot: (showId: string, slotId: string) => void;
-  reorderSlots: (showId: string, orderedIds: string[]) => void;
+  addPlayer: (showId: string, realName: string, characterName: string) => void;
+  updatePlayer: (showId: string, playerId: string, partial: Partial<Omit<Player, 'id' | 'showId'>>) => void;
+  deletePlayer: (showId: string, playerId: string) => void;
 
-  // Mic check
-  setMicCheckStatus: (showId: string, slotId: string, status: MicCheckStatus, notes?: string) => void;
-  resetMicCheck: (showId: string) => void;
+  setCurrentAct: (showId: string, act: MicCheckAct) => void;
+  setChannelChecked: (showId: string, act: MicCheckAct, channelId: string, checked: boolean) => void;
+  setChannelNotes: (showId: string, act: MicCheckAct, channelId: string, notes: string) => void;
+  resetAct: (showId: string, act: MicCheckAct) => void;
 }
 
 export const useShowStore = create<ShowStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       shows: [],
       activeShowId: null,
 
@@ -39,20 +36,13 @@ export const useShowStore = create<ShowStore>()(
           id: uuid(),
           name,
           environmentMode: mode,
-          slots: [],
+          players: [],
+          micCheck: { currentAct: 1, acts: {} },
           createdAt: now,
           updatedAt: now,
         };
         set(s => ({ shows: [...s.shows, show] }));
         return show;
-      },
-
-      updateShow: (id, partial) => {
-        set(s => ({
-          shows: s.shows.map(sh =>
-            sh.id === id ? { ...sh, ...partial, updatedAt: new Date().toISOString() } : sh
-          )
-        }));
       },
 
       deleteShow: (id) => {
@@ -64,93 +54,131 @@ export const useShowStore = create<ShowStore>()(
 
       setActiveShow: (id) => set({ activeShowId: id }),
 
-      addSlot: (showId, name) => {
+      addPlayer: (showId, realName, characterName) => {
         set(s => ({
           shows: s.shows.map(sh => {
             if (sh.id !== showId) return sh;
-            const slot: ShowSlot = {
+            const player: Player = {
               id: uuid(),
               showId,
-              name,
-              order: sh.slots.length,
-              assignedChannelIds: [],
-              micCheckStatus: 'PENDING',
+              realName,
+              characterName,
+              notes: '',
+              assignedChannelId: null,
             };
-            return { ...sh, slots: [...sh.slots, slot], updatedAt: new Date().toISOString() };
-          })
+            return { ...sh, players: [...sh.players, player], updatedAt: new Date().toISOString() };
+          }),
         }));
       },
 
-      updateSlot: (showId, slotId, partial) => {
+      updatePlayer: (showId, playerId, partial) => {
         set(s => ({
           shows: s.shows.map(sh => {
             if (sh.id !== showId) return sh;
             return {
               ...sh,
-              slots: sh.slots.map(sl => sl.id === slotId ? { ...sl, ...partial } : sl),
+              players: sh.players.map(p => p.id === playerId ? { ...p, ...partial } : p),
               updatedAt: new Date().toISOString(),
             };
-          })
+          }),
         }));
       },
 
-      deleteSlot: (showId, slotId) => {
+      deletePlayer: (showId, playerId) => {
         set(s => ({
           shows: s.shows.map(sh => {
             if (sh.id !== showId) return sh;
             return {
               ...sh,
-              slots: sh.slots.filter(sl => sl.id !== slotId).map((sl, i) => ({ ...sl, order: i })),
+              players: sh.players.filter(p => p.id !== playerId),
               updatedAt: new Date().toISOString(),
             };
-          })
+          }),
         }));
       },
 
-      reorderSlots: (showId, orderedIds) => {
-        set(s => ({
-          shows: s.shows.map(sh => {
-            if (sh.id !== showId) return sh;
-            const slotMap = Object.fromEntries(sh.slots.map(sl => [sl.id, sl]));
-            return {
-              ...sh,
-              slots: orderedIds.map((id, i) => ({ ...slotMap[id], order: i })),
-              updatedAt: new Date().toISOString(),
-            };
-          })
-        }));
-      },
-
-      setMicCheckStatus: (showId, slotId, status, notes) => {
+      setCurrentAct: (showId, act) => {
         set(s => ({
           shows: s.shows.map(sh => {
             if (sh.id !== showId) return sh;
             return {
               ...sh,
-              slots: sh.slots.map(sl =>
-                sl.id === slotId
-                  ? { ...sl, micCheckStatus: status, micCheckNotes: notes ?? sl.micCheckNotes, micCheckTimestamp: new Date().toISOString() }
-                  : sl
-              ),
+              micCheck: { ...sh.micCheck, currentAct: act },
               updatedAt: new Date().toISOString(),
             };
-          })
+          }),
         }));
       },
 
-      resetMicCheck: (showId) => {
+      setChannelChecked: (showId, act, channelId, checked) => {
         set(s => ({
           shows: s.shows.map(sh => {
             if (sh.id !== showId) return sh;
+            const actData = sh.micCheck.acts[act] || {};
+            const existing = actData[channelId] || {};
             return {
               ...sh,
-              slots: sh.slots.map(sl => ({ ...sl, micCheckStatus: 'PENDING', micCheckNotes: undefined, micCheckTimestamp: undefined })),
+              micCheck: {
+                ...sh.micCheck,
+                acts: {
+                  ...sh.micCheck.acts,
+                  [act]: {
+                    ...actData,
+                    [channelId]: {
+                      ...existing,
+                      checked,
+                      checkedAt: checked ? new Date().toISOString() : existing.checkedAt,
+                    },
+                  },
+                },
+              },
               updatedAt: new Date().toISOString(),
             };
-          })
+          }),
+        }));
+      },
+
+      setChannelNotes: (showId, act, channelId, notes) => {
+        set(s => ({
+          shows: s.shows.map(sh => {
+            if (sh.id !== showId) return sh;
+            const actData = sh.micCheck.acts[act] || {};
+            const existing = actData[channelId] || { checked: false };
+            return {
+              ...sh,
+              micCheck: {
+                ...sh.micCheck,
+                acts: {
+                  ...sh.micCheck.acts,
+                  [act]: {
+                    ...actData,
+                    [channelId]: { ...existing, notes },
+                  },
+                },
+              },
+              updatedAt: new Date().toISOString(),
+            };
+          }),
+        }));
+      },
+
+      resetAct: (showId, act) => {
+        set(s => ({
+          shows: s.shows.map(sh => {
+            if (sh.id !== showId) return sh;
+            const newActs = { ...sh.micCheck.acts };
+            delete newActs[act];
+            return {
+              ...sh,
+              micCheck: { ...sh.micCheck, acts: newActs },
+              updatedAt: new Date().toISOString(),
+            };
+          }),
         }));
       },
     }),
-    { name: 'rfdeck-shows' }
+    {
+      name: 'rfdeck-shows-v2',
+    }
   )
 );

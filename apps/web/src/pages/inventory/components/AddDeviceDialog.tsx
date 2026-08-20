@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
-import { X, Wifi, MapPin, PlusCircle, Search, Loader } from 'lucide-react';
+import { X, Wifi, MapPin, PlusCircle, Search, Loader, Mic, Headphones, ListPlus, RefreshCw } from 'lucide-react';
 import { useDeviceStore, DiscoveredDevice } from '../../../stores/deviceStore';
+import { useSocket } from '../../../hooks/useSocket';
 import './AddDeviceDialog.css';
 
 interface Props {
@@ -13,8 +14,36 @@ interface Props {
 const MANUFACTURERS = ['Sennheiser', 'Shure', 'Wisycom', 'Lectrosonics', 'Sony', 'Other'];
 const LOCATIONS = ['Stage Left', 'Stage Right', 'FOH', 'Backstage', 'Monitors', 'Rack Room'];
 
+const MANUFACTURER_PORT_HINTS: Record<string, { port: number; hint: string }> = {
+  Sennheiser:   { port: 443,  hint: 'EW-DX / EM 6000 / EM 9046 (firmware ≥ 4.0) — port 443 (HTTPS SSCv2)' },
+  Shure:        { port: 2202, hint: 'Axient Digital / ULX-D / SLX-D — port 2202' },
+  Wisycom:      { port: 8080, hint: 'MRK series — port 8080 (Ember+)' },
+  Lectrosonics: { port: 80,   hint: 'Check device web UI — typically port 80' },
+  Sony:         { port: 443,  hint: 'DWX series — port 443' },
+  Other:        { port: 80,   hint: 'Check your device manual for the correct API port' },
+};
+
+interface DiscoverAddForm {
+  location: string;
+  deviceType: 'input' | 'output';
+  password: string;
+}
+
+const needsAddForm = (d: DiscoveredDevice) =>
+  d.manufacturer === 'Sennheiser' || d.port === 443;
+
 export function AddDeviceDialog({ open, onClose }: Props) {
   const { addToInventory, discovered } = useDeviceStore();
+  const { socket } = useSocket();
+
+  const [defaultPassword, setDefaultPassword] = useState('');
+  const [addingAll, setAddingAll] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  const triggerScan = useCallback(() => {
+    setScanning(true);
+    fetch('http://localhost:3000/api/discovery/scan', { method: 'POST' }).catch(() => {});
+  }, []);
 
   // Manual entry form state
   const [form, setForm] = useState({
@@ -25,13 +54,62 @@ export function AddDeviceDialog({ open, onClose }: Props) {
     port: '443',
     location: 'Stage Left',
     notes: '',
+    password: '',
+    deviceType: 'input' as 'input' | 'output',
   });
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Discovered tab: tracks which device is showing its inline add-form
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [discoverForm, setDiscoverForm] = useState<DiscoverAddForm>({
+    location: 'Stage Left',
+    deviceType: 'input',
+    password: '',
+  });
+
+  // Fetch default password and kick off a network scan whenever the dialog opens
+  useEffect(() => {
+    if (!open) return;
+    fetch('http://localhost:3000/api/settings')
+      .then((r) => r.json())
+      .then((s) => {
+        const pw = s.defaultPassword ?? '';
+        setDefaultPassword(pw);
+        setForm((f) => ({ ...f, password: f.manufacturer === 'Sennheiser' ? pw : f.password }));
+      })
+      .catch(() => {});
+
+    triggerScan();
+  }, [open, triggerScan]);
+
+  // Track scan progress via socket events
+  useEffect(() => {
+    if (!socket) return;
+    const onStart    = () => setScanning(true);
+    const onComplete = () => setScanning(false);
+    socket.on('discovery:scan-start',    onStart);
+    socket.on('discovery:scan-complete', onComplete);
+    return () => {
+      socket.off('discovery:scan-start',    onStart);
+      socket.off('discovery:scan-complete', onComplete);
+    };
+  }, [socket]);
+
   const updateForm = (key: keyof typeof form, value: string) => {
-    setForm((f) => ({ ...f, [key]: value }));
+    if (key === 'manufacturer') {
+      const hint = MANUFACTURER_PORT_HINTS[value];
+      setForm((f) => ({
+        ...f,
+        manufacturer: value,
+        port: String(hint?.port ?? f.port),
+        // Pre-fill password with default when switching to Sennheiser
+        password: value === 'Sennheiser' ? defaultPassword : f.password,
+      }));
+    } else {
+      setForm((f) => ({ ...f, [key]: value }));
+    }
     setError('');
   };
 
@@ -45,7 +123,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
 
     setSaving(true);
     try {
-      addToInventory({
+      await addToInventory({
         name: form.name.trim(),
         manufacturer: form.manufacturer,
         model: form.model.trim() || form.manufacturer + ' Device',
@@ -53,6 +131,8 @@ export function AddDeviceDialog({ open, onClose }: Props) {
         port: parseInt(form.port, 10) || 443,
         location: form.location,
         notes: form.notes.trim(),
+        password: form.password.trim() || undefined,
+        deviceType: form.deviceType,
       });
       handleClose();
     } finally {
@@ -60,22 +140,70 @@ export function AddDeviceDialog({ open, onClose }: Props) {
     }
   };
 
-  const handleAddDiscovered = (d: DiscoveredDevice) => {
+  const handleDiscoveredClick = (d: DiscoveredDevice) => {
+    if (needsAddForm(d)) {
+      setExpandedKey(expandedKey === d.key ? null : d.key);
+      setDiscoverForm({ location: 'Stage Left', deviceType: 'input', password: defaultPassword });
+    } else {
+      addToInventory({
+        name: d.name,
+        manufacturer: d.manufacturer,
+        model: d.model,
+        ip: d.ip,
+        port: d.port,
+        location: '',
+        notes: '',
+        deviceType: 'input',
+      });
+      onClose();
+    }
+  };
+
+  const handleDiscoveredConfirm = (d: DiscoveredDevice) => {
     addToInventory({
       name: d.name,
       manufacturer: d.manufacturer,
       model: d.model,
       ip: d.ip,
       port: d.port,
-      location: '',
+      location: discoverForm.location,
       notes: '',
+      password: discoverForm.password.trim() || undefined,
+      deviceType: discoverForm.deviceType,
     });
     onClose();
   };
 
+  // Add every discovered device at once using the default password for SSC devices
+  const handleAddAll = async () => {
+    setAddingAll(true);
+    try {
+      for (const d of discovered) {
+        await addToInventory({
+          name: d.name,
+          manufacturer: d.manufacturer,
+          model: d.model,
+          ip: d.ip,
+          port: d.port,
+          location: '',
+          notes: '',
+          password: needsAddForm(d) ? (defaultPassword || undefined) : undefined,
+          deviceType: 'input',
+        });
+      }
+      onClose();
+    } finally {
+      setAddingAll(false);
+    }
+  };
+
   const handleClose = () => {
-    setForm({ name: '', manufacturer: 'Sennheiser', model: '', ip: '', port: '443', location: 'Stage Left', notes: '' });
+    setForm({
+      name: '', manufacturer: 'Sennheiser', model: '', ip: '',
+      port: '443', location: 'Stage Left', notes: '', password: '', deviceType: 'input',
+    });
     setError('');
+    setExpandedKey(null);
     onClose();
   };
 
@@ -114,29 +242,138 @@ export function AddDeviceDialog({ open, onClose }: Props) {
             <Tabs.Content value="discover" className="tab-content">
               {discovered.length === 0 ? (
                 <div className="discover-empty">
-                  <Loader size={32} className="discover-spinner" />
-                  <p className="discover-empty-title">Scanning network for devices…</p>
-                  <p className="discover-empty-desc">
-                    Devices advertising via mDNS / Bonjour will appear here automatically. Make sure your hardware is powered on and connected to the same network.
-                  </p>
+                  {scanning ? (
+                    <>
+                      <Loader size={32} className="discover-spinner" />
+                      <p className="discover-empty-title">Scanning network for devices…</p>
+                      <p className="discover-empty-desc">
+                        Checking for devices via mDNS, UDP broadcast, and HTTPS probe.
+                        Make sure your hardware is powered on and on the same network segment.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <Search size={32} className="discover-empty-icon" />
+                      <p className="discover-empty-title">No devices found</p>
+                      <p className="discover-empty-desc">
+                        Nothing responded to the network scan. Make sure your hardware is powered on
+                        and connected to the same network segment, then try scanning again.
+                        You can also add a device manually by IP address.
+                      </p>
+                      <button className="btn-add-all" onClick={triggerScan}>
+                        <RefreshCw size={13} /> Scan Again
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : (
-                <div className="discovered-list">
-                  {discovered.map((d) => (
-                    <div key={d.key} className="discovered-item">
-                      <div className="discovered-info">
-                        <Wifi size={16} className="discovered-icon" />
-                        <div>
-                          <div className="discovered-name">{d.name}</div>
-                          <div className="discovered-meta">{d.manufacturer} · {d.model} · {d.ip}:{d.port}</div>
-                        </div>
-                      </div>
-                      <button className="btn-add-discovered" onClick={() => handleAddDiscovered(d)}>
-                        Add
+                <>
+                  <div className="discover-toolbar">
+                    <span className="discover-count">
+                      {scanning && <Loader size={11} className="btn-spinner" style={{ marginRight: 4 }} />}
+                      {discovered.length} device{discovered.length !== 1 ? 's' : ''} found
+                    </span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn-add-all"
+                        onClick={triggerScan}
+                        disabled={scanning}
+                        title="Scan the network again"
+                      >
+                        <RefreshCw size={13} /> {scanning ? 'Scanning…' : 'Scan Again'}
+                      </button>
+                      <button
+                        className="btn-add-all"
+                        onClick={handleAddAll}
+                        disabled={addingAll}
+                        title={defaultPassword ? `Using default password for authenticated devices` : `Add all with no password`}
+                      >
+                        {addingAll
+                          ? <Loader size={13} className="btn-spinner" />
+                          : <ListPlus size={13} />}
+                        Add All ({discovered.length})
                       </button>
                     </div>
-                  ))}
-                </div>
+                  </div>
+
+                  <div className="discovered-list">
+                    {discovered.map((d) => (
+                      <div key={d.key} className="discovered-item-wrapper">
+                        <div className="discovered-item">
+                          <div className="discovered-info">
+                            <Wifi size={16} className="discovered-icon" />
+                            <div>
+                              <div className="discovered-name">{d.name}</div>
+                              <div className="discovered-meta">{d.manufacturer} · {d.model} · {d.ip}:{d.port}</div>
+                            </div>
+                          </div>
+                          <button
+                            className={`btn-add-discovered ${expandedKey === d.key ? 'active' : ''}`}
+                            onClick={() => handleDiscoveredClick(d)}
+                          >
+                            {expandedKey === d.key ? 'Cancel' : 'Add'}
+                          </button>
+                        </div>
+
+                        {/* Inline form for SSC devices */}
+                        {expandedKey === d.key && (
+                          <div className="discovered-expand">
+                            <div className="expand-row">
+                              <label className="form-label">Device Type</label>
+                              <div className="type-toggle">
+                                <button
+                                  className={`type-btn ${discoverForm.deviceType === 'input' ? 'active' : ''}`}
+                                  onClick={() => setDiscoverForm(f => ({ ...f, deviceType: 'input' }))}
+                                >
+                                  <Mic size={13} /> Input
+                                </button>
+                                <button
+                                  className={`type-btn ${discoverForm.deviceType === 'output' ? 'active' : ''}`}
+                                  onClick={() => setDiscoverForm(f => ({ ...f, deviceType: 'output' }))}
+                                >
+                                  <Headphones size={13} /> Output (IEM)
+                                </button>
+                              </div>
+                            </div>
+                            <div className="expand-row">
+                              <label className="form-label">Location</label>
+                              <div className="select-wrap">
+                                <select
+                                  className="form-select"
+                                  value={discoverForm.location}
+                                  onChange={e => setDiscoverForm(f => ({ ...f, location: e.target.value }))}
+                                >
+                                  {LOCATIONS.map(l => <option key={l}>{l}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="expand-row">
+                              <label className="form-label">
+                                Password
+                                {defaultPassword && (
+                                  <span className="label-optional"> (pre-filled from default)</span>
+                                )}
+                              </label>
+                              <input
+                                type="password"
+                                className="form-input"
+                                placeholder="EW-DX V4+ authentication password"
+                                value={discoverForm.password}
+                                onChange={e => setDiscoverForm(f => ({ ...f, password: e.target.value }))}
+                                autoComplete="new-password"
+                              />
+                            </div>
+                            <div className="expand-actions">
+                              <button className="btn-primary-dialog" onClick={() => handleDiscoveredConfirm(d)}>
+                                <PlusCircle size={14} /> Add to Inventory
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </Tabs.Content>
 
@@ -151,6 +388,24 @@ export function AddDeviceDialog({ open, onClose }: Props) {
                     value={form.name}
                     onChange={(e) => updateForm('name', e.target.value)}
                   />
+                </div>
+
+                <div className="form-field form-field-full">
+                  <label className="form-label">Device Type</label>
+                  <div className="type-toggle">
+                    <button
+                      className={`type-btn ${form.deviceType === 'input' ? 'active' : ''}`}
+                      onClick={() => setForm(f => ({ ...f, deviceType: 'input' }))}
+                    >
+                      <Mic size={13} /> Input (mic / instrument)
+                    </button>
+                    <button
+                      className={`type-btn ${form.deviceType === 'output' ? 'active' : ''}`}
+                      onClick={() => setForm(f => ({ ...f, deviceType: 'output' }))}
+                    >
+                      <Headphones size={13} /> Output (IEM)
+                    </button>
+                  </div>
                 </div>
 
                 <div className="form-field">
@@ -194,6 +449,9 @@ export function AddDeviceDialog({ open, onClose }: Props) {
                     value={form.port}
                     onChange={(e) => updateForm('port', e.target.value)}
                   />
+                  <span className="form-hint">
+                    {MANUFACTURER_PORT_HINTS[form.manufacturer]?.hint}
+                  </span>
                 </div>
 
                 <div className="form-field">
@@ -219,6 +477,25 @@ export function AddDeviceDialog({ open, onClose }: Props) {
                     onChange={(e) => updateForm('notes', e.target.value)}
                   />
                 </div>
+
+                {form.manufacturer === 'Sennheiser' && (
+                  <div className="form-field form-field-full">
+                    <label className="form-label">
+                      Password
+                      {defaultPassword && (
+                        <span className="label-optional"> (pre-filled from default — EW-DX V4+)</span>
+                      )}
+                    </label>
+                    <input
+                      className="form-input"
+                      type="password"
+                      placeholder="Leave blank if no password is set"
+                      value={form.password}
+                      onChange={(e) => updateForm('password', e.target.value)}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                )}
               </div>
 
               {error && <div className="form-error">{error}</div>}

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Search, Grid, List, Wifi, WifiOff, ChevronDown } from 'lucide-react';
+import { Plus, Search, Grid, List, Wifi, WifiOff, ChevronDown, PowerOff, ArrowUpDown } from 'lucide-react';
 import { useDeviceStore, InventoryDevice } from '../../stores/deviceStore';
 import { HardwareCard } from './components/HardwareCard';
 import { DeviceDrawer } from './components/DeviceDrawer';
@@ -9,18 +9,55 @@ import './InventoryManager.css';
 const MANUFACTURERS = ['All Manufacturers', 'Sennheiser', 'Shure', 'Wisycom', 'Lectrosonics', 'Sony'];
 const LOCATIONS = ['All Locations', 'Stage Left', 'Stage Right', 'FOH', 'Backstage', 'Monitors'];
 
+type SortKey = 'name' | 'status' | 'ip' | 'location' | 'model';
+
+// Sort IPs numerically by octet so 10.2.1.9 comes before 10.2.1.10.
+function compareIp(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 4; i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+const byName = (a: InventoryDevice, b: InventoryDevice) => a.name.localeCompare(b.name);
+
+const SORTERS: Record<SortKey, (a: InventoryDevice, b: InventoryDevice) => number> = {
+  name: byName,
+  // Online first, then offline, then inactive — most-actionable at the top.
+  status: (a, b) => {
+    const rank = (d: InventoryDevice) => (d.active === false ? 2 : d.online ? 0 : 1);
+    return rank(a) - rank(b) || byName(a, b);
+  },
+  ip: (a, b) => compareIp(a.ip, b.ip) || byName(a, b),
+  location: (a, b) => (a.location || '~').localeCompare(b.location || '~') || byName(a, b),
+  model: (a, b) =>
+    a.manufacturer.localeCompare(b.manufacturer) || a.model.localeCompare(b.model) || byName(a, b),
+};
+
 export default function InventoryManager() {
-  const { inventory } = useDeviceStore();
+  const { inventory, setDeviceActive } = useDeviceStore();
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
   const [filterMfr, setFilterMfr] = useState('All Manufacturers');
   const [filterLocation, setFilterLocation] = useState('All Locations');
-  const [selectedDevice, setSelectedDevice] = useState<InventoryDevice | null>(null);
+  const [sortBy, setSortBy] = useState<SortKey>('name');
+  // Track the selected device by ID, not by object — a captured object is a
+  // snapshot and would go stale as soon as the store updates (e.g. toggling
+  // active), leaving the drawer showing the old state.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
+  const selectedDevice = useMemo(
+    () => inventory.find((d) => d.id === selectedId) ?? null,
+    [inventory, selectedId]
+  );
+
   const filtered = useMemo(() => {
-    return inventory.filter((d) => {
+    const result = inventory.filter((d) => {
       const matchSearch =
         search === '' ||
         d.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -30,10 +67,15 @@ export default function InventoryManager() {
       const matchLoc = filterLocation === 'All Locations' || d.location === filterLocation;
       return matchSearch && matchMfr && matchLoc;
     });
-  }, [inventory, search, filterMfr, filterLocation]);
+    return result.sort(SORTERS[sortBy]);
+  }, [inventory, search, filterMfr, filterLocation, sortBy]);
 
-  const onlineCount = inventory.filter((d) => d.online).length;
-  const offlineCount = inventory.length - onlineCount;
+  // Inactive devices are excluded from the online/offline tally — they're
+  // intentionally powered off, so counting them as "offline" is misleading.
+  const activeDevices = inventory.filter((d) => d.active !== false);
+  const onlineCount = activeDevices.filter((d) => d.online).length;
+  const offlineCount = activeDevices.length - onlineCount;
+  const inactiveCount = inventory.length - activeDevices.length;
 
   return (
     <div className="inventory-page">
@@ -50,6 +92,12 @@ export default function InventoryManager() {
               <WifiOff size={12} />
               {offlineCount} Offline
             </span>
+            {inactiveCount > 0 && (
+              <span className="stat-badge stat-inactive">
+                <PowerOff size={12} />
+                {inactiveCount} Inactive
+              </span>
+            )}
             <span className="stat-badge stat-total">{inventory.length} Total</span>
           </div>
         </div>
@@ -90,6 +138,23 @@ export default function InventoryManager() {
               onChange={(e) => setFilterLocation(e.target.value)}
             >
               {LOCATIONS.map((l) => <option key={l}>{l}</option>)}
+            </select>
+            <ChevronDown size={14} className="select-chevron" />
+          </div>
+
+          <div className="select-wrapper">
+            <ArrowUpDown size={13} className="select-lead-icon" />
+            <select
+              className="filter-select has-lead-icon"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortKey)}
+              title="Sort devices"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="status">Sort by Status</option>
+              <option value="ip">Sort by IP Address</option>
+              <option value="location">Sort by Location</option>
+              <option value="model">Sort by Model</option>
             </select>
             <ChevronDown size={14} className="select-chevron" />
           </div>
@@ -139,7 +204,8 @@ export default function InventoryManager() {
               key={device.id}
               device={device}
               viewMode={viewMode}
-              onClick={() => setSelectedDevice(device)}
+              onClick={() => setSelectedId(device.id)}
+              onToggleActive={() => setDeviceActive(device.id, device.active === false)}
             />
           ))}
         </div>
@@ -148,7 +214,7 @@ export default function InventoryManager() {
       {/* Device Detail Drawer */}
       <DeviceDrawer
         device={selectedDevice}
-        onClose={() => setSelectedDevice(null)}
+        onClose={() => setSelectedId(null)}
       />
 
       {/* Add Device Dialog */}

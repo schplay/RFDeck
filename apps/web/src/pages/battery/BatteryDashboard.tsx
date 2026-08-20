@@ -56,7 +56,7 @@ export default function BatteryDashboard() {
                   {getBatteryIcon(pct)}
                 </div>
                 <div className="bc-body">
-                  <div className="bc-percent-large">{pct}%</div>
+                  <div className="bc-percent-large">{Math.round(pct)}%</div>
                   <div className="bc-device-info">
                     {ch.deviceId.split(':')[0]}
                   </div>

@@ -13,9 +13,9 @@ export class WebRTCSignaling {
   attach(socket: Socket): void {
     socket.on('webrtc:offer', async (offer) => {
       try {
-        const pc = new RTCPeerConnection({
-          iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-        });
+        // No external STUN needed — this app runs entirely on the local LAN.
+        // Using Google STUN would cause DNS errors on closed networks.
+        const pc = new RTCPeerConnection({ iceServers: [] });
         this.peers.set(socket.id, pc);
 
         // Each client gets its own track fed by the shared audio source

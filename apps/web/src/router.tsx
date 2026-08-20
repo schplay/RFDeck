@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router-dom';
+import { createHashRouter } from 'react-router-dom';
 import RootLayout from './layouts/RootLayout';
 import MonitoringDashboard from './pages/monitoring/MonitoringDashboard';
 import InventoryManager from './pages/inventory/InventoryManager';
@@ -8,7 +8,7 @@ import Settings from './pages/settings/Settings';
 import BackstageView from './pages/backstage/BackstageView';
 import ShowManagement from './pages/shows/ShowManagement';
 
-export const router = createBrowserRouter([
+export const router = createHashRouter([
   // Backstage/Talent view — full-screen, no sidebar
   {
     path: '/backstage',

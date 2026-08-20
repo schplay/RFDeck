@@ -44,10 +44,10 @@ export default function RootLayout() {
 
           <div className="nav-divider" />
 
-          <a href="/backstage" target="_blank" rel="noreferrer" className="nav-link nav-link-external">
+          <NavLink to="/backstage" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             <Monitor size={20} />
             Backstage View
-          </a>
+          </NavLink>
         </div>
       </nav>
       <main className="main-content">

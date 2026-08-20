@@ -228,12 +228,11 @@ The RFDeck interface is engineered for **high-stakes live production environment
 # 1. Install dependencies
 pnpm install
 
-# 2. Set up the database (first time only)
+# 2. Generate the Prisma client (first time only)
 pnpm --filter @rfdeck/server prisma:generate
-pnpm --filter @rfdeck/server prisma:push
 
-# 4. Start the Desktop App (Recommended)
-# This will spawn the Fastify backend, load the Vite frontend, and open a native Electron window.
+# 3. Start the Desktop App (Recommended)
+# Builds the server + frontend, then opens the Electron window.
 pnpm --filter @rfdeck/desktop dev
 
 # --- Alternative Web-only workflow ---
@@ -241,7 +240,7 @@ pnpm --filter @rfdeck/desktop dev
 # Start backend standalone
 pnpm --filter @rfdeck/server dev
 
-# Start frontend standalone (browser)
+# Start frontend standalone in browser (with hot reload)
 pnpm --filter @rfdeck/web dev
 ```
 
