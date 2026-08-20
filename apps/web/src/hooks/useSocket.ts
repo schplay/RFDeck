@@ -79,9 +79,17 @@ function getSocket(): Socket {
     });
   });
 
-  // Alerts
+  // Alerts — server-owned so acknowledgement is shared across clients.
   _socket.on('alert:new', (alert: Alert) => {
     useAlertStore.getState().addAlert(alert);
+  });
+
+  _socket.on('alert:updated', (alert: Alert) => {
+    useAlertStore.getState().applyServerAlert(alert);
+  });
+
+  _socket.on('alerts:cleared', () => {
+    useAlertStore.getState().applyServerClear();
   });
 
   // RF dropout / recovery, detected server-side and replayed on connect.

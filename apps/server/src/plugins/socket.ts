@@ -90,10 +90,13 @@ export default fp(async (fastify, opts) => {
     for (const channel of deviceManager.getChannelSnapshot()) {
       socket.emit('channel:telemetry', channel);
     }
-    // RF events are computed server-side, so replay them to a client joining
-    // mid-show rather than leaving it with an empty log.
+    // RF events and alerts are computed server-side, so replay them to a client
+    // joining mid-show rather than leaving it with an empty log.
     for (const event of deviceManager.getRfEventSnapshot().slice().reverse()) {
       socket.emit('rf:event', event);
+    }
+    for (const alert of deviceManager.getAlertSnapshot().slice().reverse()) {
+      socket.emit('alert:new', alert);
     }
     for (const device of deviceManager.getDiscoveredSnapshot()) {
       socket.emit('device:discovered', {

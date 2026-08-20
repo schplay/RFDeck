@@ -834,15 +834,48 @@ export class DeviceManagerService extends EventEmitter {
     this.discovery.scan().catch(() => {});
   }
 
+  // ── Alerts ──
+  // Server-owned so acknowledgement is shared. When each client tracked its own
+  // ack state, one operator clearing an alert left it live for everyone else —
+  // the classic duplicated-response failure during a show.
+  private alerts: any[] = [];
+  private readonly ALERT_LOG_MAX = 500;
+
   private emitAlert(params: { severity: any, type: any, message: string, detail?: string, channelId?: string, channelName?: string, deviceId?: string, deviceName?: string }) {
     const alert = {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       acknowledged: false,
+      acknowledgedBy: null,
       dismissed: false,
       ...params
     };
+    this.alerts.unshift(alert);
+    if (this.alerts.length > this.ALERT_LOG_MAX) {
+      this.alerts.length = this.ALERT_LOG_MAX;
+    }
     this.io.emit('alert:new', alert);
+  }
+
+  getAlertSnapshot(): any[] {
+    return this.alerts;
+  }
+
+  setAlertState(id: string, patch: { acknowledged?: boolean; dismissed?: boolean; by?: string | null }): boolean {
+    const alert = this.alerts.find(a => a.id === id);
+    if (!alert) return false;
+    if (patch.acknowledged !== undefined) {
+      alert.acknowledged = patch.acknowledged;
+      alert.acknowledgedBy = patch.acknowledged ? (patch.by ?? null) : null;
+    }
+    if (patch.dismissed !== undefined) alert.dismissed = patch.dismissed;
+    this.io.emit('alert:updated', alert);
+    return true;
+  }
+
+  clearAlerts(): void {
+    this.alerts = [];
+    this.io.emit('alerts:cleared');
   }
 
   // --- State snapshot (for replaying to newly-connected frontend clients) ---

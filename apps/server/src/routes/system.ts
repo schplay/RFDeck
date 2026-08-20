@@ -36,4 +36,27 @@ export const systemRoutes: FastifyPluginAsync = async (fastify) => {
     (fastify as any).deviceManager.clearRfEvents();
     return { success: true };
   });
+
+  // ── Alerts ──
+  // Acknowledgement is shared: one operator clearing an alert must clear it for
+  // everyone, or two people respond to the same incident.
+  fastify.post('/alerts/:id/ack', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { by } = (request.body ?? {}) as { by?: string };
+    const ok = (fastify as any).deviceManager.setAlertState(id, { acknowledged: true, by: by ?? null });
+    if (!ok) return reply.code(404).send({ error: 'Alert not found' });
+    return { success: true };
+  });
+
+  fastify.post('/alerts/:id/dismiss', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const ok = (fastify as any).deviceManager.setAlertState(id, { dismissed: true });
+    if (!ok) return reply.code(404).send({ error: 'Alert not found' });
+    return { success: true };
+  });
+
+  fastify.delete('/alerts', async (request) => {
+    (fastify as any).deviceManager.clearAlerts();
+    return { success: true };
+  });
 };
