@@ -83,6 +83,32 @@ model Player {
   @@index([showId])
 }
 
+// Timestamped history of what happened, persisted so it survives a restart and
+// can back a post-show report. Both alerts and RF dropout/recovery land here.
+model Event {
+  id             String   @id @default(uuid())
+  timestamp      DateTime @default(now())
+  // ALERT | RF
+  source         String
+  // DROPOUT, RECOVERY, LOW_BATTERY, CRITICAL_BATTERY, MUTED, ...
+  type           String
+  // INFO | WARNING | CRITICAL
+  severity       String   @default("INFO")
+  message        String
+  // Channel NAME — survives a device IP change, unlike the channel id.
+  channelKey     String?
+  channelName    String?
+  deviceId       String?
+  rfLevelA       Int?
+  rfLevelB       Int?
+  acknowledged   Boolean  @default(false)
+  acknowledgedBy String?
+  dismissed      Boolean  @default(false)
+
+  @@index([timestamp])
+  @@index([type])
+}
+
 model MicCheckEntry {
   id         String    @id @default(uuid())
   showId     String

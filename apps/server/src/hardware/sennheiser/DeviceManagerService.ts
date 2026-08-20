@@ -110,6 +110,11 @@ export class DeviceManagerService extends EventEmitter {
       this.trackDevice(dev);
     }
 
+    // Prune the persisted event log on startup. Without this a resident
+    // install grows without bound — at 128 channels a busy show can produce a
+    // lot of rows.
+    this.pruneEvents().catch(() => {});
+
     this.discovery.start();
     // Trigger startup scans to find devices that may have changed IP after a power cycle
     // or DHCP reassignment. Three passes cover already-booted devices, slow-booting devices,
@@ -825,6 +830,24 @@ export class DeviceManagerService extends EventEmitter {
       this.rfEventLog.length = this.RF_EVENT_LOG_MAX;
     }
     this.io.emit('rf:event', event);
+
+    // Persist so the history survives a restart and can back a show report.
+    // Fire-and-forget: a database hiccup must never interrupt live monitoring.
+    prisma.event.create({
+      data: {
+        id: event.id,
+        timestamp: new Date(event.timestamp),
+        source: 'RF',
+        type,
+        severity: type === 'DROPOUT' ? 'CRITICAL' : 'INFO',
+        message: type === 'DROPOUT' ? 'Signal dropout' : 'Signal recovered',
+        channelKey: channel.name,
+        channelName: channel.name,
+        deviceId,
+        rfLevelA: Math.round(channel.rfLevelA),
+        rfLevelB: Math.round(channel.rfLevelB),
+      },
+    }).catch(err => console.warn('[DeviceManager] Could not persist RF event:', err?.message));
   }
 
   clearRfEvents(): void {
@@ -870,6 +893,39 @@ export class DeviceManagerService extends EventEmitter {
 
     if (changedMinute || previous?.confident !== est.confident) {
       this.io.emit('battery:estimate', { channelId, ...est });
+    }
+  }
+
+  // Keep the persisted log bounded: drop anything older than the retention
+  // window, then trim by count in case a single run produced a flood.
+  private async pruneEvents(): Promise<void> {
+    const RETENTION_DAYS = 90;
+    const MAX_ROWS = 50_000;
+
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000);
+    const byAge = await prisma.event.deleteMany({ where: { timestamp: { lt: cutoff } } });
+
+    const total = await prisma.event.count();
+    let byCount = 0;
+    if (total > MAX_ROWS) {
+      // Find the timestamp of the newest row we intend to keep, then delete
+      // everything older in one statement rather than row by row.
+      const boundary = await prisma.event.findMany({
+        orderBy: { timestamp: 'desc' },
+        skip: MAX_ROWS - 1,
+        take: 1,
+        select: { timestamp: true },
+      });
+      if (boundary[0]) {
+        const result = await prisma.event.deleteMany({
+          where: { timestamp: { lt: boundary[0].timestamp } },
+        });
+        byCount = result.count;
+      }
+    }
+
+    if (byAge.count || byCount) {
+      console.log(`[DeviceManager] Pruned ${byAge.count + byCount} old event(s)`);
     }
   }
 
@@ -921,6 +977,20 @@ export class DeviceManagerService extends EventEmitter {
       this.alerts.length = this.ALERT_LOG_MAX;
     }
     this.io.emit('alert:new', alert);
+
+    prisma.event.create({
+      data: {
+        id: alert.id,
+        timestamp: new Date(alert.timestamp),
+        source: 'ALERT',
+        type: String(params.type),
+        severity: String(params.severity),
+        message: params.message,
+        channelKey: params.channelName ?? null,
+        channelName: params.channelName ?? null,
+        deviceId: params.deviceId ?? null,
+      },
+    }).catch(err => console.warn('[DeviceManager] Could not persist alert:', err?.message));
   }
 
   getAlertSnapshot(): any[] {
@@ -936,6 +1006,15 @@ export class DeviceManagerService extends EventEmitter {
     }
     if (patch.dismissed !== undefined) alert.dismissed = patch.dismissed;
     this.io.emit('alert:updated', alert);
+
+    prisma.event.updateMany({
+      where: { id },
+      data: {
+        acknowledged: alert.acknowledged,
+        acknowledgedBy: alert.acknowledgedBy,
+        dismissed: alert.dismissed,
+      },
+    }).catch(() => {});
     return true;
   }
 
