@@ -35,6 +35,17 @@ export class DeviceManagerService extends EventEmitter {
   private lastDropoutAlertAt = new Map<string, number>();
   private readonly DROPOUT_CONFIRM_MS = 3_000;
   private readonly DROPOUT_REALERT_MS = 60_000;
+  // Hysteresis band: fall below DROPOUT to enter a dropout, rise above
+  // RECOVERY to leave it. The gap stops a signal sitting on the boundary from
+  // oscillating between states.
+  private readonly DROPOUT_THRESHOLD  = 25;
+  private readonly RECOVERY_THRESHOLD = 45;
+  // channelId → current RF state. Server-side so every client agrees.
+  private rfStates = new Map<string, 'OK' | 'DROPOUT'>();
+  // Recent RF events, replayed to clients that connect mid-show. Capped —
+  // a long run would otherwise grow this without bound.
+  private rfEventLog: any[] = [];
+  private readonly RF_EVENT_LOG_MAX = 500;
   // Secondary (e.g. Dante) IPs of tracked devices, learned by asking each
   // connected SSC device for its own network config.  Discovery hits on these
   // IPs are suppressed instead of shown as phantom devices.
@@ -186,6 +197,14 @@ export class DeviceManagerService extends EventEmitter {
     }
     // Clear server-side channel cache so the snapshot doesn't replay stale channels
     this.clearChannelsForDevice(id);
+    // Drop RF state and any pending dropout timers for this device — a device
+    // we stop tracking must not fire an alert after the fact.
+    for (const key of [...this.rfStates.keys()]) {
+      if (key.startsWith(id)) this.rfStates.delete(key);
+    }
+    for (const [key, timer] of this.pendingDropouts) {
+      if (key.startsWith(id)) { clearTimeout(timer); this.pendingDropouts.delete(key); }
+    }
     this.genuinelyOnlineIps.delete(ip);
     const pendingLost = this.lostTimers.get(ip);
     if (pendingLost) { clearTimeout(pendingLost); this.lostTimers.delete(ip); }
@@ -682,40 +701,115 @@ export class DeviceManagerService extends EventEmitter {
               }
             }
 
-            // RF Dropout — confirmed only after the signal stays low for
-            // DROPOUT_CONFIRM_MS.  Sub-second 0%→100% flaps (diversity antenna
-            // switching) cancel the pending timer and never produce an alert.
-            if (oldChannel.rfLevelA >= 20 && newChannel.rfLevelA < 20 && !newChannel.isMuted) {
-              if (!this.pendingDropouts.has(channelId)) {
-                const timer = setTimeout(() => {
-                  this.pendingDropouts.delete(channelId);
-                  const current = this.channelCache.get(channelId);
-                  if (!current || current.rfLevelA >= 20 || current.isMuted) return;
-                  const lastAlert = this.lastDropoutAlertAt.get(channelId) ?? 0;
-                  if (Date.now() - lastAlert < this.DROPOUT_REALERT_MS) return;
-                  this.lastDropoutAlertAt.set(channelId, Date.now());
-                  this.emitAlert({
-                    severity: 'CRITICAL',
-                    type: 'DROPOUT',
-                    message: `RF Dropout detected`,
-                    channelId,
-                    channelName: current.name,
-                    deviceId
-                  });
-                }, this.DROPOUT_CONFIRM_MS);
-                this.pendingDropouts.set(channelId, timer);
-              }
-            } else if (newChannel.rfLevelA >= 20) {
-              const pending = this.pendingDropouts.get(channelId);
-              if (pending) {
-                clearTimeout(pending);
-                this.pendingDropouts.delete(channelId);
-              }
-            }
+            // RF dropout / recovery — see evaluateRfState.
+            this.evaluateRfState(channelId, deviceId, oldChannel, newChannel);
           }
         }
       }
     });
+  }
+
+  // ── RF dropout / recovery detection ──
+  //
+  // This runs on the server and is broadcast, because RFDeck serves several
+  // clients at once. When each browser derived its own events they diverged:
+  // a client that was closed missed events entirely, two operators comparing
+  // logs disagreed, and no log was authoritative enough to build a show report
+  // from.
+  //
+  // Hysteresis with a confirmation window: a dropout is only real once the
+  // signal STAYS below DROPOUT_THRESHOLD for DROPOUT_CONFIRM_MS. EW-DX
+  // diversity switching flaps 0%→100% within a second, and without the window
+  // that produced a dropout/recovery pair every second.
+  private evaluateRfState(
+    channelId: string,
+    deviceId: string,
+    oldChannel: Channel,
+    newChannel: Channel,
+  ): void {
+    const level = Math.max(newChannel.rfLevelA, newChannel.rfLevelB);
+    const state = this.rfStates.get(channelId) ?? 'OK';
+
+    if (state === 'OK') {
+      if (level < this.DROPOUT_THRESHOLD && !newChannel.isMuted) {
+        if (!this.pendingDropouts.has(channelId)) {
+          const timer = setTimeout(() => {
+            this.pendingDropouts.delete(channelId);
+            const current = this.channelCache.get(channelId);
+            if (!current || current.isMuted) return;
+            const nowLevel = Math.max(current.rfLevelA, current.rfLevelB);
+            if (nowLevel >= this.DROPOUT_THRESHOLD) return;
+
+            this.rfStates.set(channelId, 'DROPOUT');
+            this.emitRfEvent('DROPOUT', channelId, deviceId, current);
+
+            // Alerts are separately rate-limited: the event log wants every
+            // dropout, the alert feed does not want one a minute per channel.
+            const lastAlert = this.lastDropoutAlertAt.get(channelId) ?? 0;
+            if (Date.now() - lastAlert >= this.DROPOUT_REALERT_MS) {
+              this.lastDropoutAlertAt.set(channelId, Date.now());
+              this.emitAlert({
+                severity: 'CRITICAL',
+                type: 'DROPOUT',
+                message: 'RF Dropout detected',
+                channelId,
+                channelName: current.name,
+                deviceId,
+              });
+            }
+          }, this.DROPOUT_CONFIRM_MS);
+          this.pendingDropouts.set(channelId, timer);
+        }
+      } else {
+        // Recovered before the window elapsed — never was a dropout.
+        const pending = this.pendingDropouts.get(channelId);
+        if (pending) {
+          clearTimeout(pending);
+          this.pendingDropouts.delete(channelId);
+        }
+      }
+      return;
+    }
+
+    // state === 'DROPOUT' — require the higher threshold to call it recovered,
+    // so a signal hovering at the boundary doesn't oscillate.
+    if (level >= this.RECOVERY_THRESHOLD) {
+      this.rfStates.set(channelId, 'OK');
+      this.emitRfEvent('RECOVERY', channelId, deviceId, newChannel);
+    }
+  }
+
+  private emitRfEvent(
+    type: 'DROPOUT' | 'RECOVERY',
+    channelId: string,
+    deviceId: string,
+    channel: Channel,
+  ): void {
+    const event = {
+      id: crypto.randomUUID(),
+      type,
+      channelId,
+      channelName: channel.name,
+      deviceId,
+      rfLevelA: channel.rfLevelA,
+      rfLevelB: channel.rfLevelB,
+      timestamp: new Date().toISOString(),
+    };
+    this.rfEventLog.unshift(event);
+    if (this.rfEventLog.length > this.RF_EVENT_LOG_MAX) {
+      this.rfEventLog.length = this.RF_EVENT_LOG_MAX;
+    }
+    this.io.emit('rf:event', event);
+  }
+
+  clearRfEvents(): void {
+    this.rfEventLog = [];
+    this.io.emit('rf:events-cleared');
+  }
+
+  // Replayed to a client that connects mid-show so it isn't starting blank.
+  getRfEventSnapshot(): any[] {
+    return this.rfEventLog;
   }
 
   // --- Discovery ---

@@ -2,13 +2,24 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { Radio, Download, Wifi, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
+import { apiFetch } from '../../lib/api';
 import { useRfEventStore } from '../../stores/rfEventStore';
 import { SpectrumCanvas } from './components/SpectrumCanvas';
 import { FrequencyTable } from './components/FrequencyTable';
 import './RFScanner.css';
 
 function RfEventLog() {
-  const { events, clearAll } = useRfEventStore();
+  const events = useRfEventStore(s => s.events);
+
+  // The log lives on the server, so clearing has to happen there — the
+  // rf:events-cleared broadcast then empties every client.
+  const clearAll = async () => {
+    try {
+      await apiFetch('/system/rf-events', { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to clear RF event log:', err);
+    }
+  };
   const formatTime = (iso: string) =>
     new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 

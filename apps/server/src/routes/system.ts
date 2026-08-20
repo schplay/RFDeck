@@ -28,4 +28,12 @@ export const systemRoutes: FastifyPluginAsync = async (fastify) => {
 
     return result;
   });
+
+  // Clear the RF event log for everyone. The log is server-owned, so clearing
+  // it on one client has to clear it on all of them — otherwise operators end
+  // up comparing different histories of the same show.
+  fastify.delete('/system/rf-events', async () => {
+    (fastify as any).deviceManager.clearRfEvents();
+    return { success: true };
+  });
 };

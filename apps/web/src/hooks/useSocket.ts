@@ -4,7 +4,7 @@ import { useChannelStore } from '../stores/channelStore';
 import { useDeviceStore, DiscoveredDevice } from '../stores/deviceStore';
 import { useAlertStore } from '../stores/alertStore';
 import { useFrequencyHistoryStore } from '../stores/frequencyHistoryStore';
-import { useRfEventStore } from '../stores/rfEventStore';
+import { useRfEventStore, RfEvent } from '../stores/rfEventStore';
 import { useShowStore } from '../stores/showStore';
 import { getToken } from '../lib/api';
 import { Channel, Alert, Show } from '@rfdeck/shared-types';
@@ -65,14 +65,8 @@ function getSocket(): Socket {
         });
       }
 
-      // RF dropout / recovery detection
-      useRfEventStore.getState().addTelemetry(
-        channelData.id,
-        channelData.name || `CH ${channelData.channelIndex}`,
-        channelData.deviceId,
-        channelData.rfLevelA,
-        channelData.rfLevelB,
-      );
+      // RF dropout/recovery is detected server-side and arrives via `rf:event`
+      // so every client sees an identical log — nothing to derive here.
 
       if (existing) {
         return {
@@ -88,6 +82,15 @@ function getSocket(): Socket {
   // Alerts
   _socket.on('alert:new', (alert: Alert) => {
     useAlertStore.getState().addAlert(alert);
+  });
+
+  // RF dropout / recovery, detected server-side and replayed on connect.
+  _socket.on('rf:event', (event: RfEvent) => {
+    useRfEventStore.getState().addEvent(event);
+  });
+
+  _socket.on('rf:events-cleared', () => {
+    useRfEventStore.getState().clearAll();
   });
 
   // ── Show state (server-authoritative, pushed to every client) ──
