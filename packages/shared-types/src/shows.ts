@@ -5,6 +5,10 @@ export interface Show {
   date?: string;
   venue?: string;
   notes?: string;
+  /** Archived shows stay in the database and remain readable; they are just
+   *  filtered out of the default list. Shows may equally live indefinitely. */
+  archived: boolean;
+  archivedAt?: string;
   players: Player[];
   micCheck: ShowMicCheck;
   createdAt: string;
@@ -17,18 +21,23 @@ export interface Player {
   realName: string;
   characterName: string;
   notes: string;
-  assignedChannelId: string | null;
+  /** Channel NAME, not channel id — see apps/web/src/lib/channelKey.ts.
+   *  Channel ids embed the device IP and break on DHCP reassignment. */
+  assignedChannelKey: string | null;
 }
 
 export type MicCheckAct = 1 | 2 | 3 | 4;
 
 export interface ShowMicCheck {
   currentAct: MicCheckAct;
+  /** act -> channelKey -> entry */
   acts: Partial<Record<MicCheckAct, Record<string, ChannelCheckEntry>>>;
 }
 
 export interface ChannelCheckEntry {
   checked: boolean;
   checkedAt?: string;
+  /** Operator who performed the check, once identity is available. */
+  checkedBy?: string;
   notes?: string;
 }

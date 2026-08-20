@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Show, Player, MicCheckAct } from '@rfdeck/shared-types';
-import { useShowStore } from '../../stores/showStore';
+import { useShowStore, migrateLegacyShows } from '../../stores/showStore';
 import { useChannelStore } from '../../stores/channelStore';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
+import { channelKey } from '../../lib/channelKey';
 import {
   Plus, Trash2, CheckCircle2, Circle, ChevronRight,
-  ClipboardList, MessageSquare, RotateCcw, Users, Radio,
+  ClipboardList, MessageSquare, RotateCcw, Users, Radio, Archive, ArchiveRestore,
 } from 'lucide-react';
 import './ShowManagement.css';
 
@@ -78,11 +79,21 @@ function ShowListPanel({
   activeId,
   onSelect,
   onCreate,
+  loaded,
+  error,
+  archivedCount,
+  showArchived,
+  onToggleArchived,
 }: {
   shows: Show[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onCreate: () => void;
+  loaded: boolean;
+  error: string | null;
+  archivedCount: number;
+  showArchived: boolean;
+  onToggleArchived: () => void;
 }) {
   return (
     <div className="sm-list-panel">
@@ -92,11 +103,25 @@ function ShowListPanel({
           <Plus size={18} />
         </button>
       </div>
+
+      {archivedCount > 0 && (
+        <button className="sm-archive-toggle" onClick={onToggleArchived}>
+          <Archive size={12} />
+          {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
+        </button>
+      )}
+
       <div className="sm-show-list">
-        {shows.length === 0 && (
+        {error && <div className="sm-list-error">{error}</div>}
+
+        {!loaded && !error && (
+          <div className="sm-empty-list"><p>Loading shows…</p></div>
+        )}
+
+        {loaded && !error && shows.length === 0 && (
           <div className="sm-empty-list">
             <ClipboardList size={32} />
-            <p>No shows yet</p>
+            <p>{showArchived ? 'No shows' : 'No active shows'}</p>
             <button className="btn-primary-sm mt-2" onClick={onCreate}>Create First Show</button>
           </div>
         )}
@@ -109,7 +134,10 @@ function ShowListPanel({
               className={`sm-show-item ${activeId === sh.id ? 'active' : ''}`}
               onClick={() => onSelect(sh.id)}
             >
-              <div className="sm-show-item-name">{sh.name}</div>
+              <div className="sm-show-item-name">
+                {sh.name}
+                {sh.archived && <span className="sm-archived-dot" title="Archived" />}
+              </div>
               <div className="sm-show-item-meta">
                 <span className="sm-show-mode">{sh.environmentMode.replace('_', ' ')}</span>
                 {totalChecked > 0 && (
@@ -128,16 +156,19 @@ function ShowListPanel({
 // ── NewShowDialog ────────────────────────────────────────────────
 function NewShowDialog({ onDone }: { onDone: () => void }) {
   const createShow = useShowStore(s => s.createShow);
-  const setActiveShow = useShowStore(s => s.setActiveShow);
   const [name, setName] = useState('');
   const [mode, setMode] = useState<Show['environmentMode']>('THEATER');
+  const [saving, setSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Creation round-trips to the server, so guard against a double submit
+  // producing two shows.
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
-    const sh = createShow(name.trim(), mode);
-    setActiveShow(sh.id);
-    onDone();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    const sh = await createShow(name.trim(), mode);
+    setSaving(false);
+    if (sh) onDone();
   };
 
   return (
@@ -166,7 +197,9 @@ function NewShowDialog({ onDone }: { onDone: () => void }) {
       </div>
       <div className="sm-form-actions">
         <button type="button" className="btn-ghost" onClick={onDone}>Cancel</button>
-        <button type="submit" className="btn-primary-sm" disabled={!name.trim()}>Create Show</button>
+        <button type="submit" className="btn-primary-sm" disabled={!name.trim() || saving}>
+          {saving ? 'Creating…' : 'Create Show'}
+        </button>
       </div>
     </form>
   );
@@ -183,13 +216,14 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
 
   const currentAct = show.micCheck.currentAct;
   const actData = show.micCheck.acts[currentAct] || {};
-  const checkedCount = channels.filter(ch => actData[ch.id]?.checked).length;
+  const checkedCount = channels.filter(ch => actData[channelKey(ch)]?.checked).length;
   const allChecked = channels.length > 0 && checkedCount === channels.length;
 
-  const playerByChannelId = new Map<string, Player>(
+  // Keyed by stable channel key, not channel id — see lib/channelKey.
+  const playerByChannelKey = new Map<string, Player>(
     show.players
-      .filter(p => p.assignedChannelId)
-      .map(p => [p.assignedChannelId!, p])
+      .filter(p => p.assignedChannelKey)
+      .map(p => [p.assignedChannelKey!, p])
   );
 
   useEffect(() => {
@@ -198,13 +232,13 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
       if (e.key === 'y' || e.key === 'Y') {
         if (focusedIdx >= 0 && focusedIdx < channels.length) {
-          setChannelChecked(show.id, currentAct, channels[focusedIdx].id, true);
-          const next = channels.findIndex((c, i) => i > focusedIdx && !actData[c.id]?.checked);
+          setChannelChecked(show.id, currentAct, channelKey(channels[focusedIdx]), true);
+          const next = channels.findIndex((c, i) => i > focusedIdx && !actData[channelKey(c)]?.checked);
           if (next >= 0) setFocusedIdx(next);
         }
       } else if (e.key === 'n' || e.key === 'N') {
         if (focusedIdx >= 0 && focusedIdx < channels.length) {
-          setChannelChecked(show.id, currentAct, channels[focusedIdx].id, false);
+          setChannelChecked(show.id, currentAct, channelKey(channels[focusedIdx]), false);
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -218,13 +252,13 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [focusedIdx, channels, show.id, currentAct, actData, setChannelChecked]);
 
-  const startEditNotes = (channelId: string) => {
-    setEditingNotesFor(channelId);
-    setNotesValue(actData[channelId]?.notes || '');
+  const startEditNotes = (key: string) => {
+    setEditingNotesFor(key);
+    setNotesValue(actData[key]?.notes || '');
   };
 
-  const commitNotes = (channelId: string) => {
-    setChannelNotes(show.id, currentAct, channelId, notesValue.trim());
+  const commitNotes = (key: string) => {
+    setChannelNotes(show.id, currentAct, key, notesValue.trim());
     setEditingNotesFor(null);
   };
 
@@ -265,10 +299,11 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
         <>
           <div className="sm-channel-list">
             {channels.map((ch, idx) => {
-              const entry = actData[ch.id];
+              const key = channelKey(ch);
+              const entry = actData[key];
               const isChecked = entry?.checked ?? false;
               const isFocused = idx === focusedIdx;
-              const player = playerByChannelId.get(ch.id);
+              const player = playerByChannelKey.get(key);
 
               return (
                 <div
@@ -278,7 +313,7 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
                 >
                   <button
                     className="sm-check-toggle"
-                    onClick={e => { e.stopPropagation(); setChannelChecked(show.id, currentAct, ch.id, !isChecked); }}
+                    onClick={e => { e.stopPropagation(); setChannelChecked(show.id, currentAct, key, !isChecked); }}
                     title={isChecked ? 'Mark unchecked' : 'Mark checked'}
                   >
                     {isChecked
@@ -296,15 +331,15 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
                           : player.realName}
                       </div>
                     )}
-                    {editingNotesFor === ch.id ? (
+                    {editingNotesFor === key ? (
                       <input
                         autoFocus
                         className="sm-notes-input"
                         value={notesValue}
                         onChange={e => setNotesValue(e.target.value)}
-                        onBlur={() => commitNotes(ch.id)}
+                        onBlur={() => commitNotes(key)}
                         onKeyDown={e => {
-                          if (e.key === 'Enter') commitNotes(ch.id);
+                          if (e.key === 'Enter') commitNotes(key);
                           if (e.key === 'Escape') setEditingNotesFor(null);
                         }}
                         placeholder="Add a note..."
@@ -322,7 +357,7 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
                     <button
                       className={`sm-notes-btn ${entry?.notes ? 'has-notes' : ''}`}
                       title="Add note"
-                      onClick={e => { e.stopPropagation(); startEditNotes(ch.id); }}
+                      onClick={e => { e.stopPropagation(); startEditNotes(key); }}
                     >
                       <MessageSquare size={13} />
                     </button>
@@ -389,12 +424,12 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
               />
               <select
                 className="sm-select sm-player-field"
-                value={player.assignedChannelId || ''}
-                onChange={e => updatePlayer(show.id, player.id, { assignedChannelId: e.target.value || null })}
+                value={player.assignedChannelKey || ''}
+                onChange={e => updatePlayer(show.id, player.id, { assignedChannelKey: e.target.value || null })}
               >
                 <option value="">— unassigned —</option>
                 {channels.map(ch => (
-                  <option key={ch.id} value={ch.id}>
+                  <option key={ch.id} value={channelKey(ch)}>
                     {ch.name || `CH ${ch.channelIndex}`}
                   </option>
                 ))}
@@ -502,7 +537,7 @@ function DevicesTab() {
 
 // ── ShowDetail ───────────────────────────────────────────────────
 function ShowDetail({ show }: { show: Show }) {
-  const { deleteShow, setActiveShow } = useShowStore();
+  const { deleteShow, setActiveShow, setShowArchived } = useShowStore();
   const [activeTab, setActiveTab] = useState<'miccheck' | 'players' | 'devices'>('miccheck');
   const terms = ENV_TERMS[show.environmentMode];
   const inactiveCount = useDeviceStore(
@@ -513,18 +548,34 @@ function ShowDetail({ show }: { show: Show }) {
     <div className="sm-detail-panel">
       <div className="sm-detail-header">
         <div>
-          <h1 className="sm-detail-title">{show.name}</h1>
+          <h1 className="sm-detail-title">
+            {show.name}
+            {show.archived && <span className="sm-archived-tag">Archived</span>}
+          </h1>
           <span className="sm-detail-mode">{show.environmentMode.replace('_', ' ')}</span>
         </div>
         <div className="sm-detail-actions">
+          {/* Archiving is reversible and keeps the record; deleting is not. */}
+          <button
+            className="btn-ghost"
+            onClick={() => setShowArchived(show.id, !show.archived)}
+            title={show.archived ? 'Restore to the active list' : 'Archive — keeps all records'}
+          >
+            {show.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+            {show.archived ? 'Restore' : 'Archive'}
+          </button>
           <button
             className="btn-ghost btn-danger"
             onClick={() => {
-              if (window.confirm(`Delete show "${show.name}"?`)) {
+              if (window.confirm(
+                `Permanently delete "${show.name}" and its mic check history?\n\n` +
+                `To keep the records but hide the show, use Archive instead.`
+              )) {
                 deleteShow(show.id);
                 setActiveShow(null);
               }
             }}
+            title="Delete permanently"
           >
             <Trash2 size={14} />
           </button>
@@ -573,18 +624,35 @@ function ShowDetail({ show }: { show: Show }) {
 
 // ── Main Page ────────────────────────────────────────────────────
 export default function ShowManagement() {
-  const { shows, activeShowId, setActiveShow } = useShowStore();
+  const { shows, activeShowId, setActiveShow, fetchShows, loaded, error } = useShowStore();
   const [creatingShow, setCreatingShow] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Shows are server-owned. Load once, then stay current via `show:*` socket
+  // events; the legacy local-storage migration runs first so nothing is lost.
+  useEffect(() => {
+    (async () => {
+      await migrateLegacyShows();
+      await fetchShows();
+    })();
+  }, [fetchShows]);
 
   const activeShow = shows.find(s => s.id === activeShowId) || null;
+  const visibleShows = showArchived ? shows : shows.filter(s => !s.archived);
+  const archivedCount = shows.filter(s => s.archived).length;
 
   return (
     <div className="sm-root">
       <ShowListPanel
-        shows={shows}
+        shows={visibleShows}
         activeId={activeShowId}
         onSelect={setActiveShow}
         onCreate={() => setCreatingShow(true)}
+        loaded={loaded}
+        error={error}
+        archivedCount={archivedCount}
+        showArchived={showArchived}
+        onToggleArchived={() => setShowArchived(v => !v)}
       />
 
       <div className="sm-main">

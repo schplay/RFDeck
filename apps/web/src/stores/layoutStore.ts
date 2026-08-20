@@ -2,15 +2,13 @@ import { useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Channel } from '@rfdeck/shared-types';
+import { channelKey } from '../lib/channelKey';
 
 export type OrderMode = 'alpha' | 'custom';
 
-// Custom ordering is keyed by channel name (falling back to channel id).
-// Channel ids embed the device IP, which changes on DHCP re-assignment —
-// names are user-assigned on the hardware and survive power cycles.
-export function orderKey(ch: Channel): string {
-  return ch.name?.trim() || ch.id;
-}
+// Custom ordering uses the shared stable channel key — see lib/channelKey.
+// Re-exported under the old name so existing call sites keep working.
+export const orderKey = channelKey;
 
 interface LayoutStore {
   orderMode: OrderMode;

@@ -5,7 +5,9 @@ import { useDeviceStore, DiscoveredDevice } from '../stores/deviceStore';
 import { useAlertStore } from '../stores/alertStore';
 import { useFrequencyHistoryStore } from '../stores/frequencyHistoryStore';
 import { useRfEventStore } from '../stores/rfEventStore';
-import { Channel, Alert } from '@rfdeck/shared-types';
+import { useShowStore } from '../stores/showStore';
+import { getToken } from '../lib/api';
+import { Channel, Alert, Show } from '@rfdeck/shared-types';
 
 const SOCKET_URL = 'http://localhost:3000';
 
@@ -17,7 +19,9 @@ let _socket: Socket | null = null;
 function getSocket(): Socket {
   if (_socket) return _socket;
 
-  _socket = io(SOCKET_URL);
+  // Pass the PIN token through the handshake — the socket is gated alongside
+  // REST, since control commands travel over it.
+  _socket = io(SOCKET_URL, { auth: { token: getToken() } });
 
   _socket.on('connect', () => {
     console.log('[RFDeck] Connected to server');
@@ -84,6 +88,16 @@ function getSocket(): Socket {
   // Alerts
   _socket.on('alert:new', (alert: Alert) => {
     useAlertStore.getState().addAlert(alert);
+  });
+
+  // ── Show state (server-authoritative, pushed to every client) ──
+  // A mic-check tick made backstage must appear at FOH without a reload.
+  _socket.on('show:updated', (show: Show) => {
+    useShowStore.getState().applyServerShow(show);
+  });
+
+  _socket.on('show:deleted', ({ id }: { id: string }) => {
+    useShowStore.getState().applyServerDelete(id);
   });
 
   // Discovered device — surface in the Add Device dialog only.
