@@ -36,7 +36,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
   const { addToInventory, discovered } = useDeviceStore();
   const { socket } = useSocket();
 
-  const [defaultPassword, setDefaultPassword] = useState('');
+  const [hasDefaultPassword, setHasDefaultPassword] = useState(false);
   const [addingAll, setAddingAll] = useState(false);
   const [scanning, setScanning] = useState(false);
 
@@ -69,16 +69,17 @@ export function AddDeviceDialog({ open, onClose }: Props) {
     password: '',
   });
 
-  // Fetch default password and kick off a network scan whenever the dialog opens
+  // Find out whether a default password is configured, and kick off a network
+  // scan, whenever the dialog opens.
+  //
+  // We only learn *that* one exists, not what it is — it unlocks the wireless
+  // hardware and stays server-side. Leaving the password field blank makes the
+  // server apply the default when it creates the device.
   useEffect(() => {
     if (!open) return;
     fetch('http://localhost:3000/api/settings')
       .then((r) => r.json())
-      .then((s) => {
-        const pw = s.defaultPassword ?? '';
-        setDefaultPassword(pw);
-        setForm((f) => ({ ...f, password: f.manufacturer === 'Sennheiser' ? pw : f.password }));
-      })
+      .then((s) => setHasDefaultPassword(!!s.hasDefaultPassword))
       .catch(() => {});
 
     triggerScan();
@@ -104,8 +105,6 @@ export function AddDeviceDialog({ open, onClose }: Props) {
         ...f,
         manufacturer: value,
         port: String(hint?.port ?? f.port),
-        // Pre-fill password with default when switching to Sennheiser
-        password: value === 'Sennheiser' ? defaultPassword : f.password,
       }));
     } else {
       setForm((f) => ({ ...f, [key]: value }));
@@ -143,7 +142,8 @@ export function AddDeviceDialog({ open, onClose }: Props) {
   const handleDiscoveredClick = (d: DiscoveredDevice) => {
     if (needsAddForm(d)) {
       setExpandedKey(expandedKey === d.key ? null : d.key);
-      setDiscoverForm({ location: 'Stage Left', deviceType: 'input', password: defaultPassword });
+      // Left blank: the server applies the configured default password.
+      setDiscoverForm({ location: 'Stage Left', deviceType: 'input', password: '' });
     } else {
       addToInventory({
         name: d.name,
@@ -187,7 +187,8 @@ export function AddDeviceDialog({ open, onClose }: Props) {
           port: d.port,
           location: '',
           notes: '',
-          password: needsAddForm(d) ? (defaultPassword || undefined) : undefined,
+          // Omitted entirely — the server fills in the default password for
+          // devices that need one.
           deviceType: 'input',
         });
       }
@@ -286,7 +287,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
                         className="btn-add-all"
                         onClick={handleAddAll}
                         disabled={addingAll}
-                        title={defaultPassword ? `Using default password for authenticated devices` : `Add all with no password`}
+                        title={hasDefaultPassword ? `Using default password for authenticated devices` : `Add all with no password`}
                       >
                         {addingAll
                           ? <Loader size={13} className="btn-spinner" />
@@ -350,7 +351,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
                             <div className="expand-row">
                               <label className="form-label">
                                 Password
-                                {defaultPassword && (
+                                {hasDefaultPassword && (
                                   <span className="label-optional"> (pre-filled from default)</span>
                                 )}
                               </label>
@@ -482,7 +483,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
                   <div className="form-field form-field-full">
                     <label className="form-label">
                       Password
-                      {defaultPassword && (
+                      {hasDefaultPassword && (
                         <span className="label-optional"> (pre-filled from default — EW-DX V4+)</span>
                       )}
                     </label>

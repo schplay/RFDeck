@@ -260,7 +260,7 @@ export function DeviceDrawer({ device, onClose }: Props) {
                             className="drawer-input drawer-edit-input"
                             value={draftPassword}
                             onChange={e => setDraftPassword(e.target.value)}
-                            placeholder={device.password ? '●●●● (set — leave blank to keep)' : 'No password'}
+                            placeholder={device.hasPassword ? '●●●● (set — leave blank to keep)' : 'No password'}
                           />
                         </div>
                       )}

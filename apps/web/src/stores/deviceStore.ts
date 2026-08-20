@@ -12,7 +12,9 @@ export interface InventoryDevice {
   port: number;
   location: string;
   notes: string;
-  password?: string | null;
+  // Whether a device password is stored. The password itself is never sent to
+  // a client — it unlocks the wireless hardware and stays server-side.
+  hasPassword?: boolean;
   deviceType: DeviceType;
   // Operator-controlled. Inactive = intentionally powered off / not in this show.
   // Inactive devices are untracked server-side and hidden from the dashboard.
@@ -44,7 +46,13 @@ interface DeviceState {
 
   fetchInventory: () => Promise<void>;
   // `active` is optional on add — new devices default to active.
-  addToInventory: (device: Omit<InventoryDevice, 'id' | 'addedAt' | 'online' | 'active'> & { active?: boolean }) => Promise<void>;
+  // `password` is write-only: it is sent when creating a device but never
+  // returned, so it isn't part of InventoryDevice. Omit it and the server
+  // applies the configured default.
+  addToInventory: (
+    device: Omit<InventoryDevice, 'id' | 'addedAt' | 'online' | 'active' | 'hasPassword'>
+      & { active?: boolean; password?: string }
+  ) => Promise<void>;
   removeFromInventory: (id: string) => Promise<void>;
   updateInventoryDevice: (id: string, partial: Partial<InventoryDevice>) => Promise<void>;
   setDeviceActive: (id: string, active: boolean) => Promise<void>;

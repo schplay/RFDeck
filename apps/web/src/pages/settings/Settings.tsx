@@ -13,7 +13,9 @@ interface AppSettings {
   batteryCriticalPct: number;
   dropoutSensitivity: number;
   bindInterface: string;
+  /** Write-only. The server never returns the stored value; blank means "keep". */
   defaultPassword: string;
+  hasDefaultPassword?: boolean;
 }
 
 interface NetworkInterface {
@@ -252,7 +254,8 @@ export default function Settings() {
       fetch('http://localhost:3000/api/system/network-interfaces').then(res => res.json()),
     ])
       .then(([settingsData, interfacesData]) => {
-        setSettings({ ...settingsData, defaultPassword: settingsData.defaultPassword ?? '' });
+        // defaultPassword is always blank coming back — it is write-only.
+        setSettings({ ...settingsData, defaultPassword: '' });
         setNetworkInterfaces(interfacesData);
         setLoading(false);
       })
@@ -264,12 +267,15 @@ export default function Settings() {
 
   const handleSave = async () => {
     try {
-      await fetch('http://localhost:3000/api/settings', {
+      const res = await fetch('http://localhost:3000/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       });
-      // Could show a success toast here
+      const saved = await res.json();
+      // Clear the password field again — a blank field means "keep the stored
+      // one", so leaving the typed value visible would be misleading.
+      setSettings({ ...saved, defaultPassword: '' });
     } catch (err) {
       console.error('Failed to save settings', err);
     }
@@ -375,16 +381,25 @@ export default function Settings() {
             <h3>Device Authentication</h3>
             <p className="settings-desc">
               Default password for devices with authentication enabled (e.g. Sennheiser EW-DX V4+).
-              Pre-filled when adding devices — override per device in the Add Device dialog or device settings.
+              Applied automatically when a device is added without its own password.
+              It is encrypted at rest and never sent back to a browser, so the field
+              below is always blank — leave it blank to keep the stored password.
             </p>
             <div className="settings-form">
               <div className="form-group">
-                <label>Default Password</label>
+                <label>
+                  Default Password
+                  {settings.hasDefaultPassword && (
+                    <span className="settings-badge-set">Set</span>
+                  )}
+                </label>
                 <input
                   type="password"
                   value={settings.defaultPassword}
                   onChange={e => setSettings({ ...settings, defaultPassword: e.target.value })}
-                  placeholder="Leave blank if not required"
+                  placeholder={settings.hasDefaultPassword
+                    ? '●●●● stored — type to replace'
+                    : 'Leave blank if not required'}
                   autoComplete="new-password"
                 />
               </div>

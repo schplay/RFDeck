@@ -15,6 +15,7 @@ import {
   addSample, estimate as estimateBattery,
   BatterySample, BatteryEstimate,
 } from '../batteryEstimator';
+import { decryptSecret } from '../../auth/secretBox';
 
 type ClientType = SSCClient | G3G4Client;
 
@@ -144,8 +145,13 @@ export class DeviceManagerService extends EventEmitter {
     // Store user-assigned name for use in channel labels
     if (device.name) this.deviceNames.set(id, device.name);
 
-    // First try SSCv2 (HTTPS), passing password if one is stored
-    const client = new SSCClient(device.ip, device.port, (device as any).password ?? null);
+    // First try SSCv2 (HTTPS), passing password if one is stored.
+    // Passwords are encrypted at rest and only decrypted here, in memory.
+    const client = new SSCClient(
+      device.ip,
+      device.port,
+      decryptSecret((device as any).password ?? null),
+    );
     this.setupClientListeners(client, device.ip, device.port, id);
 
     client.on('disconnected', () => {
@@ -447,7 +453,7 @@ export class DeviceManagerService extends EventEmitter {
       // SSC device: probe the discovered IP's /api/device/identity with each
       // known inventory password until one works, then match by MAC/serial.
       const inventory = await prisma.inventoryDevice.findMany({ where: { port, active: true } });
-      const passwords = [...new Set(inventory.map(d => d.password ?? null))];
+      const passwords = [...new Set(inventory.map(d => decryptSecret(d.password ?? null)))];
 
       for (const password of passwords) {
         const identity = await SSCClient.fetchIdentity(ip, port, password);

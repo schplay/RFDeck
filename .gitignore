@@ -17,3 +17,7 @@ release
 *.zip
 *.tar.gz
 *.app
+
+# Encryption key for device passwords — never commit
+.rfdeck-key
+**/.rfdeck-key

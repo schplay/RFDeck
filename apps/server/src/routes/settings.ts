@@ -1,14 +1,22 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
+import { encryptSecret } from '../auth/secretBox';
 
 export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
-  // GET global settings
+  // GET global settings.
+  // Never return credential material or the PIN hash to a client — only whether
+  // each is configured.
   fastify.get('/settings', async (request, reply) => {
     let settings = await prisma.settings.findFirst();
     if (!settings) {
       settings = await prisma.settings.create({ data: {} });
     }
-    return settings;
+    const { defaultPassword, authPinHash, ...safe } = settings;
+    return {
+      ...safe,
+      hasDefaultPassword: !!defaultPassword,
+      pinIsSet: !!authPinHash,
+    };
   });
 
   // PUT update global settings
@@ -29,12 +37,18 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
         batteryCriticalPct:  data.batteryCriticalPct,
         dropoutSensitivity:  data.dropoutSensitivity,
         bindInterface:       data.bindInterface,
+        // Encrypted at rest — this unlocks wireless hardware. A blank string
+        // means "leave unchanged" rather than "clear", so a user editing other
+        // settings doesn't wipe a stored credential.
         defaultPassword:     Object.prototype.hasOwnProperty.call(data, 'defaultPassword')
-                               ? (data.defaultPassword ?? null)
+                               ? (data.defaultPassword
+                                    ? encryptSecret(data.defaultPassword)
+                                    : undefined)
                                : undefined,
       }
     });
 
-    return settings;
+    const { defaultPassword, authPinHash, ...safe } = settings;
+    return { ...safe, hasDefaultPassword: !!defaultPassword, pinIsSet: !!authPinHash };
   });
 };

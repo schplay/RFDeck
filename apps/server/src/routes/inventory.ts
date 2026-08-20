@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
 import { DeviceManagerService } from '../hardware/sennheiser/DeviceManagerService';
+import { encryptSecret } from '../auth/secretBox';
 
 // Device passwords unlock the wireless hardware itself and must never reach a
 // client. Every response goes through this — the client learns only whether a
@@ -28,6 +29,22 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
   // POST new device
   fastify.post('/inventory', async (request, reply) => {
     const data = request.body as any;
+
+    // Resolve the password to store, already encrypted.
+    //
+    // When the client supplies one, encrypt it. When it doesn't, fall back to
+    // the configured default — which is already encrypted in the settings row,
+    // so it is carried across as-is rather than encrypted twice. Resolving this
+    // server-side means the stored credential never has to be sent to a client
+    // in order to be useful.
+    let storedPassword: string | null = null;
+    if (data.password) {
+      storedPassword = encryptSecret(data.password);
+    } else {
+      const settings = await prisma.settings.findFirst();
+      storedPassword = settings?.defaultPassword ?? null;
+    }
+
     const device = await prisma.inventoryDevice.create({
       data: {
         name: data.name,
@@ -37,7 +54,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
         port: data.port,
         location: data.location,
         notes: data.notes,
-        password: data.password ?? null,
+        password: storedPassword,
         deviceType: data.deviceType ?? 'input',
         active: data.active ?? true,
       }
@@ -85,7 +102,9 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
         port: data.port,
         location: data.location,
         notes: data.notes,
-        password: Object.prototype.hasOwnProperty.call(data, 'password') ? (data.password ?? null) : undefined,
+        password: Object.prototype.hasOwnProperty.call(data, 'password')
+          ? encryptSecret(data.password ?? null)
+          : undefined,
         deviceType: data.deviceType ?? undefined,
         active: typeof data.active === 'boolean' ? data.active : undefined,
       }
