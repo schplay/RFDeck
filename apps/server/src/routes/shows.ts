@@ -113,9 +113,20 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
     return await pushShow(id);
   });
 
-  fastify.delete('/shows/:id', async (request) => {
+  fastify.delete('/shows/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
-    await prisma.show.delete({ where: { id } }).catch(() => {});
+    try {
+      await prisma.show.delete({ where: { id } });
+    } catch (err: any) {
+      // Never report success on a failed delete — the client would drop the
+      // show from its list while the record survived on the server, and the
+      // two would silently disagree until the next reload.
+      if (err?.code === 'P2025') {
+        return reply.code(404).send({ error: 'Show not found' });
+      }
+      request.log.error({ err }, 'Failed to delete show');
+      return reply.code(500).send({ error: 'Could not delete the show' });
+    }
     io()?.emit('show:deleted', { id });
     return { success: true };
   });
@@ -141,27 +152,39 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
     return await pushShow(id);
   });
 
-  fastify.put('/shows/:id/players/:playerId', async (request) => {
+  fastify.put('/shows/:id/players/:playerId', async (request, reply) => {
     const { id, playerId } = request.params as { id: string; playerId: string };
     const d = request.body as any;
-    await prisma.player.update({
-      where: { id: playerId },
-      data: {
-        realName:      d.realName      ?? undefined,
-        characterName: d.characterName ?? undefined,
-        notes:         d.notes         ?? undefined,
-        assignedChannelKey: Object.prototype.hasOwnProperty.call(d, 'assignedChannelKey')
-          ? (d.assignedChannelKey || null)
-          : undefined,
-        sortIndex: typeof d.sortIndex === 'number' ? d.sortIndex : undefined,
-      },
-    }).catch(() => {});
+    try {
+      await prisma.player.update({
+        where: { id: playerId },
+        data: {
+          realName:      d.realName      ?? undefined,
+          characterName: d.characterName ?? undefined,
+          notes:         d.notes         ?? undefined,
+          assignedChannelKey: Object.prototype.hasOwnProperty.call(d, 'assignedChannelKey')
+            ? (d.assignedChannelKey || null)
+            : undefined,
+          sortIndex: typeof d.sortIndex === 'number' ? d.sortIndex : undefined,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2025') return reply.code(404).send({ error: 'Player not found' });
+      request.log.error({ err }, 'Failed to update player');
+      return reply.code(500).send({ error: 'Could not save the change' });
+    }
     return await pushShow(id);
   });
 
-  fastify.delete('/shows/:id/players/:playerId', async (request) => {
+  fastify.delete('/shows/:id/players/:playerId', async (request, reply) => {
     const { id, playerId } = request.params as { id: string; playerId: string };
-    await prisma.player.delete({ where: { id: playerId } }).catch(() => {});
+    try {
+      await prisma.player.delete({ where: { id: playerId } });
+    } catch (err: any) {
+      if (err?.code === 'P2025') return reply.code(404).send({ error: 'Player not found' });
+      request.log.error({ err }, 'Failed to delete player');
+      return reply.code(500).send({ error: 'Could not remove the player' });
+    }
     return await pushShow(id);
   });
 
