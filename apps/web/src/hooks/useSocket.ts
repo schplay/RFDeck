@@ -68,14 +68,18 @@ function getSocket(): Socket {
       // RF dropout/recovery is detected server-side and arrives via `rf:event`
       // so every client sees an identical log — nothing to derive here.
 
+      // Stamp arrival so views can distinguish live readings from frozen ones.
+      const lastUpdate = { ...state.lastUpdate, [channelData.id]: Date.now() };
+
       if (existing) {
         return {
           channels: state.channels.map((c) =>
             c.id === channelData.id ? { ...c, ...channelData } : c
           ),
+          lastUpdate,
         };
       }
-      return { channels: [...state.channels, channelData] };
+      return { channels: [...state.channels, channelData], lastUpdate };
     });
   });
 
@@ -143,9 +147,9 @@ function getSocket(): Socket {
   // dashboard and device list reflect the new address immediately.
   _socket.on('device:ip-changed', (data: { id: string; oldIp: string; newIp: string; port: number; name: string }) => {
     console.log(`[RFDeck] Device "${data.name}" moved: ${data.oldIp} → ${data.newIp}`);
-    useChannelStore.setState((state) => ({
-      channels: state.channels.filter((c) => !c.deviceId.startsWith(data.oldIp)),
-    }));
+    // Drops the freshness stamps too, so the old IP's channels can't linger as
+    // permanently-stale ghosts.
+    useChannelStore.getState().removeChannelsForDevice(data.oldIp);
     useDeviceStore.getState().fetchInventory();
   });
 
@@ -167,9 +171,7 @@ function getSocket(): Socket {
 
   // Device was explicitly removed from inventory — drop its channel strips immediately
   _socket.on('device:untracked', ({ ip }: { ip: string }) => {
-    useChannelStore.setState((state) => ({
-      channels: state.channels.filter((c) => !c.deviceId.startsWith(ip)),
-    }));
+    useChannelStore.getState().removeChannelsForDevice(ip);
   });
 
   return _socket;

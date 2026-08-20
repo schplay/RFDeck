@@ -225,3 +225,58 @@
   font-style: italic;
 }
 
+
+/* ── Connection loss / stale telemetry ──
+   Frozen readings that still look plausible are the dangerous failure during a
+   show. Make "no longer updating" unmistakable from across a room. */
+.connection-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 18px;
+  background: rgba(255, 85, 85, 0.12);
+  border: 1px solid rgba(255, 85, 85, 0.35);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.connection-banner strong { font-weight: 700; }
+
+/* Individual channel that has stopped reporting while the socket is still up */
+.channel-stale {
+  position: relative;
+  opacity: 0.55;
+  filter: saturate(0.4);
+  transition: opacity 0.3s, filter 0.3s;
+}
+
+.channel-stale::after {
+  content: 'NO SIGNAL UPDATE';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 85, 85, 0.9);
+  color: #1a0505;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Whole-page treatment when the socket itself is down */
+.dashboard-page.is-disconnected .dashboard-content {
+  opacity: 0.6;
+  filter: saturate(0.35);
+  transition: opacity 0.3s, filter 0.3s;
+}
+
+/* One indicator is enough — suppress per-card badges during a full outage */
+.dashboard-page.is-disconnected .channel-stale::after { display: none; }
+.dashboard-page.is-disconnected .channel-stale { opacity: 1; filter: none; }

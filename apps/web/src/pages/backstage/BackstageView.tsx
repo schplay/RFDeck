@@ -90,7 +90,14 @@ export default function BackstageView() {
   const setFlipRef = useFlipAnimation(displayChannels.map(ch => ch.id).join('|'));
 
   return (
-    <div className="bs-root">
+    <div className={`bs-root ${!isConnected ? 'bs-disconnected' : ''}`}>
+      {/* A stage-facing display showing frozen numbers is worse than one showing
+          an obvious fault — say so at full width. */}
+      {!isConnected && (
+        <div className="bs-conn-banner" role="alert">
+          NO SERVER CONNECTION — VALUES BELOW ARE NOT UPDATING
+        </div>
+      )}
       <div className="bs-topbar">
         <div className="bs-brand">RFDeck <span className="bs-brand-sub">BACKSTAGE</span></div>
         <div className="bs-controls">

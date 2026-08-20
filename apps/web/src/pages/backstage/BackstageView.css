@@ -350,3 +350,32 @@
   border-color: rgba(255, 90, 82, 0.45);
   background: rgba(255, 90, 82, 0.12);
 }
+
+/* ── Connection loss ──
+   This display faces stage crew, so a silent freeze is the worst failure mode.
+   Full-width, high contrast, and readable at distance. */
+.bs-conn-banner {
+  padding: 12px 24px;
+  background: #ff5555;
+  color: #1a0505;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(13px, 1.6vw, 18px);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: center;
+  animation: bs-conn-flash 1.4s ease-in-out infinite;
+}
+
+@keyframes bs-conn-flash {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.72; }
+}
+
+.bs-disconnected .bs-grid {
+  opacity: 0.5;
+  filter: saturate(0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bs-conn-banner { animation: none; }
+}

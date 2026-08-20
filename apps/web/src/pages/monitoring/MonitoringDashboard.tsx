@@ -5,7 +5,8 @@ import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { DeviceDrawer } from '../inventory/components/DeviceDrawer';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
-import { LayoutGrid, List, Search, ArrowUpDown } from 'lucide-react';
+import { LayoutGrid, List, Search, ArrowUpDown, WifiOff } from 'lucide-react';
+import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import './MonitoringDashboard.css';
 
 export default function MonitoringDashboard() {
@@ -50,6 +51,7 @@ export default function MonitoringDashboard() {
 
   const { handlers: dragHandlers } = useDragReorder(filteredChannels);
   const setFlipRef = useFlipAnimation(filteredChannels.map(ch => ch.id).join('|'));
+  const { isConnected, isChannelStale } = useConnectionHealth();
 
   // Double-clicking a channel opens the details drawer for its parent device.
   // Held by ID so the drawer reflects live store updates rather than a snapshot.
@@ -64,7 +66,19 @@ export default function MonitoringDashboard() {
   };
 
   return (
-    <div className="dashboard-page">
+    <div className={`dashboard-page ${!isConnected ? 'is-disconnected' : ''}`}>
+      {/* Frozen telemetry that still looks plausible is more dangerous than an
+          obvious outage — make the loss impossible to miss. */}
+      {!isConnected && (
+        <div className="connection-banner" role="alert">
+          <WifiOff size={15} />
+          <span>
+            <strong>Disconnected from RFDeck.</strong> Readings below are the last
+            values received and are no longer updating.
+          </span>
+        </div>
+      )}
+
       <header className="dashboard-header">
         <div className="header-left">
           <h1>Monitoring Dashboard</h1>
@@ -125,8 +139,11 @@ export default function MonitoringDashboard() {
               <div
                 key={ch.id}
                 ref={setFlipRef(ch.id)}
+                className={isChannelStale(ch.id) ? 'channel-stale' : undefined}
                 onDoubleClick={() => openDeviceFor(ch)}
-                title="Double-click for device details"
+                title={isChannelStale(ch.id)
+                  ? 'No recent telemetry — showing last known values'
+                  : 'Double-click for device details'}
                 {...dragHandlers(ch)}
               >
                 {/* Per-strip boundary: one malformed channel degrades to an
