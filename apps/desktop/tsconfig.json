@@ -3,5 +3,8 @@
   "compilerOptions": {
     "outDir": "dist"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  // preload.ts is compiled separately to CommonJS — Electron loads preload
+  // scripts as CJS, but this package is "type": "module".
+  "exclude": ["src/preload.ts"]
 }
