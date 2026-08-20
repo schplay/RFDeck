@@ -7,6 +7,10 @@ import { Server } from 'socket.io';
 import { Device, Channel } from '@rfdeck/shared-types';
 import { prisma } from '../../db';
 import { getMacByIp } from '../../utils/arp';
+import {
+  evaluateSample, confirmDropout, DEFAULT_RF_THRESHOLDS,
+  RfState, RfThresholds,
+} from '../rfState';
 
 type ClientType = SSCClient | G3G4Client;
 
@@ -33,15 +37,11 @@ export class DeviceManagerService extends EventEmitter {
   // window, and don't re-alert the same channel more than once a minute.
   private pendingDropouts = new Map<string, NodeJS.Timeout>();
   private lastDropoutAlertAt = new Map<string, number>();
-  private readonly DROPOUT_CONFIRM_MS = 3_000;
   private readonly DROPOUT_REALERT_MS = 60_000;
-  // Hysteresis band: fall below DROPOUT to enter a dropout, rise above
-  // RECOVERY to leave it. The gap stops a signal sitting on the boundary from
-  // oscillating between states.
-  private readonly DROPOUT_THRESHOLD  = 25;
-  private readonly RECOVERY_THRESHOLD = 45;
+  // Hysteresis band and confirmation window — see hardware/rfState.ts.
+  private rfThresholds: RfThresholds = { ...DEFAULT_RF_THRESHOLDS };
   // channelId → current RF state. Server-side so every client agrees.
-  private rfStates = new Map<string, 'OK' | 'DROPOUT'>();
+  private rfStates = new Map<string, RfState>();
   // Recent RF events, replayed to clients that connect mid-show. Capped —
   // a long run would otherwise grow this without bound.
   private rfEventLog: any[] = [];
@@ -727,55 +727,56 @@ export class DeviceManagerService extends EventEmitter {
     oldChannel: Channel,
     newChannel: Channel,
   ): void {
-    const level = Math.max(newChannel.rfLevelA, newChannel.rfLevelB);
     const state = this.rfStates.get(channelId) ?? 'OK';
+    const action = evaluateSample(
+      state,
+      newChannel,
+      this.rfThresholds,
+      this.pendingDropouts.has(channelId),
+    );
 
-    if (state === 'OK') {
-      if (level < this.DROPOUT_THRESHOLD && !newChannel.isMuted) {
-        if (!this.pendingDropouts.has(channelId)) {
-          const timer = setTimeout(() => {
-            this.pendingDropouts.delete(channelId);
-            const current = this.channelCache.get(channelId);
-            if (!current || current.isMuted) return;
-            const nowLevel = Math.max(current.rfLevelA, current.rfLevelB);
-            if (nowLevel >= this.DROPOUT_THRESHOLD) return;
+    switch (action.kind) {
+      case 'arm': {
+        const timer = setTimeout(() => {
+          this.pendingDropouts.delete(channelId);
+          const current = this.channelCache.get(channelId);
+          if (!confirmDropout(current, this.rfThresholds)) return;
 
-            this.rfStates.set(channelId, 'DROPOUT');
-            this.emitRfEvent('DROPOUT', channelId, deviceId, current);
+          this.rfStates.set(channelId, 'DROPOUT');
+          this.emitRfEvent('DROPOUT', channelId, deviceId, current!);
 
-            // Alerts are separately rate-limited: the event log wants every
-            // dropout, the alert feed does not want one a minute per channel.
-            const lastAlert = this.lastDropoutAlertAt.get(channelId) ?? 0;
-            if (Date.now() - lastAlert >= this.DROPOUT_REALERT_MS) {
-              this.lastDropoutAlertAt.set(channelId, Date.now());
-              this.emitAlert({
-                severity: 'CRITICAL',
-                type: 'DROPOUT',
-                message: 'RF Dropout detected',
-                channelId,
-                channelName: current.name,
-                deviceId,
-              });
-            }
-          }, this.DROPOUT_CONFIRM_MS);
-          this.pendingDropouts.set(channelId, timer);
-        }
-      } else {
-        // Recovered before the window elapsed — never was a dropout.
+          // Alerts are rate-limited separately from events: the log wants every
+          // dropout, the alert feed does not want one a minute per channel.
+          const lastAlert = this.lastDropoutAlertAt.get(channelId) ?? 0;
+          if (Date.now() - lastAlert >= this.DROPOUT_REALERT_MS) {
+            this.lastDropoutAlertAt.set(channelId, Date.now());
+            this.emitAlert({
+              severity: 'CRITICAL',
+              type: 'DROPOUT',
+              message: 'RF Dropout detected',
+              channelId,
+              channelName: current!.name,
+              deviceId,
+            });
+          }
+        }, this.rfThresholds.confirmMs);
+        this.pendingDropouts.set(channelId, timer);
+        break;
+      }
+
+      case 'disarm': {
         const pending = this.pendingDropouts.get(channelId);
         if (pending) {
           clearTimeout(pending);
           this.pendingDropouts.delete(channelId);
         }
+        break;
       }
-      return;
-    }
 
-    // state === 'DROPOUT' — require the higher threshold to call it recovered,
-    // so a signal hovering at the boundary doesn't oscillate.
-    if (level >= this.RECOVERY_THRESHOLD) {
-      this.rfStates.set(channelId, 'OK');
-      this.emitRfEvent('RECOVERY', channelId, deviceId, newChannel);
+      case 'recovered':
+        this.rfStates.set(channelId, 'OK');
+        this.emitRfEvent('RECOVERY', channelId, deviceId, newChannel);
+        break;
     }
   }
 

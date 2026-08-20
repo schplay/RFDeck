@@ -1,7 +1,24 @@
 # RFDeck Implementation Plan
 
-**Baseline:** commit `9e67343`, working tree clean.
 **Goal:** an application that is trustworthy in a live show and complete against the README.
+
+## Progress
+
+Stage 1 is complete and most of Stage 2. Items are marked ✅ as they land.
+
+| Stage | State |
+|---|---|
+| 1 — Durability & truth | ✅ Complete |
+| 2 — Shared state | ✅ 2.1–2.4 complete; 2.5 outstanding |
+| 3 — Access control & deployment | ✅ PIN gate complete; 3.2 encryption and 3.3 headless docs outstanding |
+| 4 — Show-day hardening | ✅ 4.4 complete; 4.1–4.3 outstanding |
+| 5 — Client reach | Not started |
+| 6 — Feature completion | Not started |
+| 7 — Breadth & operations | In progress — test suite started |
+
+**Answered since first draft:** scale is 2–128 channels and 1–10 concurrent
+users; access control is an optional admin-set PIN rather than per-user login;
+shows may live indefinitely or be archived, operator's choice.
 
 ---
 

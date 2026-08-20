@@ -5,5 +5,8 @@
     "module": "CommonJS",
     "moduleResolution": "Node"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  // Tests run through Vitest, which does its own transform — keep them out of
+  // the shipped build.
+  "exclude": ["src/**/*.test.ts"]
 }

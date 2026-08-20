@@ -12,7 +12,8 @@
     "build:web": "pnpm --filter @rfdeck/web build",
     "build:all": "turbo run build",
     "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
+    "test": "turbo run test"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
