@@ -333,8 +333,10 @@ pnpm --filter @rfdeck/desktop package
 | **Phase 4** | Mobile PWA, performer/notebook system (Theater mode), backstage/talent view, Web Push | Backstage complete; rest not started |
 | **Phase 5** | Additional hardware brands, Docker packaging, E2E tests, auto-update | Not started |
 
-The sequenced plan for the remaining work, including deployment and verification
-procedures, is in [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
+The sequenced plan for the remaining work is in
+[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), and deployment,
+firewall requirements, and verification procedures are in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ---
 
