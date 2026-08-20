@@ -5,6 +5,7 @@ import { DiscoveredDevice } from '../hardware/sennheiser/DiscoveryService';
 import { mcpBus } from '../hardware/sennheiser/McpBus';
 import { WebRTCSignaling } from '../audio/WebRTCSignaling';
 import { AES67Manager } from '../audio/AES67Manager';
+import { isRequestAuthorized } from '../auth/pinAuth';
 
 export default fp(async (fastify, opts) => {
   const io = new Server(fastify.server, {
@@ -57,6 +58,23 @@ export default fp(async (fastify, opts) => {
     mcpBus.close();
     audioManager.stop();
     io.close();
+  });
+
+  // PIN gate for realtime traffic. Control commands (mute, gain, frequency)
+  // arrive over the socket rather than REST, so guarding only REST would leave
+  // the actual attack surface open. No-op on the default open configuration.
+  io.use(async (socket, next) => {
+    try {
+      const token = (socket.handshake.auth?.token
+                  ?? socket.handshake.headers['x-rfdeck-token']) as string | undefined;
+      const ip = socket.handshake.address;
+      if (await isRequestAuthorized(ip, token)) return next();
+      next(new Error('PIN_REQUIRED'));
+    } catch {
+      // Never fail closed on an internal error — a database hiccup must not
+      // black out a live show on an installation that has no PIN configured.
+      next();
+    }
   });
 
   io.on('connection', (socket) => {

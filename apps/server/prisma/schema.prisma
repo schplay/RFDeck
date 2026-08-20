@@ -37,5 +37,65 @@ model Settings {
   dropoutSensitivity Int      @default(20)
   bindInterface      String   @default("0.0.0.0")
   defaultPassword    String?
+
+  // ── Remote access ──
+  // Default is an open, trusted show network. When authPinEnabled is on,
+  // non-loopback clients must present the PIN before receiving any data.
+  authPinEnabled     Boolean  @default(false)
+  authPinHash        String?
+  // Hours before a remote client must re-enter the PIN. 0 = never re-prompt.
+  authReauthHours    Int      @default(0)
+}
+
+// ── Show & mic check ──
+// Shows may live indefinitely or be archived; archiving is a soft flag so the
+// record and its history are always recoverable.
+
+model Show {
+  id              String    @id @default(uuid())
+  name            String
+  environmentMode String    @default("THEATER")
+  date            String?
+  venue           String?
+  notes           String?
+  currentAct      Int       @default(1)
+  archived        Boolean   @default(false)
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  players         Player[]
+  micCheck        MicCheckEntry[]
+}
+
+model Player {
+  id                 String  @id @default(uuid())
+  showId             String
+  show               Show    @relation(fields: [showId], references: [id], onDelete: Cascade)
+  realName           String
+  characterName      String  @default("")
+  notes              String  @default("")
+  // Channel NAME, not channel id — ids embed the device IP, which changes on
+  // DHCP reassignment. A show must survive a power cycle that moves receivers.
+  assignedChannelKey String?
+  sortIndex          Int     @default(0)
+
+  @@index([showId])
+}
+
+model MicCheckEntry {
+  id         String    @id @default(uuid())
+  showId     String
+  show       Show      @relation(fields: [showId], references: [id], onDelete: Cascade)
+  act        Int
+  channelKey String
+  checked    Boolean   @default(false)
+  checkedAt  DateTime?
+  // Populated once operator identity exists; nullable so no second migration.
+  checkedBy  String?
+  notes      String?
+
+  @@unique([showId, act, channelKey])
+  @@index([showId])
 }
 

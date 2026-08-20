@@ -2,6 +2,14 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
 import { DeviceManagerService } from '../hardware/sennheiser/DeviceManagerService';
 
+// Device passwords unlock the wireless hardware itself and must never reach a
+// client. Every response goes through this — the client learns only whether a
+// password is set, which is all the UI needs.
+function publicDevice<T extends { password?: string | null }>(device: T) {
+  const { password, ...rest } = device;
+  return { ...rest, hasPassword: !!password };
+}
+
 export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
   // POST trigger a one-shot network discovery scan
   fastify.post('/discovery/scan', async (request, reply) => {
@@ -14,7 +22,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
   // GET all inventory devices
   fastify.get('/inventory', async (request, reply) => {
     const devices = await prisma.inventoryDevice.findMany();
-    return devices;
+    return devices.map(publicDevice);
   });
 
   // POST new device
@@ -40,7 +48,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
       (fastify as any).deviceManager.trackDevice(device);
     }
 
-    return device;
+    return publicDevice(device);
   });
 
   // PATCH set a device active/inactive.  Inactive devices are intentionally
@@ -59,7 +67,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
       id: device.id, ip: device.ip, port: device.port, active,
     });
 
-    return device;
+    return publicDevice(device);
   });
 
   // PUT update device
@@ -86,7 +94,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
     // If IP/port changed, we should probably recreate the client
     (fastify as any).deviceManager.updateTrackedDevice(device);
 
-    return device;
+    return publicDevice(device);
   });
 
   // DELETE device
