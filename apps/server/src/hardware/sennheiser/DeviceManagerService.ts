@@ -11,6 +11,10 @@ import {
   evaluateSample, confirmDropout, DEFAULT_RF_THRESHOLDS,
   RfState, RfThresholds,
 } from '../rfState';
+import {
+  addSample, estimate as estimateBattery,
+  BatterySample, BatteryEstimate,
+} from '../batteryEstimator';
 
 type ClientType = SSCClient | G3G4Client;
 
@@ -42,6 +46,13 @@ export class DeviceManagerService extends EventEmitter {
   private rfThresholds: RfThresholds = { ...DEFAULT_RF_THRESHOLDS };
   // channelId → current RF state. Server-side so every client agrees.
   private rfStates = new Map<string, RfState>();
+  // channelId → recent battery readings, for runtime projection. Computed on
+  // the server so every client shows the same estimate.
+  private batteryHistory = new Map<string, BatterySample[]>();
+  private batteryEstimates = new Map<string, BatteryEstimate>();
+  // Battery moves slowly; sampling every reading would be pure noise.
+  private lastBatterySampleAt = new Map<string, number>();
+  private readonly BATTERY_SAMPLE_INTERVAL_MS = 30_000;
   // Recent RF events, replayed to clients that connect mid-show. Capped —
   // a long run would otherwise grow this without bound.
   private rfEventLog: any[] = [];
@@ -204,6 +215,15 @@ export class DeviceManagerService extends EventEmitter {
     }
     for (const [key, timer] of this.pendingDropouts) {
       if (key.startsWith(id)) { clearTimeout(timer); this.pendingDropouts.delete(key); }
+    }
+    // Discard battery history — a device that comes back after being off has a
+    // discontinuous curve, and projecting across the gap would be wrong.
+    for (const key of [...this.batteryHistory.keys()]) {
+      if (key.startsWith(id)) {
+        this.batteryHistory.delete(key);
+        this.batteryEstimates.delete(key);
+        this.lastBatterySampleAt.delete(key);
+      }
     }
     this.genuinelyOnlineIps.delete(ip);
     const pendingLost = this.lostTimers.get(ip);
@@ -704,6 +724,10 @@ export class DeviceManagerService extends EventEmitter {
             // RF dropout / recovery — see evaluateRfState.
             this.evaluateRfState(channelId, deviceId, oldChannel, newChannel);
           }
+
+          // Battery runtime projection — sampled on an interval regardless of
+          // whether this was the first reading for the channel.
+          this.sampleBattery(channelId, newChannel);
         }
       }
     });
@@ -811,6 +835,47 @@ export class DeviceManagerService extends EventEmitter {
   // Replayed to a client that connects mid-show so it isn't starting blank.
   getRfEventSnapshot(): any[] {
     return this.rfEventLog;
+  }
+
+  // ── Battery runtime ──
+  // Sampled and projected on the server so every client shows the same figure,
+  // and so history survives a client reload.
+  private sampleBattery(channelId: string, channel: Channel): void {
+    if (channel.batteryPercent === undefined) return;
+
+    const now = Date.now();
+    const last = this.lastBatterySampleAt.get(channelId) ?? 0;
+    if (now - last < this.BATTERY_SAMPLE_INTERVAL_MS) return;
+    this.lastBatterySampleAt.set(channelId, now);
+
+    const history = addSample(
+      this.batteryHistory.get(channelId) ?? [],
+      { t: now, percent: channel.batteryPercent },
+    );
+    this.batteryHistory.set(channelId, history);
+
+    const est = estimateBattery(history);
+    if (!est) return;
+
+    const previous = this.batteryEstimates.get(channelId);
+    this.batteryEstimates.set(channelId, est);
+
+    // Only push when the displayed value would actually change — an estimate
+    // drifting by seconds is not worth a broadcast to every client.
+    const changedMinute =
+      previous?.minutesRemaining === null || previous === undefined
+        ? est.minutesRemaining !== null
+        : est.minutesRemaining === null ||
+          Math.abs((previous.minutesRemaining ?? 0) - (est.minutesRemaining ?? 0)) >= 1;
+
+    if (changedMinute || previous?.confident !== est.confident) {
+      this.io.emit('battery:estimate', { channelId, ...est });
+    }
+  }
+
+  getBatteryEstimateSnapshot(): Array<{ channelId: string } & BatteryEstimate> {
+    return Array.from(this.batteryEstimates.entries())
+      .map(([channelId, est]) => ({ channelId, ...est }));
   }
 
   // --- Discovery ---

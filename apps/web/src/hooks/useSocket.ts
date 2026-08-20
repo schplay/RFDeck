@@ -6,6 +6,7 @@ import { useAlertStore } from '../stores/alertStore';
 import { useFrequencyHistoryStore } from '../stores/frequencyHistoryStore';
 import { useRfEventStore, RfEvent } from '../stores/rfEventStore';
 import { useShowStore } from '../stores/showStore';
+import { useBatteryStore, BatteryEstimate } from '../stores/batteryStore';
 import { getToken } from '../lib/api';
 import { Channel, Alert, Show } from '@rfdeck/shared-types';
 
@@ -94,6 +95,11 @@ function getSocket(): Socket {
 
   _socket.on('alerts:cleared', () => {
     useAlertStore.getState().applyServerClear();
+  });
+
+  // Battery runtime projection, computed server-side from its sampling history.
+  _socket.on('battery:estimate', (est: BatteryEstimate) => {
+    useBatteryStore.getState().applyEstimate(est);
   });
 
   // RF dropout / recovery, detected server-side and replayed on connect.

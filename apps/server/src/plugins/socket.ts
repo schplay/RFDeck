@@ -98,6 +98,11 @@ export default fp(async (fastify, opts) => {
     for (const alert of deviceManager.getAlertSnapshot().slice().reverse()) {
       socket.emit('alert:new', alert);
     }
+    // Battery projections are built from server-held history, so a fresh client
+    // gets them immediately rather than waiting to accumulate its own.
+    for (const est of deviceManager.getBatteryEstimateSnapshot()) {
+      socket.emit('battery:estimate', est);
+    }
     for (const device of deviceManager.getDiscoveredSnapshot()) {
       socket.emit('device:discovered', {
         key: `${device.ip}:${device.port}`,
