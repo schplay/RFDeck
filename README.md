@@ -20,14 +20,28 @@ RFDeck is designed for the A2 / RF tech who manages multi-brand wireless systems
 
 ## Core Features
 
+> **Status legend.** This section describes the full product vision. Items are
+> marked with their current implementation state so the document stays usable as
+> a specification without overstating what ships today.
+>
+> | Mark | Meaning |
+> |---|---|
+> | *(no mark)* | Implemented and working against real hardware |
+> | 🚧 | Partially implemented — see the note |
+> | 📋 | Planned, not yet built |
+>
+> See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for sequencing.
+
 ### Live Monitoring Dashboard
 Real-time telemetry for all active wireless channels:
 - Dual-antenna RF signal meters (A/B, 10-segment with glow indicators)
 - Audio level (AF) meters
-- Battery percentage with estimated runtime countdown
+- Battery percentage 🚧 *— estimated runtime countdown not yet implemented*
 - Status indicators: ON AIR, MUTED, TX OFF, LOW BATT, DROPOUT
 - Color-coded channel cards (cyan = healthy, orange = warning, red = critical)
 - Per-channel quick actions: Mute, Listen, Identify Hardware
+- Drag-to-reorder card layout with A–Z or custom ordering, persisted per client
+- Double-click a channel to open its device details
 
 ### Audio Monitoring
 - Route any channel to local audio output for real-time headphone monitoring
@@ -35,60 +49,87 @@ Real-time telemetry for all active wireless channels:
 - OS audio device support on desktop (USB interfaces, WASAPI, CoreAudio)
 - Mobile audio monitoring via WebRTC stream over Wi-Fi (same path as browser)
 
-### Instant Audio Replay
-- Configurable rolling audio buffer per device (1–30 minutes)
-- Per-device enable/disable; configurable duration
-- Live storage estimate display
-- Click-to-scrub playback for investigating dropouts or anomalies
+### Instant Audio Replay 📋
+- Configurable rolling audio buffer per device (1–30 minutes) 📋
+- Per-device enable/disable; configurable duration 📋
+- Live storage estimate display 📋
+- Click-to-scrub playback for investigating dropouts or anomalies 📋
 
 ### Diagnostics
-- Auto-detection of: signal dropouts, clipping, sustained silence, sudden level drops, low SNR
-- Alert feed with severity levels (CRITICAL / WARNING / INFO) and actionable CTAs
-- Event log: timestamped history of all system events, exportable as PDF/CSV
+- Auto-detection of signal dropouts 🚧 *— dropout/recovery with hysteresis and a
+  3s confirmation window is implemented server-side and shared across clients.
+  Clipping, sustained silence, sudden level drops, and low SNR are not yet detected.*
+- Alert feed with severity levels (CRITICAL / WARNING / INFO); acknowledgement is
+  shared across all connected clients 🚧 *— actionable CTAs not yet implemented*
+- Event log: timestamped history of all system events 🚧 *— RF events and alerts are
+  held in memory and replayed to clients on connect, but are not yet persisted to
+  the database and there is no export*
 
 ### RF Environment Visualization
-- Live spectrum scan visualization (sourced from hardware APIs where supported)
-- Active channel frequency overlay on spectrum view
+- Channel frequency and signal-strength map, drawn from what connected receivers
+  report
 - Frequency history log per device (timestamped record of all changes)
 - Frequency list export (CSV)
-- _Note: Frequency coordination (IMD calculation, auto-plan generation) is intentionally out of scope — manufacturer tools handle this better. RFDeck visualizes the environment._
+- _Note: RFDeck does **not** perform spectrum scanning. It displays the frequencies
+  of the devices it is connected to and their reported signal strength. Frequency
+  coordination (IMD calculation, auto-plan generation) is likewise out of scope —
+  manufacturer tools handle that better._
 
 ### Hardware Inventory
-- Auto-discovery of supported devices via mDNS / Bonjour
+- Auto-discovery of supported devices via mDNS / Bonjour, passive MCP listening,
+  and active network sweep
 - Manual device registration by IP + credentials
 - Per-device: make, model, firmware, serial, MAC, IP, location, status
-- Hardware types: Receivers, IEM Transmitters, Antenna Distributors, Network Gear
+- **Automatic IP recovery** — devices that change address after a power cycle are
+  matched by MAC or serial and reconnected without editing inventory
+- **Active / inactive flag** — mark a device as intentionally powered off so it is
+  untracked, hidden from the dashboard, and raises no alerts
+- Sort and filter by name, status, IP, location, or model
+- Hardware types: Receivers, IEM Transmitters 🚧 *— Antenna Distributors and Network
+  Gear not yet modelled*
 - Network configuration (DHCP/Static) manageable from the app
 - Firmware status indicators
-- Per-device maintenance log
+- Per-device maintenance log 📋
 
 ### Battery Management
 - Battery dashboard: all packs sorted by charge level
-- Estimated runtime per pack (based on live drain rate)
 - Configurable alert thresholds (warning % and critical %)
-- Battery health (cycle count, capacity %) where supported by hardware
-- Battery replacement logging with history per device
-- Show-duration runtime projection: flag which packs won't last the show
+- Estimated runtime per pack (based on live drain rate) 📋
+- Battery health (cycle count, capacity %) where supported by hardware 📋
+- Battery replacement logging with history per device 📋
+- Show-duration runtime projection: flag which packs won't last the show 📋
 
 ### Show & Event Management
-- Named shows/projects: group all config, devices, channels, performers, logs
-- Multi-show database with archived history
-- Pre-show Mic Check mode: checklist board per channel, timestamped checks
-- Show notes and run-of-show documentation
-- Structured report export: PDF/CSV with device list, events, frequency log, battery data
+- Named shows/projects grouping roster, channel assignments, and mic-check state
+- Multi-show database with archived history — shows may live indefinitely or be
+  archived, which is reversible and keeps every record
+- Pre-show Mic Check mode: per-channel checklist with timestamped checks, four
+  periods (Act / Service / Set / Session / Segment by environment), and Y/N
+  keyboard flow with auto-advance
+- Mic-check state is server-authoritative and shared live across all connected
+  clients — a tick made backstage appears at FOH immediately
+- Show notes and run-of-show documentation 🚧 *— per-channel notes exist; run-of-show
+  documentation does not*
+- Structured report export: PDF/CSV with device list, events, frequency log, battery
+  data 📋
 
 ### Performer & Role Management *(Theater / Broadcast modes)*
-- Performer roster with optional headshots
-- Notebook per performer: rich text notes (vocal quirks, mic preferences, character list)
+- Performer roster with channel assignment, real name, character/role, and notes
+- Roster terminology adapts to the show's environment mode
+- Optional headshots 📋
+- Notebook per performer: rich text notes (vocal quirks, mic preferences, character
+  list) 📋
 - Character ↔ Transmitter mapping (theater: mic stays on character, performer changes)
-- Mic assignment view: performer → transmitter → channel → status
-- Quick-change log during show
+  🚧 *— assignment is to a channel; the character-persistent model is not yet distinct*
+- Mic assignment view: performer → transmitter → channel → status 🚧 *— visible on the
+  mic-check rows; no dedicated view*
+- Quick-change log during show 📋
 
 ### View Modes
 - **Grid View** — standard card grid, 1–4 columns
 - **List / Table View** — high-density, sortable, full data
 - **Backstage / Talent View** — read-only, large text, MicBoard-style; shareable URL or second window
-- **Stage Plot View** — spatial layout view *(Concert/Touring mode)*
+- **Stage Plot View** — spatial layout view *(Concert/Touring mode)* 📋
 
 ### Show Environment Modes
 The interface and available features adapt to the type of show:
@@ -101,20 +142,38 @@ The interface and available features adapt to the type of show:
 | **Broadcast** | TV/radio — strict RF, many IEMs, tightly labeled |
 | **House of Worship** | Church environments — volunteer-friendly, simplified views |
 
-### User Roles (RBAC)
+### Remote Access
+RFDeck is a network service in both deployment shapes: a headless server or the
+desktop app, each serving multiple concurrent clients over the network.
+
+- **Open by default** — on a trusted show network, any device that can reach the
+  host connects freely
+- **Optional PIN** — an admin can require a PIN from remote devices, with a
+  configurable re-authentication interval (never, 12h, 1 day, 3 days, 1 week)
+- The machine running RFDeck is always exempt, and access settings can only be
+  changed there
+- "Sign out all devices" for a crew change mid-run
+- Both REST and the realtime socket are gated, since control commands travel over
+  the socket
+
+#### User Roles (RBAC) 📋
+Named user accounts with per-role permissions are planned. The PIN above is a
+network access gate, not per-user identity.
+
 | Role | Access |
 |---|---|
 | `ADMIN` | Full access: all features, settings, device control, user management |
 | `TECH` | Monitoring + device configuration, no system/user settings |
 | `MONITOR` | Read-only monitoring (suitable for stage manager, talent wrangler) |
 
-### Mobile (PWA)
-- Progressive Web App — installable on iOS and Android from the browser
-- Full monitoring view optimized for mobile
-- Alert feed with action buttons
-- Inventory with QR/barcode scanning (camera via browser)
+### Mobile (PWA) 📋
+- Progressive Web App — installable on iOS and Android from the browser 📋
+- Full monitoring view optimized for mobile 📋 *— the UI is currently built for
+  desktop widths*
+- Alert feed with action buttons 🚧 *— feed works; not yet mobile-optimised*
+- Inventory with QR/barcode scanning (camera via browser) 📋
 - Audio monitoring via WebRTC stream
-- Web Push notifications for critical alerts
+- Web Push notifications for critical alerts 📋
 
 ---
 
@@ -145,7 +204,7 @@ RFDeck runs on a **single Node.js codebase** for both the desktop app and hosted
 | **Backend Framework** | Fastify | 5.x |
 | **ORM** | Prisma | 5.x |
 | **Database (Desktop)** | SQLite | via Prisma |
-| **Database (Web)** | PostgreSQL | 16+ |
+| **Database (Web)** | PostgreSQL 📋 | 16+ |
 | **Frontend** | React + TypeScript | 19 / 5.x |
 | **Frontend Build** | Vite | 6.x |
 | **Real-time** | Socket.io | 4.x |
@@ -153,7 +212,7 @@ RFDeck runs on a **single Node.js codebase** for both the desktop app and hosted
 | **Desktop Build** | electron-builder | 25.x |
 | **Audio / WebRTC** | @roamhq/wrtc (node-webrtc) | 0.10.x |
 | **Styling** | Vanilla CSS + Custom Properties | — |
-| **Testing** | Vitest + Playwright | — |
+| **Testing** | Vitest + Playwright 📋 | — |
 
 ### Architecture
 
@@ -266,13 +325,16 @@ pnpm --filter @rfdeck/desktop package
 
 ## Roadmap
 
-| Phase | Focus |
-|---|---|
-| **Phase 1** | Foundation: monorepo scaffold, Electron shell, Fastify server, Sennheiser SSCv2, monitoring dashboard, alert feed |
-| **Phase 2** | Hardware inventory, battery management, show/event management, mic check mode, RF environment visualization |
-| **Phase 3** | Audio monitoring (AES-67 + OS audio), GStreamer gateway, instant replay |
-| **Phase 4** | Mobile PWA, performer/notebook system (Theater mode), backstage/talent view, Web Push |
-| **Phase 5** | Additional hardware brands, Docker packaging, E2E tests, auto-update |
+| Phase | Focus | Status |
+|---|---|---|
+| **Phase 1** | Foundation: monorepo scaffold, Electron shell, Fastify server, Sennheiser SSCv2, monitoring dashboard, alert feed | Complete |
+| **Phase 2** | Hardware inventory, battery management, show/event management, mic check mode, RF environment visualization | Mostly complete — battery depth outstanding |
+| **Phase 3** | Audio monitoring (AES-67 + OS audio), native WebRTC gateway, instant replay | Audio complete; replay not started |
+| **Phase 4** | Mobile PWA, performer/notebook system (Theater mode), backstage/talent view, Web Push | Backstage complete; rest not started |
+| **Phase 5** | Additional hardware brands, Docker packaging, E2E tests, auto-update | Not started |
+
+The sequenced plan for the remaining work, including deployment and verification
+procedures, is in [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
 
 ---
 
