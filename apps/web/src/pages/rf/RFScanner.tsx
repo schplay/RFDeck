@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { Radio, Download, Wifi, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
-import { useChannelStore } from '../../stores/channelStore';
 import { useDeviceStore } from '../../stores/deviceStore';
+import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useRfEventStore } from '../../stores/rfEventStore';
 import { SpectrumCanvas } from './components/SpectrumCanvas';
 import { FrequencyTable } from './components/FrequencyTable';
@@ -47,10 +47,12 @@ function RfEventLog() {
 }
 
 export default function RFScanner() {
-  const { channels } = useChannelStore();
+  // Inactive devices are intentionally powered off — exclude them here as the
+  // dashboard, backstage, and mic check already do.
+  const channels = useActiveChannels();
   const { inventory } = useDeviceStore();
 
-  const onlineDevices = inventory.filter((d) => d.online).length;
+  const onlineDevices = inventory.filter((d) => d.online && d.active !== false).length;
   const activeChannels = channels.filter((c) => c.status === 'ACTIVE');
 
   const handleExportCSV = () => {
@@ -105,16 +107,18 @@ export default function RFScanner() {
         {/* Left column: stacked spectrum + table */}
         <div className="rf-main-col">
           {/* Spectrum Visualization */}
+          {/* Frequencies and signal strength as reported by connected
+              receivers. RFDeck does not scan the spectrum — it maps what our
+              own hardware tells us it is doing. */}
           <section className="rf-card spectrum-card">
             <div className="rf-card-header">
               <div className="rf-card-title">
                 <Radio size={16} className="card-icon" />
-                Live Spectrum View
+                Channel Frequency Map
               </div>
               <div className="spectrum-meta">
                 <span>470 – 608 MHz</span>
-                <span>RBW: 100 kHz</span>
-                <span className="simulated-badge">Simulated</span>
+                <span>{channels.length} connected</span>
               </div>
             </div>
             <div className="spectrum-body">

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { Battery, BatteryCharging, BatteryWarning, AlertTriangle } from 'lucide-react';
-import { useChannelStore } from '../../stores/channelStore';
+import { useActiveChannels } from '../../hooks/useActiveChannels';
 import './BatteryDashboard.css';
 
 export default function BatteryDashboard() {
-  const { channels } = useChannelStore();
+  // Inactive devices are intentionally powered off — their packs are not a
+  // battery concern and must not appear in the low/critical tallies.
+  const channels = useActiveChannels();
   
   // Sort channels by lowest battery first
   const sortedChannels = [...channels]

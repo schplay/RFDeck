@@ -325,3 +325,28 @@
 .bs-empty-icon  { font-size: 48px; }
 .bs-empty-text  { font-family: 'Geist', sans-serif; font-size: 22px; font-weight: 700; color: #849495; }
 .bs-empty-sub   { font-size: 14px; color: #849495; }
+
+/* Empty state must distinguish "nothing powered on" from "lost the server" —
+   on a stage-facing display those call for different responses. */
+.bs-empty-status {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  padding: 5px 14px;
+  border-radius: 999px;
+  border: 1px solid;
+  margin-bottom: 4px;
+}
+
+.bs-empty-status.ok {
+  color: #4ae176;
+  border-color: rgba(74, 225, 118, 0.4);
+  background: rgba(74, 225, 118, 0.1);
+}
+
+.bs-empty-status.down {
+  color: #ff5a52;
+  border-color: rgba(255, 90, 82, 0.45);
+  background: rgba(255, 90, 82, 0.12);
+}

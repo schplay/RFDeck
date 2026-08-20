@@ -56,7 +56,7 @@ function afBar(level: number) {
 
 export default function BackstageView() {
   const channels = useActiveChannels();
-  const { socket } = useSocket();
+  const { socket, isConnected } = useSocket();
 
   // Subscribe to channel telemetry
   const updateChannel = useChannelStore((s) => s.updateChannel);
@@ -82,8 +82,10 @@ export default function BackstageView() {
 
   const orderMode = useLayoutStore(s => s.orderMode);
   const setOrderMode = useLayoutStore(s => s.setOrderMode);
-  const orderedChannels = useOrderedChannels(channels);
-  const displayChannels = orderedChannels.length > 0 ? orderedChannels : demoChannels;
+  // No demo fallback. This view runs full-screen on a display facing stage crew,
+  // where placeholder data that looks like live telemetry is a safety problem.
+  const displayChannels = useOrderedChannels(channels);
+  const orderedChannels = displayChannels;
   const { enabled: dragEnabled, handlers: dragHandlers } = useDragReorder(orderedChannels);
   const setFlipRef = useFlipAnimation(displayChannels.map(ch => ch.id).join('|'));
 
@@ -164,20 +166,20 @@ export default function BackstageView() {
 
         {displayChannels.length === 0 && (
           <div className="bs-empty">
-            <div className="bs-empty-icon">📡</div>
+            {/* Distinguish "nothing is powered on" from "we lost the server" —
+                on a stage-facing display those need different responses. */}
+            <div className={`bs-empty-status ${isConnected ? 'ok' : 'down'}`}>
+              {isConnected ? 'CONNECTED' : 'NO SERVER CONNECTION'}
+            </div>
             <div className="bs-empty-text">No active channels</div>
-            <div className="bs-empty-sub">Devices will appear here once connected</div>
+            <div className="bs-empty-sub">
+              {isConnected
+                ? 'Channels appear here as receivers come online'
+                : 'Cannot reach RFDeck — telemetry is unavailable'}
+            </div>
           </div>
         )}
       </div>
     </div>
   );
 }
-
-// Demo data shown when no real channels are available
-const demoChannels: Channel[] = [
-  { id: 'demo-1', deviceId: 'demo', channelIndex: 1, name: 'VOX 1 — Lead', frequency: 614500, rfLevelA: 85, rfLevelB: 82, afLevel: 60, batteryPercent: 78, isMuted: false, status: 'ACTIVE' },
-  { id: 'demo-2', deviceId: 'demo', channelIndex: 2, name: 'VOX 2 — Keys', frequency: 622375, rfLevelA: 72, rfLevelB: 68, afLevel: 45, batteryPercent: 22, isMuted: false, status: 'WARNING' },
-  { id: 'demo-3', deviceId: 'demo', channelIndex: 3, name: 'IEM L — Lead', frequency: 630250, rfLevelA: 90, rfLevelB: 88, afLevel: 0, batteryPercent: 55, isMuted: true, status: 'WARNING' },
-  { id: 'demo-4', deviceId: 'demo', channelIndex: 4, name: 'VOX 3 — Drums', frequency: 638125, rfLevelA: 15, rfLevelB: 12, afLevel: 0, batteryPercent: 4, isMuted: false, status: 'CRITICAL' },
-];

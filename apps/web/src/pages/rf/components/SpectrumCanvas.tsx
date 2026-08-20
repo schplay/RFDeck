@@ -1,28 +1,23 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Channel } from '@rfdeck/shared-types';
 
 interface Props {
   channels: Channel[];
 }
 
-// Frequency range for the spectrum view (kHz)
+// ── Frequency & signal map ──
+//
+// RFDeck does not perform spectrum scanning. This plots the frequencies our
+// connected receivers report, at the signal strength they report. Everything
+// drawn here traces to a real device reading — there is deliberately no
+// synthetic noise floor, which would imply measurement we are not doing.
+
+// Display range (kHz) — the UHF band these receivers operate in.
 const FREQ_MIN = 470000;
 const FREQ_MAX = 608000;
 
-function generateNoise(count: number): number[] {
-  // Deterministic pseudo-noise for SSR safety
-  const values: number[] = [];
-  let seed = 42;
-  for (let i = 0; i < count; i++) {
-    seed = (seed * 1664525 + 1013904223) & 0xffffffff;
-    values.push(((seed >>> 0) / 0xffffffff) * 14 + 3); // 3–17 px from bottom
-  }
-  return values;
-}
-
 export function SpectrumCanvas({ channels }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const noise = useMemo(() => generateNoise(200), []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -61,12 +56,14 @@ export function SpectrumCanvas({ channels }: Props) {
       ctx.stroke();
     }
 
-    // Y-axis labels
+    // Y-axis: reported signal strength as a percentage. Receivers give us a
+    // 0–100 quality figure, not calibrated dBm, so labelling it in dBm would
+    // be inventing precision the hardware never reported.
     ctx.fillStyle = 'rgba(185, 202, 203, 0.4)';
     ctx.font = '10px JetBrains Mono, monospace';
     ctx.textAlign = 'right';
-    const dBmLabels = ['-20', '-40', '-60', '-80', '-100', '-120'];
-    dBmLabels.forEach((label, i) => {
+    const signalLabels = ['100%', '80', '60', '40', '20', '0'];
+    signalLabels.forEach((label, i) => {
       const y = 8 + (plotH / 5) * i;
       ctx.fillText(label, padLeft - 4, y + 4);
     });
@@ -79,15 +76,11 @@ export function SpectrumCanvas({ channels }: Props) {
       ctx.fillText(String(freq), x, H - 6);
     });
 
-    // Noise floor path
-    const noisePoints: [number, number][] = noise.map((v, i) => {
-      const x = padLeft + (i / (noise.length - 1)) * plotW;
-      const y = 8 + plotH - v;
-      return [x, y];
-    });
-
+    // Baseline. A flat rule, not a simulated noise floor — it marks zero, and
+    // claims nothing about what is actually on air between our channels.
     ctx.beginPath();
-    noisePoints.forEach(([x, y], i) => i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y));
+    ctx.moveTo(padLeft, 8 + plotH);
+    ctx.lineTo(W - 8, 8 + plotH);
     ctx.strokeStyle = 'rgba(59, 73, 75, 0.5)';
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -136,7 +129,7 @@ export function SpectrumCanvas({ channels }: Props) {
       ctx.fillStyle = `rgba(${color}, 1)`;
       ctx.fill();
     });
-  }, [channels, noise]);
+  }, [channels]);
 
   return (
     <canvas
