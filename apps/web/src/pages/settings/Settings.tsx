@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Volume2, BellRing, Network, RefreshCw } from 'lucide-react';
+import { Volume2, BellRing, Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAudioStore } from '../../stores/audioStore';
 import { useAudioDevice } from '../../hooks/useAudioDevice';
+import { apiFetch, fetchAuthStatus, AuthStatus } from '../../lib/api';
 import './Settings.css';
 
 interface AppSettings {
@@ -69,6 +70,168 @@ function AudioDeviceSettings() {
   );
 }
 
+// ── Remote access ──
+// RFDeck defaults to an open, trusted show network. An admin can require a PIN
+// from remote clients and choose how often they must re-enter it. Configurable
+// only from the host machine — with no user accounts there is no other way to
+// tell an admin from any other client on the network.
+function RemoteAccessSettings() {
+  const [status, setStatus] = useState<AuthStatus | null>(null);
+  const [pinIsSet, setPinIsSet] = useState(false);
+  const [pin, setPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [reauthHours, setReauthHours] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    fetchAuthStatus()
+      .then(s => { setStatus(s); setReauthHours(s.reauthHours); })
+      .catch(() => setMessage({ kind: 'err', text: 'Could not reach the server.' }));
+  }, []);
+
+  const save = async (next: { pinEnabled?: boolean; pin?: string; reauthHours?: number }) => {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await apiFetch<{ pinEnabled: boolean; reauthHours: number; pinIsSet: boolean }>(
+        '/auth/config', { method: 'PUT', body: JSON.stringify(next) }
+      );
+      setStatus(s => (s ? { ...s, pinEnabled: result.pinEnabled, reauthHours: result.reauthHours } : s));
+      setReauthHours(result.reauthHours);
+      setPinIsSet(result.pinIsSet);
+      setPin(''); setConfirmPin('');
+      setMessage({ kind: 'ok', text: 'Access settings saved.' });
+    } catch (err: any) {
+      setMessage({ kind: 'err', text: err?.message ?? 'Could not save access settings.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const savePin = () => {
+    if (pin.length < 4) {
+      return setMessage({ kind: 'err', text: 'Use at least 4 digits.' });
+    }
+    if (pin !== confirmPin) {
+      return setMessage({ kind: 'err', text: 'The two PINs do not match.' });
+    }
+    save({ pin, pinEnabled: true, reauthHours });
+  };
+
+  if (!status) {
+    return <div className="settings-card"><p className="settings-desc">Loading access settings…</p></div>;
+  }
+
+  if (!status.isLocal) {
+    return (
+      <div className="settings-card">
+        <div className="settings-card-header"><h3>Remote Access</h3></div>
+        <p className="settings-desc settings-warn">
+          Access settings can only be changed from the machine running RFDeck.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="settings-card">
+      <div className="settings-card-header"><h3>Remote Access</h3></div>
+      <p className="settings-desc">
+        RFDeck trusts the local network by default, so any device that can reach this
+        machine can connect. Require a PIN if the show network is shared with house or
+        guest traffic. The machine running RFDeck is always exempt.
+      </p>
+
+      <div className="settings-form">
+        <div className="form-group form-group-row">
+          <div>
+            <label>Require a PIN for remote devices</label>
+            <p className="settings-desc settings-desc-tight">
+              {status.pinEnabled
+                ? 'Remote devices must enter the PIN before seeing any data.'
+                : 'Any device on the network can connect freely.'}
+            </p>
+          </div>
+          <button
+            className={`active-switch ${status.pinEnabled ? 'on' : 'off'}`}
+            role="switch"
+            aria-checked={status.pinEnabled}
+            disabled={busy || (!status.pinEnabled && !pinIsSet && pin.length < 4)}
+            onClick={() => save({ pinEnabled: !status.pinEnabled })}
+            title={!status.pinEnabled && !pinIsSet ? 'Set a PIN first' : undefined}
+          >
+            <span className="active-switch-knob" />
+          </button>
+        </div>
+
+        <div className="form-group">
+          <label>{pinIsSet ? 'Change PIN' : 'Set PIN'}</label>
+          <input
+            type="password" inputMode="numeric" autoComplete="new-password"
+            value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="At least 4 digits" maxLength={12}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Confirm PIN</label>
+          <input
+            type="password" inputMode="numeric" autoComplete="new-password"
+            value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+            placeholder="Re-enter the PIN" maxLength={12}
+          />
+        </div>
+
+        <div className="form-group">
+          <label>Ask again after</label>
+          <select value={reauthHours} onChange={e => setReauthHours(Number(e.target.value))}>
+            <option value={0}>Never — stay signed in</option>
+            <option value={12}>12 hours</option>
+            <option value={24}>1 day</option>
+            <option value={72}>3 days</option>
+            <option value={168}>1 week</option>
+          </select>
+          <p className="settings-desc settings-desc-tight">
+            A resident booth display usually wants "never". Shorter intervals suit
+            devices that leave the venue.
+          </p>
+        </div>
+
+        {message && (
+          <p className={`settings-desc ${message.kind === 'ok' ? 'settings-ok' : 'settings-warn'}`}>
+            {message.text}
+          </p>
+        )}
+
+        <div className="settings-actions-row">
+          <button className="btn-primary" onClick={savePin} disabled={busy || !pin}>
+            Save PIN
+          </button>
+          {status.pinEnabled && (
+            <button
+              className="btn-secondary"
+              disabled={busy}
+              onClick={async () => {
+                if (!window.confirm('Sign out every remote device? They will need the PIN again.')) return;
+                setBusy(true);
+                try {
+                  await apiFetch('/auth/revoke-all', { method: 'POST' });
+                  setMessage({ kind: 'ok', text: 'All remote devices signed out.' });
+                } catch {
+                  setMessage({ kind: 'err', text: 'Could not sign devices out.' });
+                } finally { setBusy(false); }
+              }}
+            >
+              Sign out all devices
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Settings() {
   const [activeTab, setActiveTab] = useState('audio');
   const [settings, setSettings] = useState<AppSettings>({
@@ -131,10 +294,17 @@ export default function Settings() {
           <Tabs.Trigger value="network" className="tabs-trigger">
             <Network size={16} /> Network Config
           </Tabs.Trigger>
+          <Tabs.Trigger value="access" className="tabs-trigger">
+            <ShieldCheck size={16} /> Remote Access
+          </Tabs.Trigger>
         </Tabs.List>
 
         <Tabs.Content value="audio" className="tabs-content">
           <AudioDeviceSettings />
+        </Tabs.Content>
+
+        <Tabs.Content value="access" className="tabs-content">
+          <RemoteAccessSettings />
         </Tabs.Content>
 
         <Tabs.Content value="alerts" className="tabs-content">
