@@ -4,21 +4,36 @@
 
 ## Progress
 
-Stage 1 is complete and most of Stage 2. Items are marked ✅ as they land.
+Stages 1–3 are complete. Items are marked ✅ as they land.
 
 | Stage | State |
 |---|---|
 | 1 — Durability & truth | ✅ Complete |
-| 2 — Shared state | ✅ 2.1–2.4 complete; 2.5 outstanding |
-| 3 — Access control & deployment | ✅ PIN gate complete; 3.2 encryption and 3.3 headless docs outstanding |
-| 4 — Show-day hardening | ✅ 4.4 complete; 4.1–4.3 outstanding |
+| 2 — Shared state | ✅ 2.1–2.4 complete; 2.5 (control attribution) outstanding |
+| 3 — Access control & deployment | ✅ Complete — PIN gate, encryption at rest, deployment docs |
+| 4 — Show-day hardening | ✅ 4.1, 4.2, 4.4 complete; 4.3 (show report) outstanding |
 | 5 — Client reach | Not started |
 | 6 — Feature completion | Not started |
-| 7 — Breadth & operations | In progress — test suite started |
+| 7 — Breadth & operations | In progress — 52 tests, no CI yet |
 
 **Answered since first draft:** scale is 2–128 channels and 1–10 concurrent
 users; access control is an optional admin-set PIN rather than per-user login;
 shows may live indefinitely or be archived, operator's choice.
+
+**Verified end to end against a running server:** show creation, roster,
+mic-check ticks and archiving all survive a restart; cascade delete removes
+players and mic-check rows; the PIN gate accepts the right PIN, rejects the
+wrong one, issues tokens, and always exempts loopback.
+
+### Next up
+
+1. **4.3 — Show report export.** The remaining piece of show-day tooling. Event
+   log and CSV plumbing already exist to build on.
+2. **2.5 — Control command attribution.** Broadcast who muted what, so operators
+   stop seeing unexplained state changes.
+3. **CI.** 52 tests exist but nothing runs them automatically.
+4. **Stage 5 — mobile.** Mic check on a phone is the highest-value mobile flow
+   and should drive the responsive work.
 
 ---
 
