@@ -27,14 +27,38 @@ deployment.
 
 ### Install and run
 
+Use the deploy script — it handles the build, the schema, and the firewall
+check, and is safe to re-run as an upgrade path:
+
+```powershell
+# Windows
+.\scripts\open-firewall.ps1      # as Administrator, once per machine
+.\scripts\deploy-server.ps1
+```
+
+```bash
+# Linux / macOS
+./scripts/deploy-server.sh
+```
+
+See [`../scripts/README.md`](../scripts/README.md) for options.
+
+<details>
+<summary>Manual equivalent</summary>
+
 ```bash
 pnpm install
+pnpm --filter @rfdeck/server exec prisma generate
 pnpm --filter @rfdeck/shared-types build
 pnpm --filter @rfdeck/web build          # builds the frontend the server serves
-pnpm --filter @rfdeck/server prisma:push # creates the SQLite schema
 pnpm --filter @rfdeck/server build
-pnpm --filter @rfdeck/server start
+DATABASE_URL="file:/absolute/path/rfdeck.db" \
+  pnpm --filter @rfdeck/server exec prisma db push --skip-generate
+cd apps/server
+DATABASE_URL="file:/absolute/path/rfdeck.db" PORT=3000 node dist/server.js
 ```
+
+</details>
 
 The server listens on port 3000 by default. Clients connect at
 `http://<server-ip>:3000`.
@@ -48,9 +72,18 @@ DATABASE_URL=file:./rfdeck.db
 PORT=3000
 ```
 
-`DATABASE_URL` is relative to `apps/server/`. Use an absolute path if you run the
-server from elsewhere — a relative path resolved from the wrong working directory
-silently creates a second, empty database rather than failing.
+**Always use an absolute `DATABASE_URL`.** A relative path is resolved against
+the working directory, so starting the server from a different directory
+silently creates a second, empty database rather than failing — the app comes up
+looking like a fresh install with all data apparently gone. The deploy script
+always writes an absolute path for this reason, and the server logs which
+database it opened at startup:
+
+```
+[Prisma] Using database file:D:/rfdeck-data/rfdeck.db
+```
+
+Check that line first whenever data appears to be missing.
 
 ### Ports and firewall
 
