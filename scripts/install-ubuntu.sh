@@ -161,6 +161,14 @@ if [[ -n "$REPO_URL" ]]; then
     git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
     ok "Cloned $REPO_URL ($BRANCH)"
   fi
+elif [[ "$SOURCE_DIR" == "$INSTALL_DIR" ]]; then
+  # Running the script from inside the install itself. There is nothing to
+  # copy — and rsync'ing a directory onto itself with --delete is asking for
+  # trouble. This still rebuilds and rewrites the service, which is what a
+  # config change such as a new port needs; it just cannot fetch newer code.
+  ok "Running from the install directory — rebuilding in place"
+  warn "This does not pull new code. For that, re-run from a fresh checkout"
+  warn "or pass --repo <url>."
 else
   # Copy this checkout, leaving build output and local state behind so a dirty
   # working tree cannot contaminate the install — in particular the developer's
@@ -223,6 +231,14 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 # ── Service ──────────────────────────────────────────────────────────────────
 
 step "Registering the service"
+
+# Note the port currently in service before the unit is rewritten, so the
+# firewall step below can retire its rule if the port is changing.
+PREVIOUS_PORT=""
+if [[ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]]; then
+  PREVIOUS_PORT="$(sed -n 's/^Environment=PORT=\([0-9]\+\)$/\1/p' \
+    "/etc/systemd/system/${SERVICE_NAME}.service" | head -1)"
+fi
 
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<UNIT
 [Unit]
@@ -288,6 +304,12 @@ ok "Service registered and enabled at boot"
 if [[ "$SKIP_FIREWALL" == "0" ]] && command -v ufw >/dev/null 2>&1; then
   step "Configuring the firewall"
   if ufw status | grep -q "Status: active"; then
+    # Close the port we used to serve on, if this run is moving to a different
+    # one. Otherwise an upgrade quietly leaves the old port open forever.
+    if [[ -n "${PREVIOUS_PORT:-}" && "$PREVIOUS_PORT" != "$PORT" ]]; then
+      ufw delete allow "$PREVIOUS_PORT"/tcp >/dev/null 2>&1 \
+        && ok "Closed TCP $PREVIOUS_PORT (no longer used)"
+    fi
     ufw allow "$PORT"/tcp  >/dev/null && ok "TCP $PORT — web interface and API"
     ufw allow 53212/udp    >/dev/null && ok "UDP 53212 — Sennheiser G3/G4"
     ufw allow 5353/udp     >/dev/null && ok "UDP 5353 — mDNS discovery"

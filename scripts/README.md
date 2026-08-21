@@ -58,11 +58,27 @@ It prints the addresses to open in a browser when it finishes.
 
 ### Upgrading
 
-Re-run it. The schema is updated in place and existing data is preserved:
+Re-run the installer. It rewrites the systemd unit and reapplies the schema, so
+configuration changes — a new port, for instance — take effect without editing
+anything by hand. Existing data is preserved.
+
+**Run it from a checkout with the new code, not from `/opt/rfdeck`.** The
+install directory has no `.git` (the copy excludes it), so there is nothing to
+pull there:
 
 ```bash
-cd /opt/rfdeck && sudo ./scripts/install-ubuntu.sh
+cd ~/rfdeck && git pull
+sudo ./scripts/install-ubuntu.sh
 ```
+
+Or let the installer fetch the code itself, which works from anywhere:
+
+```bash
+sudo /opt/rfdeck/scripts/install-ubuntu.sh --repo https://github.com/you/rfdeck.git
+```
+
+Running it *from* `/opt/rfdeck` is still safe — it rebuilds and reconfigures in
+place, and says so — but it cannot fetch newer code.
 
 The database deliberately lives in `/var/lib/rfdeck` rather than inside the
 install directory, so replacing the application on upgrade can never take a
