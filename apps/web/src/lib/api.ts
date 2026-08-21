@@ -5,7 +5,28 @@
 // through `onPinRequired` so the UI can prompt, rather than each caller having
 // to know about auth.
 
-export const API_BASE = 'http://localhost:3000/api';
+// Where the RFDeck server lives, from this client's point of view.
+//
+// This must NOT be hardcoded to localhost: a browser on another machine would
+// then query its own machine and find nothing, which breaks every remote client
+// — the normal case for a headless deployment.
+//
+// Three situations to tell apart:
+//   • Served by the RFDeck server  → same origin, whatever host that is
+//   • Vite dev server (port 5173)  → UI and API are on different ports
+//   • Electron (file:// URL)       → no useful origin; the server is local
+export function serverOrigin(): string {
+  if (typeof window === 'undefined') return 'http://localhost:3000';
+
+  const { protocol, port, origin } = window.location;
+
+  if (protocol === 'file:') return 'http://localhost:3000';
+  if (port === '5173' || port === '4173') return 'http://localhost:3000';
+
+  return origin;
+}
+
+export const API_BASE = `${serverOrigin()}/api`;
 
 const TOKEN_KEY = 'rfdeck-auth-token';
 

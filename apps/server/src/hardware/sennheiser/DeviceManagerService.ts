@@ -16,6 +16,7 @@ import {
   BatterySample, BatteryEstimate,
 } from '../batteryEstimator';
 import { decryptSecret } from '../../auth/secretBox';
+import { log } from '../../logger';
 
 type ClientType = SSCClient | G3G4Client;
 
@@ -105,7 +106,7 @@ export class DeviceManagerService extends EventEmitter {
     const inventory = await prisma.inventoryDevice.findMany();
     for (const dev of inventory) {
       if (dev.active === false) {
-        console.log(`[DeviceManager] Skipping inactive device "${dev.name}" (${dev.ip})`);
+        log.debug(`[DeviceManager] Skipping inactive device "${dev.name}" (${dev.ip})`);
         continue;
       }
       this.trackDevice(dev);
@@ -136,9 +137,9 @@ export class DeviceManagerService extends EventEmitter {
   // Called via REST API when user adds a device
   public trackDevice(device: { ip: string; port: number; name?: string }) {
     const id = `${device.ip}:${device.port}`;
-    console.log(`[DeviceManager] trackDevice called for ${device.name ?? id} at ${id}`);
+    log.debug(`[DeviceManager] trackDevice called for ${device.name ?? id} at ${id}`);
     if (this.clients.has(id)) {
-      console.log(`[DeviceManager] Already tracking ${id}, skipping`);
+      log.debug(`[DeviceManager] Already tracking ${id}, skipping`);
       return;
     }
 
@@ -162,7 +163,7 @@ export class DeviceManagerService extends EventEmitter {
         if (ssc instanceof SSCClient) {
           ssc.stopPolling();
         }
-        console.log(`[DeviceManager] SSCv2 failed for ${device.ip}, falling back to G3/G4 MCP`);
+        log.debug(`[DeviceManager] SSCv2 failed for ${device.ip}, falling back to G3/G4 MCP`);
         const legacyClient = new G3G4Client(device.ip, device.port);
         this.clients.set(`${id}-legacy`, legacyClient);
         this.setupClientListeners(legacyClient, device.ip, device.port, `${id}-legacy`);
@@ -189,10 +190,10 @@ export class DeviceManagerService extends EventEmitter {
   ) {
     const id = `${device.ip}:${device.port}`;
     if (active) {
-      console.log(`[DeviceManager] Activating "${device.name ?? id}" — resuming tracking`);
+      log.info(`[DeviceManager] Activating "${device.name ?? id}" — resuming tracking`);
       this.trackDevice(device);
     } else {
-      console.log(`[DeviceManager] Deactivating "${device.name ?? id}" — stopping tracking`);
+      log.info(`[DeviceManager] Deactivating "${device.name ?? id}" — stopping tracking`);
       // Cancel any pending dropout timers for this device's channels so a
       // deactivation mid-dropout can't fire an alert after the fact.
       for (const [channelId, timer] of this.pendingDropouts) {
@@ -256,7 +257,7 @@ export class DeviceManagerService extends EventEmitter {
     });
 
     client.on('connected', async () => {
-      console.log(`[DeviceManager] Connected to ${ip} via ${client instanceof SSCClient ? 'SSCv2' : 'G3/G4'}`);
+      log.info(`[DeviceManager] Connected to ${ip} via ${client instanceof SSCClient ? 'SSCv2' : 'G3/G4'}`);
       // Cancel any pending lost timer — device reconnected within the grace period
       const pendingLost = this.lostTimers.get(ip);
       if (pendingLost) {
@@ -288,7 +289,7 @@ export class DeviceManagerService extends EventEmitter {
     });
 
     client.on('disconnected', (err: any) => {
-      console.log(`[DeviceManager] Disconnected from ${ip} — ${err}`);
+      log.info(`[DeviceManager] Disconnected from ${ip} — ${err}`);
       this.clearChannelsForDevice(id);
       // Only notify the frontend when a device that was genuinely connected goes offline.
       // Debounced: if the device reconnects within LOST_DEBOUNCE_MS the timer is cancelled
@@ -339,7 +340,7 @@ export class DeviceManagerService extends EventEmitter {
     if (!stale) return;
 
     const oldIp = stale.ip;
-    console.log(
+    log.debug(
       `[DeviceManager] MAC ${mac} moved: ${oldIp} → ${currentIp} ` +
       `(device: "${stale.name}"). Updating inventory.`,
     );
@@ -404,7 +405,7 @@ export class DeviceManagerService extends EventEmitter {
 
     for (const sIp of secondaries) {
       if (this.secondaryIps.get(sIp) !== ip) {
-        console.log(`[DeviceManager] ${ip}: secondary (Dante) IP ${sIp} registered — suppressed from discovery`);
+        log.debug(`[DeviceManager] ${ip}: secondary (Dante) IP ${sIp} registered — suppressed from discovery`);
         this.secondaryIps.set(sIp, ip);
       }
       // Retract any discovery entries already emitted for this IP (any port).
@@ -420,7 +421,7 @@ export class DeviceManagerService extends EventEmitter {
   private handleDiscovered(device: DiscoveredDevice) {
     // Known secondary interface of a tracked device — never surface it.
     if (this.secondaryIps.has(device.ip)) {
-      console.log(`[DeviceManager] Discovery hit on ${device.ip} — known secondary of ${this.secondaryIps.get(device.ip)}, suppressing`);
+      log.debug(`[DeviceManager] Discovery hit on ${device.ip} — known secondary of ${this.secondaryIps.get(device.ip)}, suppressing`);
       this.suppressDiscovered(device.ip, device.port);
       return;
     }
@@ -481,7 +482,7 @@ export class DeviceManagerService extends EventEmitter {
             // This IP is the device's control interface. Migrate even if a client is
             // currently "connected" at known.ip — that connection may be to the Dante
             // NIC from an earlier mis-migration, and this corrects it.
-            console.log(`[DeviceManager] ${ip} is the control interface of "${known.name}" (record had ${known.ip}) — migrating`);
+            log.debug(`[DeviceManager] ${ip} is the control interface of "${known.name}" (record had ${known.ip}) — migrating`);
             await this.migrateDeviceIp(known, ip, port);
             return;
           }
@@ -491,10 +492,10 @@ export class DeviceManagerService extends EventEmitter {
             // address the device just reported.
             const trueControl = net.controlAddrs.find(a => a !== ip);
             if (trueControl && known.ip !== trueControl) {
-              console.log(`[DeviceManager] Healing "${known.name}": record at ${known.ip}, device reports control IP ${trueControl}`);
+              log.debug(`[DeviceManager] Healing "${known.name}": record at ${known.ip}, device reports control IP ${trueControl}`);
               await this.migrateDeviceIp(known, trueControl, port);
             }
-            console.log(`[DeviceManager] ${ip} is the Dante interface of "${known.name}" — suppressing`);
+            log.debug(`[DeviceManager] ${ip} is the Dante interface of "${known.name}" — suppressing`);
             this.suppressDiscovered(ip, port);
             return;
           }
@@ -506,7 +507,7 @@ export class DeviceManagerService extends EventEmitter {
         const arpMac = await getMacByIp(ip);
         const storedMac = known.mac?.toLowerCase() ?? null;
         if (storedMac && arpMac && arpMac !== storedMac) {
-          console.log(`[DeviceManager] ${ip} has different MAC than "${known.name}" control NIC — secondary interface, suppressing`);
+          log.debug(`[DeviceManager] ${ip} has different MAC than "${known.name}" control NIC — secondary interface, suppressing`);
           this.suppressDiscovered(ip, port);
           return;
         }
@@ -514,18 +515,18 @@ export class DeviceManagerService extends EventEmitter {
         // Fallback 2: reachability. Never steal the record from a live connection,
         // and never migrate while the recorded IP still answers with the same serial.
         if (this.clients.get(`${known.ip}:${known.port}`)?.isConnected) {
-          console.log(`[DeviceManager] ${ip} matches connected "${known.name}" (${known.ip}) — suppressing`);
+          log.debug(`[DeviceManager] ${ip} matches connected "${known.name}" (${known.ip}) — suppressing`);
           this.suppressDiscovered(ip, port);
           return;
         }
         const atOldIp = await SSCClient.fetchIdentity(known.ip, known.port, password);
         if (atOldIp?.serial && atOldIp.serial === identity.serial) {
-          console.log(`[DeviceManager] "${known.name}" still answers at ${known.ip}; ${ip} is its secondary interface — suppressing`);
+          log.debug(`[DeviceManager] "${known.name}" still answers at ${known.ip}; ${ip} is its secondary interface — suppressing`);
           this.suppressDiscovered(ip, port);
           return;
         }
 
-        console.log(`[DeviceManager] Auto-reconnect: "${known.name}" found at new IP ${ip} (was ${known.ip})`);
+        log.info(`[DeviceManager] Auto-reconnect: "${known.name}" found at new IP ${ip} (was ${known.ip})`);
         await this.migrateDeviceIp(known, ip, port);
         return;
       }
@@ -539,7 +540,7 @@ export class DeviceManagerService extends EventEmitter {
         await new Promise<void>(r => setTimeout(r, 400));
       }
       if (!mac) {
-        console.log(`[DeviceManager] tryAutoReconcile: ARP miss for ${ip} after retries — cannot reconcile`);
+        log.debug(`[DeviceManager] tryAutoReconcile: ARP miss for ${ip} after retries — cannot reconcile`);
         return;
       }
 
@@ -551,15 +552,15 @@ export class DeviceManagerService extends EventEmitter {
         where: { mac, active: true, NOT: { ip } },
       });
       if (!stale) {
-        console.log(`[DeviceManager] tryAutoReconcile: no offline record with mac=${mac} at a different IP`);
+        log.debug(`[DeviceManager] tryAutoReconcile: no offline record with mac=${mac} at a different IP`);
         return;
       }
       if (this.clients.get(`${stale.ip}:${stale.port}`)?.isConnected) {
-        console.log(`[DeviceManager] tryAutoReconcile: old client at ${stale.ip}:${stale.port} still connected`);
+        log.debug(`[DeviceManager] tryAutoReconcile: old client at ${stale.ip}:${stale.port} still connected`);
         return;
       }
 
-      console.log(`[DeviceManager] Auto-reconnect: G3/G4 "${stale.name}" found at new IP ${ip} (was ${stale.ip})`);
+      log.info(`[DeviceManager] Auto-reconnect: G3/G4 "${stale.name}" found at new IP ${ip} (was ${stale.ip})`);
       await this.migrateDeviceIp(stale, ip, port);
     }
   }
@@ -853,7 +854,7 @@ export class DeviceManagerService extends EventEmitter {
         rfLevelA: Math.round(channel.rfLevelA),
         rfLevelB: Math.round(channel.rfLevelB),
       },
-    }).catch(err => console.warn('[DeviceManager] Could not persist RF event:', err?.message));
+    }).catch(err => log.warn('[DeviceManager] Could not persist RF event:', err?.message));
   }
 
   clearRfEvents(): void {
@@ -931,7 +932,7 @@ export class DeviceManagerService extends EventEmitter {
     }
 
     if (byAge.count || byCount) {
-      console.log(`[DeviceManager] Pruned ${byAge.count + byCount} old event(s)`);
+      log.info(`[DeviceManager] Pruned ${byAge.count + byCount} old event(s)`);
     }
   }
 
@@ -958,7 +959,7 @@ export class DeviceManagerService extends EventEmitter {
     const now = Date.now();
     if (now - this.lastAutoScanAt < this.AUTO_SCAN_COOLDOWN_MS) return;
     this.lastAutoScanAt = now;
-    console.log('[DeviceManager] Device went offline — triggering discovery scan (cooldown: 60s)');
+    log.debug('[DeviceManager] Device went offline — triggering discovery scan (cooldown: 60s)');
     this.discovery.scan().catch(() => {});
   }
 
@@ -996,7 +997,7 @@ export class DeviceManagerService extends EventEmitter {
         channelName: params.channelName ?? null,
         deviceId: params.deviceId ?? null,
       },
-    }).catch(err => console.warn('[DeviceManager] Could not persist alert:', err?.message));
+    }).catch(err => log.warn('[DeviceManager] Could not persist alert:', err?.message));
   }
 
   getAlertSnapshot(): any[] {
@@ -1056,7 +1057,7 @@ export class DeviceManagerService extends EventEmitter {
   async muteChannel(deviceId: string, rxIndex: number, muted: boolean) {
     const client = this.clients.get(deviceId);
     if (!client) {
-      console.warn(`[DeviceManager] Cannot mute channel, device ${deviceId} not connected.`);
+      log.warn(`[DeviceManager] Cannot mute channel, device ${deviceId} not connected.`);
       return false;
     }
     return client.setMute(rxIndex, muted);
@@ -1065,7 +1066,7 @@ export class DeviceManagerService extends EventEmitter {
   async identifyDevice(deviceId: string) {
     const client = this.clients.get(deviceId);
     if (!client) {
-      console.warn(`[DeviceManager] Cannot identify, device ${deviceId} not connected.`);
+      log.warn(`[DeviceManager] Cannot identify, device ${deviceId} not connected.`);
       return false;
     }
     return client.identify();
@@ -1074,7 +1075,7 @@ export class DeviceManagerService extends EventEmitter {
   async setChannelGain(deviceId: string, rxIndex: number, gain: number) {
     const client = this.clients.get(deviceId);
     if (!client || !(client instanceof SSCClient)) {
-      console.warn(`[DeviceManager] Cannot set gain, device ${deviceId} not connected or legacy.`);
+      log.warn(`[DeviceManager] Cannot set gain, device ${deviceId} not connected or legacy.`);
       return false;
     }
     return client.setGain(rxIndex, gain);
@@ -1083,7 +1084,7 @@ export class DeviceManagerService extends EventEmitter {
   async setChannelFrequency(deviceId: string, rxIndex: number, frequencyHz: number) {
     const client = this.clients.get(deviceId);
     if (!client || !(client instanceof SSCClient)) {
-      console.warn(`[DeviceManager] Cannot set frequency, device ${deviceId} not connected or legacy.`);
+      log.warn(`[DeviceManager] Cannot set frequency, device ${deviceId} not connected or legacy.`);
       return false;
     }
     return client.setFrequency(rxIndex, frequencyHz);
@@ -1092,7 +1093,7 @@ export class DeviceManagerService extends EventEmitter {
   async setDeviceNetwork(deviceId: string, staticIp: string, subnet: string, gateway: string) {
     const client = this.clients.get(deviceId);
     if (!client || !(client instanceof SSCClient)) {
-      console.warn(`[DeviceManager] Cannot set network, device ${deviceId} not connected or legacy.`);
+      log.warn(`[DeviceManager] Cannot set network, device ${deviceId} not connected or legacy.`);
       return false;
     }
     return client.setNetwork(staticIp, subnet, gateway);

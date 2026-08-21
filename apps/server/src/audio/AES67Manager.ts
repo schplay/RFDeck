@@ -1,6 +1,7 @@
 import * as dgram from 'dgram';
 import { EventEmitter } from 'events';
 import { nonstandard } from '@roamhq/wrtc';
+import { log } from '../logger';
 
 const { RTCAudioSource } = nonstandard;
 
@@ -21,7 +22,7 @@ export class AES67Manager extends EventEmitter {
   constructor() {
     super();
     this.audioSource = new RTCAudioSource();
-    console.log('[AES67Manager] Ready (no external dependencies required).');
+    log.debug('[AES67Manager] Ready (no external dependencies required).');
   }
 
   startAES67Stream(multicastIp: string, port: number): void {
@@ -30,12 +31,12 @@ export class AES67Manager extends EventEmitter {
 
     this.udpSocket.on('message', (msg) => this.handleRTPPacket(msg));
     this.udpSocket.on('error', (err) => {
-      console.error('[AES67Manager] UDP socket error:', err);
+      log.error('[AES67Manager] UDP socket error:', err);
     });
 
     this.udpSocket.bind(port, () => {
       this.udpSocket!.addMembership(multicastIp);
-      console.log(`[AES67Manager] Joined AES-67 multicast ${multicastIp}:${port}`);
+      log.debug(`[AES67Manager] Joined AES-67 multicast ${multicastIp}:${port}`);
     });
   }
 
@@ -99,7 +100,7 @@ export class AES67Manager extends EventEmitter {
       });
     }, 10);
 
-    console.log('[AES67Manager] Test tone started (440 Hz).');
+    log.debug('[AES67Manager] Test tone started (440 Hz).');
   }
 
   stop(): void {

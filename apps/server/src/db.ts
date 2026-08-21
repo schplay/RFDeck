@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import path from 'path';
+import { log } from './logger';
 
 // Where the database lives, in priority order:
 //
@@ -32,7 +33,7 @@ function resolveDatabaseUrl(): string {
 }
 
 const dbUrl = resolveDatabaseUrl();
-console.log(`[Prisma] Using database ${dbUrl}`);
+log.debug(`[Prisma] Using database ${dbUrl}`);
 
 export const prisma = new PrismaClient({
   datasources: {

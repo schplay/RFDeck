@@ -4,6 +4,7 @@ import https from 'https';
 import axios from 'axios';
 import { EventEmitter } from 'events';
 import { mcpBus } from './McpBus';
+import { log } from '../../logger';
 
 export interface DiscoveredDevice {
   ip: string;
@@ -51,7 +52,7 @@ export class DiscoveryService extends EventEmitter {
   constructor() { super(); }
 
   start() {
-    console.log('[Discovery] Starting passive listeners (mDNS + MCP)...');
+    log.debug('[Discovery] Starting passive listeners (mDNS + MCP)...');
     this.startMdns();
     this.startMcpListener();
     // Active scanning (UDP probes + HTTP host sweep) is triggered on-demand via scan().
@@ -61,12 +62,12 @@ export class DiscoveryService extends EventEmitter {
 
   async scan(): Promise<void> {
     if (this.scanInProgress) {
-      console.log('[Discovery] Scan already in progress, skipping');
+      log.debug('[Discovery] Scan already in progress, skipping');
       return;
     }
     this.scanInProgress = true;
     this.emit('scan:start');
-    console.log('[Discovery] On-demand scan started');
+    log.debug('[Discovery] On-demand scan started');
     try {
       this.runUdpProbes();
       // Hard cap: on Windows, TCP SYN to firewalled hosts can stall far past the
@@ -76,7 +77,7 @@ export class DiscoveryService extends EventEmitter {
     } finally {
       this.scanInProgress = false;
       this.emit('scan:complete');
-      console.log('[Discovery] On-demand scan complete');
+      log.debug('[Discovery] On-demand scan complete');
     }
   }
 
@@ -96,7 +97,7 @@ export class DiscoveryService extends EventEmitter {
       bonjour.find({ type: 'ssc' }, (service: any) => {
         const ip = this.pickIPv4(service);
         if (ip) {
-          console.log(`[Discovery] mDNS _ssc._tcp: ${service.name} at ${ip}:${service.port}`);
+          log.debug(`[Discovery] mDNS _ssc._tcp: ${service.name} at ${ip}:${service.port}`);
           this.emitDiscovered(ip, service.port, service.name, 'ssc');
           this.registerSerial(ip).catch(() => {});
         }
@@ -105,7 +106,7 @@ export class DiscoveryService extends EventEmitter {
       bonjour.find({ type: 'sennheiser-ssc' }, (service: any) => {
         const ip = this.pickIPv4(service);
         if (ip) {
-          console.log(`[Discovery] mDNS _sennheiser-ssc._tcp: ${service.name} at ${ip}:${service.port}`);
+          log.debug(`[Discovery] mDNS _sennheiser-ssc._tcp: ${service.name} at ${ip}:${service.port}`);
           this.emitDiscovered(ip, service.port, service.name, 'sennheiser-ssc');
           this.registerSerial(ip).catch(() => {});
         }
@@ -149,7 +150,7 @@ export class DiscoveryService extends EventEmitter {
   private runUdpProbes() {
     // 1. Broadcast probes on all interfaces
     const broadcasts = mcpBus.getBroadcastAddresses();
-    console.log(`[Discovery] UDP probe broadcast to: ${broadcasts.join(', ')}`);
+    log.debug(`[Discovery] UDP probe broadcast to: ${broadcasts.join(', ')}`);
     mcpBus.sendToMany(broadcasts, MCP_PUSH);
     mcpBus.sendToMany(broadcasts, 'Name');
 
@@ -161,7 +162,7 @@ export class DiscoveryService extends EventEmitter {
       } else {
         const parts = iface.address.split('.');
         const base  = `${parts[0]}.${parts[1]}.${parts[2]}`;
-        console.log(`[Discovery] Large subnet — unicast scan of ${base}.1–254`);
+        log.debug(`[Discovery] Large subnet — unicast scan of ${base}.1–254`);
         for (let host = 1; host <= 254; host++) {
           mcpBus.sendTo(`${base}.${host}`, MCP_PUSH);
           mcpBus.sendTo(`${base}.${host}`, 'Name');
@@ -174,7 +175,7 @@ export class DiscoveryService extends EventEmitter {
     const maskParts = netmask.split('.').map(Number);
     const ipParts   = ifaceIp.split('.').map(Number);
     const network   = ipParts.map((b, i) => b & maskParts[i]);
-    console.log(`[Discovery] Unicast scan of subnet (${hostCount} hosts)`);
+    log.debug(`[Discovery] Unicast scan of subnet (${hostCount} hosts)`);
     for (let i = 1; i <= hostCount; i++) {
       const o4 = (network[3] + i) & 0xff;
       const carry3 = Math.floor((network[3] + i) / 256);
@@ -193,7 +194,7 @@ export class DiscoveryService extends EventEmitter {
   private async runHttpScan() {
     const ifaces = mcpBus.getActiveInterfaces();
     if (ifaces.length === 0) return;
-    console.log(`[Discovery] HTTP scan across ${ifaces.length} interface(s)…`);
+    log.debug(`[Discovery] HTTP scan across ${ifaces.length} interface(s)…`);
     for (const iface of ifaces) {
       const parts = iface.address.split('.');
       const base  = `${parts[0]}.${parts[1]}.${parts[2]}`;
@@ -239,7 +240,7 @@ export class DiscoveryService extends EventEmitter {
     }
 
     if ('auth' in hit) {
-      console.log(`[Discovery] HTTP probe: auth-protected device at ${ip}`);
+      log.debug(`[Discovery] HTTP probe: auth-protected device at ${ip}`);
       this.emitDiscovered(ip, SSC_PORT, `Sennheiser EW-DX (${ip})`, 'ssc');
       return;
     }
@@ -247,13 +248,13 @@ export class DiscoveryService extends EventEmitter {
     if (hit.serial) {
       const owner = this.seenSerials.get(hit.serial);
       if (owner && owner !== ip) {
-        console.log(`[Discovery] ${ip} shares serial ${hit.serial} with ${owner} — secondary interface, skipping`);
+        log.debug(`[Discovery] ${ip} shares serial ${hit.serial} with ${owner} — secondary interface, skipping`);
         return;
       }
       this.seenSerials.set(hit.serial, ip);
     }
 
-    console.log(`[Discovery] HTTP probe found EW-DX at ${ip}: ${hit.name}`);
+    log.debug(`[Discovery] HTTP probe found EW-DX at ${ip}: ${hit.name}`);
     this.emitDiscovered(ip, SSC_PORT, hit.name, 'ssc');
   }
 
@@ -264,7 +265,7 @@ export class DiscoveryService extends EventEmitter {
       const serial = resp.data?.serial_number ?? resp.data?.serial ?? resp.data?.sn ?? null;
       if (serial && !this.seenSerials.has(serial)) {
         this.seenSerials.set(serial, ip);
-        console.log(`[Discovery] Registered serial ${serial} → ${ip}`);
+        log.debug(`[Discovery] Registered serial ${serial} → ${ip}`);
       }
     } catch {
       // Unreachable or auth-required — skip silently
@@ -277,7 +278,7 @@ export class DiscoveryService extends EventEmitter {
     const key = `${ip}:${port}`;
     if (this.seenIps.has(key)) return;
     this.seenIps.add(key);
-    console.log(`[Discovery] Found: ${name} at ${ip}:${port} (${protocol})`);
+    log.debug(`[Discovery] Found: ${name} at ${ip}:${port} (${protocol})`);
     this.emit('discovered', { ip, port, name, protocol } as DiscoveredDevice);
   }
 

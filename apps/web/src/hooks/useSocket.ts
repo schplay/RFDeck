@@ -7,10 +7,12 @@ import { useFrequencyHistoryStore } from '../stores/frequencyHistoryStore';
 import { useRfEventStore, RfEvent } from '../stores/rfEventStore';
 import { useShowStore } from '../stores/showStore';
 import { useBatteryStore, BatteryEstimate } from '../stores/batteryStore';
-import { getToken } from '../lib/api';
+import { getToken, serverOrigin } from '../lib/api';
 import { Channel, Alert, Show } from '@rfdeck/shared-types';
 
-const SOCKET_URL = 'http://localhost:3000';
+// Same origin resolution as the REST client — a hardcoded localhost here would
+// leave every remote client permanently disconnected. See lib/api.ts.
+const SOCKET_URL = serverOrigin();
 
 // Module-level singleton — one socket connection for the entire app lifetime.
 // Multiple components calling useSocket() share this connection; no duplicate

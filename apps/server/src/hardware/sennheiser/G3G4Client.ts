@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { mcpBus } from './McpBus';
+import { log } from '../../logger';
 
 // Sennheiser EW G3/G4 Media Control Protocol (MCP)
 // Transport : UDP, device listens on port 53212
@@ -62,7 +63,7 @@ export class G3G4Client extends EventEmitter {
     this.msgHandler = (raw: string) => this.handleData(raw);
     mcpBus.addHandler(this.ip, this.msgHandler);
 
-    console.log(`[G3G4Client] Subscribing to MCP for ${this.ip} via shared UDP :53212`);
+    log.debug(`[G3G4Client] Subscribing to MCP for ${this.ip} via shared UDP :53212`);
     this.sendSubscribe();
     this.send('Name');
     this.send('Frequency');
@@ -99,7 +100,7 @@ export class G3G4Client extends EventEmitter {
     this.sendSubscribe();
     if (!this.disconnectSignaled) {
       this.disconnectSignaled = true;
-      console.warn(`[G3G4Client] ${this.ip}:53212 — no data for ${OFFLINE_MS / 1000}s. If the Push echo arrives but no status follows, enable "Network Control" on the device.`);
+      log.warn(`[G3G4Client] ${this.ip}:53212 — no data for ${OFFLINE_MS / 1000}s. If the Push echo arrives but no status follows, enable "Network Control" on the device.`);
       this.emit('disconnected', 'timeout');
     }
   }
@@ -111,21 +112,21 @@ export class G3G4Client extends EventEmitter {
     // MCP error responses ("1020: Value out of range [...]") mean the device
     // is reachable but rejected the command. Don't treat as valid data.
     if (/^\d{4}:/.test(raw.trim())) {
-      console.warn(`[G3G4Client] MCP error from ${this.ip}: ${raw.trim()}`);
+      log.warn(`[G3G4Client] MCP error from ${this.ip}: ${raw.trim()}`);
       return;
     }
 
     if (!this.isConnected) {
       this.isConnected = true;
-      console.log(`[G3G4Client] Connected to ${this.ip} via MCP`);
+      log.debug(`[G3G4Client] Connected to ${this.ip} via MCP`);
       this.emit('connected');
     }
 
     if (this.dataCount < 5) {
-      console.log(`[G3G4Client] Packet from ${this.ip}: ${JSON.stringify(raw)}`);
+      log.debug(`[G3G4Client] Packet from ${this.ip}: ${JSON.stringify(raw)}`);
     } else if (this.dataCount === 5) {
       // After 5 packets, log accumulated state to diagnose missing fields (e.g. IEM battery/RF)
-      console.log(`[G3G4Client] ${this.ip} state after 5 packets — rfA:${this.state.rfA} rfB:${this.state.rfB} bat:${this.state.bat} af:${this.state.af} squelch:${this.state.squelch} name:"${this.state.name}" freq:${this.state.freq}`);
+      log.debug(`[G3G4Client] ${this.ip} state after 5 packets — rfA:${this.state.rfA} rfB:${this.state.rfB} bat:${this.state.bat} af:${this.state.af} squelch:${this.state.squelch} name:"${this.state.name}" freq:${this.state.freq}`);
     }
     this.dataCount++;
 
@@ -258,7 +259,7 @@ export class G3G4Client extends EventEmitter {
         this.send(`Frequency ${value}`);
         return true;
       default:
-        console.warn(`[G3G4Client] No MCP mapping for: ${path}`);
+        log.warn(`[G3G4Client] No MCP mapping for: ${path}`);
         return false;
     }
   }

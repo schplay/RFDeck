@@ -4,6 +4,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { X, Wifi, MapPin, PlusCircle, Search, Loader, Mic, Headphones, ListPlus, RefreshCw } from 'lucide-react';
 import { useDeviceStore, DiscoveredDevice } from '../../../stores/deviceStore';
 import { useSocket } from '../../../hooks/useSocket';
+import { API_BASE } from '../../../lib/api';
 import './AddDeviceDialog.css';
 
 interface Props {
@@ -42,7 +43,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
 
   const triggerScan = useCallback(() => {
     setScanning(true);
-    fetch('http://localhost:3000/api/discovery/scan', { method: 'POST' }).catch(() => {});
+    fetch(`${API_BASE}/discovery/scan`, { method: 'POST' }).catch(() => {});
   }, []);
 
   // Manual entry form state
@@ -77,7 +78,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
   // server apply the default when it creates the device.
   useEffect(() => {
     if (!open) return;
-    fetch('http://localhost:3000/api/settings')
+    fetch(`${API_BASE}/settings`)
       .then((r) => r.json())
       .then((s) => setHasDefaultPassword(!!s.hasDefaultPassword))
       .catch(() => {});

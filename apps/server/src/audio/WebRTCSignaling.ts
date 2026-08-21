@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from '@roamhq/wrtc';
 import { AES67Manager } from './AES67Manager';
+import { log } from '../logger';
 
 export class WebRTCSignaling {
   private audioManager: AES67Manager;
@@ -31,9 +32,9 @@ export class WebRTCSignaling {
         await pc.setLocalDescription(answer);
         socket.emit('webrtc:answer', answer);
 
-        console.log(`[WebRTC] Connection established for ${socket.id}`);
+        log.debug(`[WebRTC] Connection established for ${socket.id}`);
       } catch (err) {
-        console.error(`[WebRTC] Error handling offer from ${socket.id}:`, err);
+        log.error(`[WebRTC] Error handling offer from ${socket.id}:`, err);
       }
     });
 
@@ -43,7 +44,7 @@ export class WebRTCSignaling {
         try {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
         } catch (err) {
-          console.error(`[WebRTC] Error adding ICE candidate for ${socket.id}:`, err);
+          log.error(`[WebRTC] Error adding ICE candidate for ${socket.id}:`, err);
         }
       }
     });
@@ -53,7 +54,7 @@ export class WebRTCSignaling {
       if (pc) {
         pc.close();
         this.peers.delete(socket.id);
-        console.log(`[WebRTC] Peer ${socket.id} disconnected.`);
+        log.debug(`[WebRTC] Peer ${socket.id} disconnected.`);
       }
     });
   }

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Device } from '@rfdeck/shared-types';
+import { API_BASE } from '../lib/api';
 
 export type DeviceType = 'input' | 'output';
 
@@ -69,8 +70,6 @@ interface DeviceState {
   addDiscovered: (device: DiscoveredDevice) => void;
   removeDiscovered: (ip: string) => void;
 }
-
-const API_BASE = 'http://localhost:3000/api';
 
 export const useDeviceStore = create<DeviceState>()((set, get) => ({
   inventory: [],

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { log } from '../logger';
 
 // Encryption at rest for device passwords.
 //
@@ -45,10 +46,10 @@ function loadKey(): Buffer {
         cachedKey = key;
         return key;
       }
-      console.warn('[secretBox] Key file is malformed; generating a new one');
+      log.warn('[secretBox] Key file is malformed; generating a new one');
     }
   } catch (err: any) {
-    console.warn('[secretBox] Could not read key file:', err?.message);
+    log.warn('[secretBox] Could not read key file:', err?.message);
   }
 
   const key = crypto.randomBytes(32);
@@ -57,7 +58,7 @@ function loadKey(): Buffer {
   } catch (err: any) {
     // Non-fatal: encryption still works this session, but stored values will
     // be unreadable after a restart. Loud, because it needs fixing.
-    console.error('[secretBox] Could not persist encryption key:', err?.message);
+    log.error('[secretBox] Could not persist encryption key:', err?.message);
   }
   cachedKey = key;
   return key;
@@ -94,7 +95,7 @@ export function decryptSecret(stored: string | null): string | null {
   } catch (err: any) {
     // Usually a lost or replaced key file. Fail soft: the device shows as
     // needing its password re-entered rather than the server refusing to start.
-    console.error('[secretBox] Could not decrypt a stored secret:', err?.message);
+    log.error('[secretBox] Could not decrypt a stored secret:', err?.message);
     return null;
   }
 }

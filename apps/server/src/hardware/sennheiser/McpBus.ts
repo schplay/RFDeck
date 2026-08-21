@@ -1,5 +1,6 @@
 import dgram from 'dgram';
 import os from 'os';
+import { log } from '../../logger';
 
 // Singleton UDP socket on port 53212 shared by DiscoveryService and all G3G4Client instances.
 // Having one socket avoids the EADDRINUSE / Windows-Firewall issue that arises when two
@@ -45,7 +46,7 @@ class McpBus {
 
       sock.once('error', (err) => {
         if (!this.ready) reject(err);
-        else console.error('[McpBus] socket error:', err.message);
+        else log.error('[McpBus] socket error:', err.message);
       });
 
       sock.on('message', (msg, rinfo) => {
@@ -59,7 +60,7 @@ class McpBus {
       sock.bind(MCP_PORT, () => {
         sock.setBroadcast(true);
         this.ready = true;
-        console.log(`[McpBus] Shared UDP socket bound to :${MCP_PORT}`);
+        log.debug(`[McpBus] Shared UDP socket bound to :${MCP_PORT}`);
         for (const { ip, buf } of this.sendQueue) {
           sock.send(buf, 0, buf.length, MCP_PORT, ip);
         }
@@ -73,7 +74,7 @@ class McpBus {
     const buf = Buffer.from(command.endsWith('\r') ? command : command + '\r', 'ascii');
     if (this.ready && this.sock) {
       this.sock.send(buf, 0, buf.length, MCP_PORT, ip, (err) => {
-        if (err) console.warn(`[McpBus] send → ${ip}: ${err.message}`);
+        if (err) log.warn(`[McpBus] send → ${ip}: ${err.message}`);
       });
     } else {
       this.sendQueue.push({ ip, buf });

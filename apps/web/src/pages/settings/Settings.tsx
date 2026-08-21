@@ -3,7 +3,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { Volume2, BellRing, Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAudioStore } from '../../stores/audioStore';
 import { useAudioDevice } from '../../hooks/useAudioDevice';
-import { apiFetch, fetchAuthStatus, AuthStatus } from '../../lib/api';
+import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
 import './Settings.css';
 
 interface AppSettings {
@@ -250,8 +250,8 @@ export default function Settings() {
 
   useEffect(() => {
     Promise.all([
-      fetch('http://localhost:3000/api/settings').then(res => res.json()),
-      fetch('http://localhost:3000/api/system/network-interfaces').then(res => res.json()),
+      fetch(`${API_BASE}/settings`).then(res => res.json()),
+      fetch(`${API_BASE}/system/network-interfaces`).then(res => res.json()),
     ])
       .then(([settingsData, interfacesData]) => {
         // defaultPassword is always blank coming back — it is write-only.
@@ -267,7 +267,7 @@ export default function Settings() {
 
   const handleSave = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/settings', {
+      const res = await fetch(`${API_BASE}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),

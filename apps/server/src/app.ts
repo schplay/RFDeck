@@ -2,15 +2,22 @@ import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import prismaPlugin from './plugins/prisma';
 import socketPlugin from './plugins/socket';
+import frontendPlugin from './plugins/frontend';
 import routes from './routes';
 import { isRequestAuthorized } from './auth/pinAuth';
+import { log } from './logger';
 
 // Endpoints reachable before authentication. Everything else is gated when the
 // admin has enabled a PIN; /auth/status is how a client discovers it needs one.
 const OPEN_PATHS = new Set(['/api/auth/status', '/api/auth/login', '/health']);
 
 export async function buildApp(): Promise<FastifyInstance> {
-  const app = Fastify({ logger: true });
+  // Fastify logs every request by default. Telemetry-driven UIs poll steadily,
+  // so on a long-running service that is pure journal noise — enable it only
+  // when someone has asked for debug output.
+  const app = Fastify({
+    logger: log.isDebug ? true : false,
+  });
 
   await app.register(cors, { origin: true });
   await app.register(prismaPlugin);
@@ -28,6 +35,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await app.register(routes, { prefix: '/api' });
+
+  // Registered after the API so its catch-all cannot shadow a real route.
+  await app.register(frontendPlugin);
 
   app.get('/health', async () => {
     return { status: 'ok', timestamp: new Date() };

@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import dgram from 'dgram';
 import { EventEmitter } from 'events';
+import { log } from '../../logger';
 
 // Endpoint candidates tried in order on first connection.
 // SSCv2 (EW-DX firmware ≥ 4.0): HTTPS on port 443, REST at /api/ssc/version
@@ -68,7 +69,7 @@ export class SSCClient extends EventEmitter {
       ? { Authorization: `Basic ${Buffer.from(`api:${password}`).toString('base64')}` }
       : {};
 
-    console.log(`[SSCClient] ${ip}:${port} — password ${password ? `SET (len=${password.length})` : 'NOT SET'}`);
+    log.debug(`[SSCClient] ${ip}:${port} — password ${password ? `SET (len=${password.length})` : 'NOT SET'}`);
 
     // Allow self-signed certs and legacy TLS (TLS 1.0/1.1) used by older Sennheiser firmware.
     // Node.js 24 (OpenSSL 3.x) disables TLS 1.0/1.1 by default; we re-enable it at the
@@ -137,7 +138,7 @@ export class SSCClient extends EventEmitter {
       // If a previous SSCv2 attempt connected but had no rx data, skip /api/*
       // candidates so we fall straight through to /osc/.
       if (this.sscv2RxMissing && path.startsWith('/api')) {
-        console.log(`[SSCClient] ${this.ip}: skipping ${path} (SSCv2 rx data not available)`);
+        log.debug(`[SSCClient] ${this.ip}: skipping ${path} (SSCv2 rx data not available)`);
         continue;
       }
 
@@ -147,7 +148,7 @@ export class SSCClient extends EventEmitter {
         // Reject non-JSON responses (e.g. a router/switch serving an HTML login page
         // at /osc/ or another path that happens to return 200).
         if (!response.data || typeof response.data !== 'object') {
-          console.log(`[SSCClient] Probe ${url}: 200 but non-JSON body — not a Sennheiser device`);
+          log.debug(`[SSCClient] Probe ${url}: 200 but non-JSON body — not a Sennheiser device`);
           lastErr = new Error(`non-JSON response at ${url}`);
           continue;
         }
@@ -155,20 +156,20 @@ export class SSCClient extends EventEmitter {
         this.baseUrl       = this.extractBase(url);
         this.isSSCv2       = url.includes('/api/');
         this.ssePermFailed = false;   // allow SSE attempt on fresh probe
-        console.log(`[SSCClient] ${this.ip}:${this.port} — connected via ${url} (${this.isSSCv2 ? 'SSCv2' : 'OSC'})`);
-        console.log(`[SSCClient] ${this.ip} probe response body: ${JSON.stringify(response.data).substring(0, 400)}`);
+        log.debug(`[SSCClient] ${this.ip}:${this.port} — connected via ${url} (${this.isSSCv2 ? 'SSCv2' : 'OSC'})`);
+        log.debug(`[SSCClient] ${this.ip} probe response body: ${JSON.stringify(response.data).substring(0, 400)}`);
         return response.data;
       } catch (err: any) {
         const detail = err.response
           ? `HTTP ${err.response.status}`
           : (err.code ?? err.message ?? 'unknown');
-        console.log(`[SSCClient] Probe ${url}: ${detail}`);
+        log.debug(`[SSCClient] Probe ${url}: ${detail}`);
         if (err.response?.status === 401) {
           const challenge = err.response.headers?.['www-authenticate'] ?? '(none)';
           const sentAuth  = (this.httpsClient.defaults.headers as any)?.['Authorization']
                          ?? (this.httpsClient.defaults.headers as any)?.common?.['Authorization']
                          ?? '(not set)';
-          console.warn(
+          log.warn(
             `[SSCClient] ${this.ip} 401 on ${path} — ` +
             `password ${this.password ? `SET (len=${this.password.length})` : 'NOT SET'}, ` +
             `sent Authorization: ${sentAuth !== '(not set)' ? sentAuth.substring(0, 20) + '…' : '(not set)'}, ` +
@@ -282,12 +283,12 @@ export class SSCClient extends EventEmitter {
       timeout: 0,   // disable per-request timeout — SSE is a persistent connection
     }).then((resp: any) => {
       if ((resp.status as number) !== 200) {
-        console.log(`[SSCClient] ${this.ip} SSE /api/ssc/state/subscriptions → HTTP ${resp.status}`);
+        log.debug(`[SSCClient] ${this.ip} SSE /api/ssc/state/subscriptions → HTTP ${resp.status}`);
         this.sseStarting = false;
         return;
       }
 
-      console.log(`[SSCClient] ${this.ip} SSE stream opened`);
+      log.debug(`[SSCClient] ${this.ip} SSE stream opened`);
       this.sseActive   = true;
       this.sseStarting = false;
       if (!this.isConnected) {
@@ -306,7 +307,7 @@ export class SSCClient extends EventEmitter {
         this.sseSessionId = null;
         this.sseSocket    = null;
         if (wasActive) {
-          console.log(`[SSCClient] ${this.ip} SSE ${reason} — will re-probe`);
+          log.debug(`[SSCClient] ${this.ip} SSE ${reason} — will re-probe`);
           this.activeUrl            = null;
           this.baseUrl              = null;
           this.isSSCv2              = false;
@@ -364,7 +365,7 @@ export class SSCClient extends EventEmitter {
               }
               // Unknown path — log it so we can identify the correct receiver paths
               if (!/\/api\/ssc\/state\/subscriptions/.test(epath)) {
-                console.log(`[SSCClient] ${this.ip} SSE unknown path: ${epath} = ${JSON.stringify(parsed.value).substring(0, 300)}`);
+                log.debug(`[SSCClient] ${this.ip} SSE unknown path: ${epath} = ${JSON.stringify(parsed.value).substring(0, 300)}`);
               }
               continue;
             }
@@ -375,10 +376,10 @@ export class SSCClient extends EventEmitter {
                 ?? parsed.session?.uuid ?? null;
               if (uuid) {
                 this.sseSessionId = uuid;
-                console.log(`[SSCClient] ${this.ip} SSE session: ${uuid}`);
+                log.debug(`[SSCClient] ${this.ip} SSE session: ${uuid}`);
                 this.subscribeSSEChannels(uuid).catch(() => {});
               } else {
-                console.log(`[SSCClient] ${this.ip} SSE first event: ${JSON.stringify(parsed).substring(0, 200)}`);
+                log.debug(`[SSCClient] ${this.ip} SSE first event: ${JSON.stringify(parsed).substring(0, 200)}`);
               }
               continue; // first event handled
             }
@@ -409,27 +410,27 @@ export class SSCClient extends EventEmitter {
                 const norm = this.normalizeRx(v);
                 if (norm) rxData[rxKey] = norm;
               } else if (k !== 'path' && k !== 'sessionUUID' && k !== 'session_uuid') {
-                console.log(`[SSCClient] ${this.ip} SSE compound key: "${k}" = ${JSON.stringify(v).substring(0, 200)}`);
+                log.debug(`[SSCClient] ${this.ip} SSE compound key: "${k}" = ${JSON.stringify(v).substring(0, 200)}`);
               }
             }
             if (Object.keys(rxData).length > 0) {
               this.failCount = 0;
               this.emit('state', rxData);
             } else if (!ewdxHandled2) {
-              console.log(`[SSCClient] ${this.ip} SSE event: ${JSON.stringify(parsed).substring(0, 200)}`);
+              log.debug(`[SSCClient] ${this.ip} SSE event: ${JSON.stringify(parsed).substring(0, 200)}`);
             }
           } catch { /* keepalive comment or non-JSON line */ }
         }
       });
       stream.on('end',   () => resetSSE('stream ended'));
-      stream.on('error', (err: Error) => { console.log(`[SSCClient] ${this.ip} SSE error: ${err.message}`); resetSSE('stream error'); });
+      stream.on('error', (err: Error) => { log.debug(`[SSCClient] ${this.ip} SSE error: ${err.message}`); resetSSE('stream error'); });
 
     }).catch((err: any) => {
       this.sseStarting = false;
       const status = err.response?.status as number | undefined;
       if (status === 401) {
         const challenge = (err.response?.headers?.['www-authenticate'] as string | undefined) ?? '(none)';
-        console.warn(
+        log.warn(
           `[SSCClient] ${this.ip} SSE 401 on /api/ssc/state/subscriptions — ` +
           `WWW-Authenticate: ${challenge}. ` +
           `Password ${this.password ? `is SET (len=${this.password.length})` : 'NOT SET'}. ` +
@@ -440,7 +441,7 @@ export class SSCClient extends EventEmitter {
         // poll() will keep the device online and use pollSSCv2Direct() as a fallback.
         this.ssePermFailed = true;
       } else {
-        console.log(`[SSCClient] ${this.ip} SSE → ${status ?? err.code ?? err.message}`);
+        log.debug(`[SSCClient] ${this.ip} SSE → ${status ?? err.code ?? err.message}`);
       }
     });
   }
@@ -469,13 +470,13 @@ export class SSCClient extends EventEmitter {
           const batch = ewdxPaths.slice(i, i + 4);
           try {
             const resp = await this.httpsClient.put(url, batch, { timeout: 5000 });
-            console.log(`[SSCClient] ${this.ip} SSE subscribed [${batch.join(', ')}] → ${resp.status}`);
+            log.debug(`[SSCClient] ${this.ip} SSE subscribed [${batch.join(', ')}] → ${resp.status}`);
           } catch (err: any) {
             const status = err.response?.status ?? err.code ?? err.message;
             const body   = err.response?.data
               ? ` body: ${JSON.stringify(err.response.data).substring(0, 200)}`
               : '';
-            console.log(`[SSCClient] ${this.ip} SSE subscribe batch ${i/4+1} → ${status}${body}`);
+            log.debug(`[SSCClient] ${this.ip} SSE subscribe batch ${i/4+1} → ${status}${body}`);
           }
         }
         return;
@@ -486,13 +487,13 @@ export class SSCClient extends EventEmitter {
       const ext  = this.sseSubscribePaths.slice(2, 4);
       try {
         const resp = await this.httpsClient.put(url, base, { timeout: 5000 });
-        console.log(`[SSCClient] ${this.ip} SSE subscribed to [${base.join(', ')}] → HTTP ${resp.status}`);
+        log.debug(`[SSCClient] ${this.ip} SSE subscribed to [${base.join(', ')}] → HTTP ${resp.status}`);
       } catch (err: any) {
         const status = err.response?.status ?? err.code ?? err.message;
         const body   = err.response?.data
           ? ` body: ${JSON.stringify(err.response.data).substring(0, 200)}`
           : '';
-        console.log(`[SSCClient] ${this.ip} SSE subscribe → ${status}${body}`);
+        log.debug(`[SSCClient] ${this.ip} SSE subscribe → ${status}${body}`);
         return;
       }
       if (ext.length > 0) {
@@ -507,14 +508,14 @@ export class SSCClient extends EventEmitter {
       for (const p of pathsToTry) {
         try {
           const resp = await this.httpsClient.put(url, [p], { timeout: 5000 });
-          console.log(`[SSCClient] ${this.ip} SSE subscribed to [${p}] → HTTP ${resp.status}`);
+          log.debug(`[SSCClient] ${this.ip} SSE subscribed to [${p}] → HTTP ${resp.status}`);
           break;
         } catch (err: any) {
           const status = err.response?.status ?? err.code ?? err.message;
           const body   = err.response?.data
             ? ` body: ${JSON.stringify(err.response.data).substring(0, 200)}`
             : '';
-          console.log(`[SSCClient] ${this.ip} SSE subscribe [${p}] → ${status}${body}`);
+          log.debug(`[SSCClient] ${this.ip} SSE subscribe [${p}] → ${status}${body}`);
         }
       }
     }
@@ -562,7 +563,7 @@ export class SSCClient extends EventEmitter {
     for (const result of results) {
       if (result.status === 'fulfilled') {
         this.sseSubscribePaths = result.value.paths;
-        console.log(
+        log.debug(
           `[SSCClient] ${this.ip} rx paths: ${result.value.paths.slice(0, 2).join(', ')} ` +
           `(HTTP ${result.value.status})`,
         );
@@ -595,11 +596,11 @@ export class SSCClient extends EventEmitter {
     for (const p of diagnosticProbes) {
       try {
         const resp = await this.httpsClient.get(`${this.baseUrl}${p}`, { timeout: 2000 });
-        console.log(`[SSCClient] ${this.ip} FOUND: ${p} → ${resp.status}: ${JSON.stringify(resp.data).substring(0, 300)}`);
+        log.debug(`[SSCClient] ${this.ip} FOUND: ${p} → ${resp.status}: ${JSON.stringify(resp.data).substring(0, 300)}`);
       } catch (err: any) {
         const status = err.response?.status ?? err.code;
         if (status !== 404) {
-          console.log(`[SSCClient] ${this.ip} non-404: ${p} → ${status}`);
+          log.debug(`[SSCClient] ${this.ip} non-404: ${p} → ${status}`);
         }
       }
     }
@@ -622,13 +623,13 @@ export class SSCClient extends EventEmitter {
     socket.on('message', (msg: Buffer, rinfo: dgram.RemoteInfo) => {
       const text = msg.toString('utf8');
       if (!this.udpDataActive && !this.udpLoggedOnce) {
-        console.log(`[SSCClient] ${this.ip} UDP first packet from ${rinfo.address}:${rinfo.port}: ${text.substring(0, 200)}`);
+        log.debug(`[SSCClient] ${this.ip} UDP first packet from ${rinfo.address}:${rinfo.port}: ${text.substring(0, 200)}`);
       }
       if (rinfo.address !== this.ip) return;
       try { this.parseUdpMessage(JSON.parse(text)); } catch { /* non-JSON */ }
     });
     socket.on('error', (err: Error) => {
-      console.log(`[SSCClient] ${this.ip} UDP error: ${err.message}`);
+      log.debug(`[SSCClient] ${this.ip} UDP error: ${err.message}`);
     });
     // Bind to port 0 (random ephemeral), matching the companion module's approach.
     // The device records our source port from the subscription packet and pushes
@@ -636,7 +637,7 @@ export class SSCClient extends EventEmitter {
     // the response without requiring an explicit inbound rule.
     socket.bind(0, () => {
       const { port: localPort } = socket.address() as any;
-      console.log(`[SSCClient] ${this.ip} UDP SSCv1 bound :${localPort} — sending subscription to ${this.ip}:45`);
+      log.debug(`[SSCClient] ${this.ip} UDP SSCv1 bound :${localPort} — sending subscription to ${this.ip}:45`);
       this.sendUdpSubscription();
       this.udpHeartbeat = setInterval(() => this.sendUdpSubscription(), 9000);
     });
@@ -699,7 +700,7 @@ export class SSCClient extends EventEmitter {
     }));
 
     const send = (buf: Buffer) => this.udpSocket!.send(buf, 45, this.ip, (err) => {
-      if (err) console.log(`[SSCClient] ${this.ip} UDP send error: ${err.message}`);
+      if (err) log.debug(`[SSCClient] ${this.ip} UDP send error: ${err.message}`);
     });
     send(msg1);
     send(msg2);
@@ -737,7 +738,7 @@ export class SSCClient extends EventEmitter {
     this.emit('state', rxData);
     if (!this.udpLoggedOnce) {
       this.udpLoggedOnce = true;
-      console.log(`[SSCClient] ${this.ip} UDP SSCv1 rx data: ${JSON.stringify(rxData).substring(0, 300)}`);
+      log.debug(`[SSCClient] ${this.ip} UDP SSCv1 rx data: ${JSON.stringify(rxData).substring(0, 300)}`);
     }
   }
 
@@ -751,7 +752,7 @@ export class SSCClient extends EventEmitter {
     if (this.sseSubscribePaths?.[0] === '/api/channel/0') {
       if (!this.ewdxInitialFetchDone) {
         this.ewdxInitialFetchDone = true;
-        console.log(`[SSCClient] ${this.ip} EW-DX initial channel fetch`);
+        log.debug(`[SSCClient] ${this.ip} EW-DX initial channel fetch`);
         for (let chId = 0; chId < 4; chId++) {
           // Channel name + mute — primary check: 404 means no more channels
           try {
@@ -793,7 +794,7 @@ export class SSCClient extends EventEmitter {
         const resp = await this.httpsClient.get(`${this.baseUrl}/api/${rxKey}`);
         if (i === 1 && !this.sscv2DiagLogged) {
           this.sscv2DiagLogged = true;
-          console.log(
+          log.debug(
             `[SSCClient] ${this.ip} /api/rx1 → HTTP ${resp.status} ` +
             `body: ${JSON.stringify(resp.data).substring(0, 300)}`,
           );
@@ -803,7 +804,7 @@ export class SSCClient extends EventEmitter {
       } catch (err: any) {
         if (i === 1 && !this.sscv2DiagLogged) {
           this.sscv2DiagLogged = true;
-          console.log(`[SSCClient] ${this.ip} /api/rx1 → HTTP ${err.response?.status ?? err.code}`);
+          log.debug(`[SSCClient] ${this.ip} /api/rx1 → HTTP ${err.response?.status ?? err.code}`);
         }
         if (err.response?.status === 404) break;
         if (i === 1) throw err;
@@ -827,7 +828,7 @@ export class SSCClient extends EventEmitter {
         const resp = await client.get(rxUrl);
         if (!this.oscLoggedOnce) {
           this.oscLoggedOnce = true;
-          console.log(`[SSCClient] ${this.ip} OSC rx1 raw:`, JSON.stringify(resp.data).substring(0, 400));
+          log.debug(`[SSCClient] ${this.ip} OSC rx1 raw:`, JSON.stringify(resp.data).substring(0, 400));
         }
         const norm = this.normalizeRx(resp.data);
         if (norm) result[rxKey] = norm;
@@ -850,7 +851,7 @@ export class SSCClient extends EventEmitter {
       const raw = resp.data ?? {};
       // Log the full raw body once so we can see every field the device returns
       if (!this.metadataFetched) {
-        console.log(`[SSCClient] ${this.ip} /api/device/identity full body: ${JSON.stringify(raw)}`);
+        log.debug(`[SSCClient] ${this.ip} /api/device/identity full body: ${JSON.stringify(raw)}`);
       }
       const meta = {
         deviceName: raw.device_name ?? raw.name ?? raw.title ?? null,
@@ -860,7 +861,7 @@ export class SSCClient extends EventEmitter {
         mac:        raw.mac_address ?? raw.mac ?? raw.ethernet_mac ?? raw.mac_eth ?? null,
         model:      raw.device_type ?? raw.model ?? raw.type ?? raw.product_name ?? null,
       };
-      console.log(
+      log.debug(
         `[SSCClient] ${this.ip} /api/device/identity → ` +
         `MAC: ${meta.mac ?? 'null'}, serial: ${meta.serial ?? 'null'}, model: ${meta.model ?? 'null'}`,
       );
@@ -868,7 +869,7 @@ export class SSCClient extends EventEmitter {
     } catch (err: any) {
       if (!this.metadataFetched) {
         const status = err.response?.status ?? err.code ?? err.message ?? 'unknown';
-        console.log(`[SSCClient] ${this.ip} /api/device/identity → ${status}`);
+        log.debug(`[SSCClient] ${this.ip} /api/device/identity → ${status}`);
       }
     }
     this.metadataFetched = true;
@@ -1005,14 +1006,14 @@ export class SSCClient extends EventEmitter {
                 // to OSC/G3G4 — that would cause a spurious disconnect and G3G4 spam.
                 // The device will show as "online" in inventory without channel data until
                 // the SSE auth issue is resolved.
-                console.warn(
+                log.warn(
                   `[SSCClient] ${this.ip} SSCv2 connected but no rx data accessible ` +
                   `(SSE auth failed, direct GET 404). Device stays online without channels.`,
                 );
               } else {
                 // SSE never connected + direct GET empty = rx not available via SSCv2.
                 // Try falling back to /osc/ (older firmware).
-                console.warn(
+                log.warn(
                   `[SSCClient] ${this.ip}:${this.port} SSCv2 GET and SSE both ` +
                   `returned no rx data. Falling back to OSC.`,
                 );
@@ -1074,19 +1075,19 @@ export class SSCClient extends EventEmitter {
         this.ewdxInitialFetchDone = false;
         this.stopUdpReceiver();
         this.disconnectSignaled = true;
-        console.warn(`[SSCClient] Lost connection to ${this.ip}:${this.port} — ${reason}`);
+        log.warn(`[SSCClient] Lost connection to ${this.ip}:${this.port} — ${reason}`);
         this.emit('disconnected', reason);
       } else {
         this.failCount++;
         if (this.failCount === 1) {
-          console.warn(`[SSCClient] ${this.ip}:${this.port} unreachable — ${reason}`);
+          log.warn(`[SSCClient] ${this.ip}:${this.port} unreachable — ${reason}`);
         }
         if (!this.disconnectSignaled) {
           this.disconnectSignaled = true;
           this.emit('disconnected', reason);
         }
         if (this.failCount % 120 === 0) {
-          console.log(`[SSCClient] ${this.ip}:${this.port} still unreachable (${Math.round(this.failCount * 500 / 1000)}s)`);
+          log.debug(`[SSCClient] ${this.ip}:${this.port} still unreachable (${Math.round(this.failCount * 500 / 1000)}s)`);
         }
       }
     } finally {
@@ -1111,7 +1112,7 @@ export class SSCClient extends EventEmitter {
       await this.clientFor(scheme).put(controlUrl, { value });
       return true;
     } catch (err: any) {
-      console.error(`[SSCClient] Failed to send control ${path} to ${this.ip}:`, err.message);
+      log.error(`[SSCClient] Failed to send control ${path} to ${this.ip}:`, err.message);
       return false;
     }
   }
