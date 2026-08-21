@@ -6,9 +6,11 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc && node scripts/build-preload.mjs",
-    "package": "pnpm build && electron-builder",
+    "package": "pnpm --filter @rfdeck/shared-types build && pnpm --filter @rfdeck/web build && pnpm --filter @rfdeck/server build && pnpm build && pnpm build:db-template && pnpm stage:prisma && electron-builder",
     "dev": "pnpm build && electron .",
-    "predev": "pnpm --filter @rfdeck/server build && pnpm --filter @rfdeck/web build"
+    "predev": "pnpm --filter @rfdeck/server build && pnpm --filter @rfdeck/web build",
+    "build:db-template": "node scripts/build-db-template.mjs",
+    "stage:prisma": "node scripts/stage-prisma-client.mjs"
   },
   "dependencies": {
     "@rfdeck/server": "workspace:*"

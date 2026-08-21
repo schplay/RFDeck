@@ -1,5 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { spawn, exec, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
@@ -10,6 +11,60 @@ const execAsync = promisify(exec);
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
+
+// ── Layout ──
+//
+// In development the shell runs from apps/desktop/dist and its siblings are
+// reachable with relative paths. Once packaged, the frontend and server are
+// copied into the app's resources directory instead (see electron-builder.yml
+// extraResources), so every path has to be resolved through resourcesPath.
+// Getting this wrong is silent: the window simply loads nothing.
+const paths = app.isPackaged
+  ? {
+      webIndex:  path.join(process.resourcesPath, 'web', 'index.html'),
+      // Inside app/ so the sidecar can resolve its dependencies from
+      // app/node_modules — see electron-builder.yml.
+      serverDir: path.join(process.resourcesPath, 'app', 'server'),
+      serverJs:  path.join(process.resourcesPath, 'app', 'server', 'dist', 'server.js'),
+      schema:    path.join(process.resourcesPath, 'app', 'server', 'prisma', 'schema.prisma'),
+    }
+  : {
+      webIndex:  path.join(__dirname, '../../web/dist/index.html'),
+      serverDir: path.join(__dirname, '../../server'),
+      serverJs:  path.join(__dirname, '../../server/dist/server.js'),
+      schema:    path.join(__dirname, '../../server/prisma/schema.prisma'),
+    };
+
+// The install directory is read-only under Program Files, so the database has
+// to live in the per-user data directory. This is also what makes the data
+// survive an app upgrade, which replaces the install directory wholesale.
+//
+// On first run there is no database yet and a packaged app cannot run
+// `prisma db push`, so an empty pre-migrated template is copied across.
+function databaseUrl(): string {
+  const dir = app.getPath('userData');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const dbFile = path.join(dir, 'rfdeck.db');
+
+  if (!fs.existsSync(dbFile)) {
+    const template = app.isPackaged
+      ? path.join(process.resourcesPath, 'template.db')
+      : path.join(__dirname, '..', 'resources', 'template.db');
+
+    if (fs.existsSync(template)) {
+      fs.copyFileSync(template, dbFile);
+      console.log(`[Electron] Initialised database at ${dbFile}`);
+    } else {
+      // The server will still start and Prisma will create the file, but the
+      // tables will be missing — worth saying so rather than failing obscurely.
+      console.error(`[Electron] No database template at ${template}; schema may be missing`);
+    }
+  }
+
+  // Prisma wants a URL; backslashes in a Windows path are not valid in one.
+  return `file:${dbFile.replace(/\\/g, '/')}`;
+}
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -23,7 +78,22 @@ async function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, '../../web/dist/index.html'));
+  if (!fs.existsSync(paths.webIndex)) {
+    // Fail loudly rather than showing an empty window, which looks like a hang.
+    console.error(`[Electron] Frontend not found at ${paths.webIndex}`);
+    mainWindow.loadURL(
+      'data:text/html,' + encodeURIComponent(
+        `<body style="font-family:system-ui;background:#131314;color:#e9e9ec;padding:40px">
+         <h2>RFDeck could not start</h2>
+         <p>The interface files are missing from this installation.</p>
+         <p style="color:#8d8d99;font-family:monospace;font-size:12px">${paths.webIndex}</p>
+         </body>`
+      )
+    );
+    return;
+  }
+
+  mainWindow.loadFile(paths.webIndex);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -31,21 +101,35 @@ async function createWindow() {
 }
 
 function startServer() {
-  const serverDir = path.join(__dirname, '../../server');
-  const serverPath = path.join(serverDir, 'dist/server.js');
+  if (!fs.existsSync(paths.serverJs)) {
+    console.error(`[Electron] Server not found at ${paths.serverJs}`);
+    return;
+  }
 
-  serverProcess = spawn('node', ['--tls-min-v1.0', serverPath], {
+  // Run the sidecar with Electron's own bundled Node rather than spawning
+  // `node`, which a target machine is not required to have installed.
+  // ELECTRON_RUN_AS_NODE turns this same executable into a plain Node runtime.
+  serverProcess = spawn(process.execPath, ['--tls-min-v1.0', paths.serverJs], {
     stdio: 'inherit',
-    cwd: serverDir,
+    cwd: paths.serverDir,
     env: {
       ...process.env,
+      ELECTRON_RUN_AS_NODE: '1',
       PORT: '3000',
+      DATABASE_URL: databaseUrl(),
+      PRISMA_SCHEMA_PATH: paths.schema,
       NODE_OPTIONS: (process.env.NODE_OPTIONS ?? '') + ' --openssl-legacy-provider',
     },
   });
 
   serverProcess.on('error', (err) => {
     console.error('[Electron] Failed to start server sidecar:', err);
+  });
+
+  serverProcess.on('exit', (code, signal) => {
+    if (code !== 0 && code !== null) {
+      console.error(`[Electron] Server sidecar exited with code ${code} (${signal ?? 'no signal'})`);
+    }
   });
 }
 
@@ -116,8 +200,17 @@ async function ensureWindowsFirewall(): Promise<void> {
 
   if (!appRuleExists) {
     try {
-      const { stdout: nodePathRaw } = await execAsync('where node', { timeout: 5000 });
-      const nodePath = nodePathRaw.split(/\r?\n/)[0].trim();
+      // Target whichever executable actually hosts the server. Packaged, that
+      // is our own Electron binary running with ELECTRON_RUN_AS_NODE; in
+      // development it is the system node. A rule pointing at node.exe on a
+      // machine without Node installed would silently protect nothing.
+      let nodePath: string;
+      if (app.isPackaged) {
+        nodePath = process.execPath;
+      } else {
+        const { stdout: nodePathRaw } = await execAsync('where node', { timeout: 5000 });
+        nodePath = nodePathRaw.split(/\r?\n/)[0].trim();
+      }
       if (nodePath) {
         const args = [
           'advfirewall', 'firewall', 'add', 'rule',

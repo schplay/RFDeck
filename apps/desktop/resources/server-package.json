@@ -1,0 +1,6 @@
+{
+  "name": "rfdeck-server-runtime",
+  "private": true,
+  "type": "commonjs",
+  "_comment": "Copied to resources/server/package.json at package time. The server compiles to CommonJS, but Node decides module format by walking up to the nearest package.json — which would otherwise be the Electron shell's, and that declares \"type\": \"module\". Without this the sidecar dies at startup with 'exports is not defined in ES module scope'."
+}

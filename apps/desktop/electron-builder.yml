@@ -3,8 +3,58 @@ productName: RFDeck
 directories:
   output: release
   buildResources: resources
+
+# asar is disabled deliberately. The app spawns a Node server sidecar and loads
+# a Prisma native engine (.node); both are awkward to run from inside an asar
+# archive, and the packed size saving is not worth the failure modes on a build
+# that has to work unattended in a venue.
+asar: false
+
 files:
   - dist/**/*
   - package.json
+
+# @rfdeck/server is pulled in as a workspace dependency to bring its runtime
+# dependencies along, which also drags in its .env and the developer's own
+# database. `files` exclusions do not apply to bundled dependencies, so they are
+# stripped after packaging instead — see scripts/afterPack.cjs for why both are
+# correctness problems and not merely size.
+afterPack: scripts/afterPack.cjs
+
+# The Electron shell is only a wrapper — the frontend and the Fastify server
+# live in sibling workspace packages and must be copied in explicitly. Without
+# these the packaged app has no UI and no backend, which is exactly the state
+# the previous build shipped in.
+extraResources:
+  - from: ../web/dist
+    to: web
+  # The server goes *inside* app/ so that Node's module resolution walks up
+  # into app/node_modules, where electron-builder put its dependencies. Placed
+  # as a sibling of app/ instead, every `require('fastify')` fails.
+  - from: ../server/dist
+    to: app/server/dist
+  - from: ../server/prisma/schema.prisma
+    to: app/server/prisma/schema.prisma
+  # Pins the server tree to CommonJS. Node decides module format from the
+  # nearest package.json up the tree, which would otherwise be the Electron
+  # shell's — and that declares "type": "module".
+  - from: resources/server-package.json
+    to: app/server/package.json
+  # Empty database with the schema already applied. Copied into the user data
+  # directory on first run, since a packaged install cannot run prisma db push.
+  - from: resources/template.db
+    to: template.db
+  # The generated Prisma client and its native query engine. Build output rather
+  # than a declared dependency, so electron-builder's dependency walk misses it.
+  - from: resources/prisma-client
+    to: app/node_modules/.prisma/client
+
 win:
   target: nsis
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
