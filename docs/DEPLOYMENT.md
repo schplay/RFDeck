@@ -27,63 +27,53 @@ deployment.
 
 ### Install and run
 
-Use the deploy script — it handles the build, the schema, and the firewall
-check, and is safe to re-run as an upgrade path:
-
-```powershell
-# Windows
-.\scripts\open-firewall.ps1      # as Administrator, once per machine
-.\scripts\deploy-server.ps1
-```
+On a clean Ubuntu 22.04 or 24.04 machine, one command takes it from bare OS to a
+running service:
 
 ```bash
-# Linux / macOS
-./scripts/deploy-server.sh
+git clone <your-repo> rfdeck && cd rfdeck
+sudo ./scripts/install-ubuntu.sh
 ```
 
-See [`../scripts/README.md`](../scripts/README.md) for options.
+It installs Node, builds the application, creates a service account, provisions
+the database in `/var/lib/rfdeck`, registers a hardened systemd unit, opens the
+firewall, and verifies the service responds before reporting success. Re-running
+it upgrades in place and preserves the database.
 
-<details>
-<summary>Manual equivalent</summary>
+Full options, upgrade and backup procedure, and log-level control are in
+[`../scripts/README.md`](../scripts/README.md).
 
-```bash
-pnpm install
-pnpm --filter @rfdeck/server exec prisma generate
-pnpm --filter @rfdeck/shared-types build
-pnpm --filter @rfdeck/web build          # builds the frontend the server serves
-pnpm --filter @rfdeck/server build
-DATABASE_URL="file:/absolute/path/rfdeck.db" \
-  pnpm --filter @rfdeck/server exec prisma db push --skip-generate
-cd apps/server
-DATABASE_URL="file:/absolute/path/rfdeck.db" PORT=3000 node dist/server.js
-```
-
-</details>
-
-The server listens on port 3000 by default. Clients connect at
-`http://<server-ip>:3000`.
+The server listens on port 3000 by default and serves the web interface itself,
+so anyone on the network opens `http://<server-ip>:3000` in a browser. No
+separate web server is needed.
 
 ### Environment
 
-`apps/server/.env`:
+The installer writes these into the systemd unit. Set them yourself only for a
+manual run.
 
-```
-DATABASE_URL=file:./rfdeck.db
-PORT=3000
-```
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Absolute `file:` path to the SQLite database |
+| `PORT` | HTTP port (default 3000) |
+| `HOST` | Bind address (default `0.0.0.0`) |
+| `LOG_LEVEL` | `error`, `warn`, `info`, or `debug` |
+| `NODE_ENV` | `production` defaults logging to `warn` |
+| `WEB_ROOT` | Override where the built UI is served from |
 
 **Always use an absolute `DATABASE_URL`.** A relative path is resolved against
 the working directory, so starting the server from a different directory
-silently creates a second, empty database rather than failing — the app comes up
-looking like a fresh install with all data apparently gone. The deploy script
-always writes an absolute path for this reason, and the server logs which
-database it opened at startup:
+silently creates a second, empty database rather than failing — the application
+comes up looking like a fresh install with all data apparently gone. The
+installer always writes an absolute path for this reason.
+
+To confirm which database is in use, run with `LOG_LEVEL=debug` and look for:
 
 ```
-[Prisma] Using database file:D:/rfdeck-data/rfdeck.db
+[Prisma] Using database file:/var/lib/rfdeck/rfdeck.db
 ```
 
-Check that line first whenever data appears to be missing.
+Check that first whenever data appears to be missing.
 
 ### Ports and firewall
 
@@ -93,29 +83,29 @@ report data — a failure that looks like broken hardware.
 
 | Port | Protocol | Purpose |
 |---|---|---|
-| 3000 | TCP | HTTP API, frontend, and Socket.io |
+| 3000 | TCP | Web interface, API, and Socket.io |
 | 53212 | UDP | Sennheiser MCP — G3/G4 discovery and telemetry |
 | 5353 | UDP | mDNS / Bonjour — EW-DX discovery |
-| 45 | UDP | SSCv1 — EW-DX live telemetry |
 
-On Windows the desktop build opens these automatically at startup. **The headless
-server does not** — open them yourself:
+EW-DX SSCv1 telemetry arrives on an ephemeral source port rather than a fixed
+one, so it needs no rule of its own on Linux — connection tracking handles the
+replies. On Windows it may need an application-level rule; see
+`scripts/open-firewall.ps1`.
 
-```powershell
-New-NetFirewallRule -DisplayName "RFDeck HTTP"  -Direction Inbound -Protocol TCP -LocalPort 3000  -Action Allow
-New-NetFirewallRule -DisplayName "RFDeck MCP"   -Direction Inbound -Protocol UDP -LocalPort 53212 -Action Allow
-New-NetFirewallRule -DisplayName "RFDeck mDNS"  -Direction Inbound -Protocol UDP -LocalPort 5353  -Action Allow
-New-NetFirewallRule -DisplayName "RFDeck SSCv1" -Direction Inbound -Protocol UDP -LocalPort 45    -Action Allow
-```
-
-On Linux with ufw:
+The Ubuntu installer opens these automatically when `ufw` is active. On Linux
+otherwise:
 
 ```bash
 sudo ufw allow 3000/tcp
 sudo ufw allow 53212/udp
 sudo ufw allow 5353/udp
-sudo ufw allow 45/udp
 ```
+
+On Windows, run `scripts\open-firewall.ps1` as Administrator. The desktop build
+also adds its own rules at startup.
+
+The server binds only unprivileged ports, so it needs no elevated capabilities
+and runs as an ordinary service account.
 
 ### Multiple network interfaces
 
@@ -125,25 +115,30 @@ Interface** to the show network address to keep probes off the house LAN.
 
 ### Running as a service
 
-Keep the process alive across reboots with systemd, NSSM on Windows, or pm2.
-Minimal systemd unit:
+`install-ubuntu.sh` registers a hardened systemd unit for you — it runs as an
+unprivileged `rfdeck` account, restricts filesystem access to the data directory,
+and starts on boot.
+
+```bash
+systemctl status rfdeck
+systemctl restart rfdeck
+journalctl -u rfdeck -f
+```
+
+### Logging
+
+The service is quiet by default: warnings and errors only. Per-device protocol
+detail is `debug` and off, because at 128 channels it would fill the journal.
+
+To troubleshoot a device that will not connect, `sudo systemctl edit rfdeck` and
+add:
 
 ```ini
-[Unit]
-Description=RFDeck
-After=network-online.target
-
 [Service]
-Type=simple
-WorkingDirectory=/opt/rfdeck/apps/server
-ExecStart=/usr/bin/node dist/server.js
-Restart=always
-RestartSec=5
-User=rfdeck
-
-[Install]
-WantedBy=multi-user.target
+Environment=LOG_LEVEL=debug
 ```
+
+Levels are `error`, `warn`, `info`, `debug`. Set it back to `warn` afterwards.
 
 ---
 
@@ -163,7 +158,7 @@ pnpm --filter @rfdeck/server build
 pnpm --filter @rfdeck/desktop package
 ```
 
-The installer lands in `apps/desktop/dist/`.
+The installer lands in `apps/desktop/release/`.
 
 The desktop build opens the required firewall ports on first run and always
 trusts its own window, so a PIN can never lock an operator out of the machine in
@@ -203,8 +198,8 @@ the socket, so gating only REST would leave the real surface open.
 
 | What | Where |
 |---|---|
-| Database | `apps/server/rfdeck.db` (per `DATABASE_URL`) |
-| Encryption key | `.rfdeck-key`, beside the database |
+| Database | `/var/lib/rfdeck/rfdeck.db` (per `DATABASE_URL`) |
+| Encryption key | `/var/lib/rfdeck/.rfdeck-key`, beside the database |
 
 The database holds inventory, shows, roster, mic-check history, event log, and
 settings. Device passwords inside it are encrypted with AES-256-GCM.
@@ -239,7 +234,7 @@ Run these before trusting an install with a show. Details in
 ## Troubleshooting
 
 **Devices discovered but never report telemetry.** Almost always a UDP port
-blocked inbound. Check 53212 and 45 specifically — TCP 3000 being open is not
+blocked inbound. Check 53212 and 5353 specifically — TCP 3000 being open is not
 enough, and this failure looks exactly like broken hardware.
 
 **No devices discovered at all.** Check the bind interface is on the receivers'
