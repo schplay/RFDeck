@@ -43,9 +43,13 @@ it upgrades in place and preserves the database.
 Full options, upgrade and backup procedure, and log-level control are in
 [`../scripts/README.md`](../scripts/README.md).
 
-The server listens on port 3000 by default and serves the web interface itself,
-so anyone on the network opens `http://<server-ip>:3000` in a browser. No
-separate web server is needed.
+The server listens on **port 80** and serves the web interface itself, so anyone
+on the network just opens `http://<server-ip>` in a browser. No separate web
+server or reverse proxy is needed.
+
+Binding port 80 does not mean running as root: the unit grants the service
+account `CAP_NET_BIND_SERVICE` and nothing more. Use `--port` if something else
+on the machine already owns 80.
 
 ### Environment
 
@@ -55,7 +59,7 @@ manual run.
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | Absolute `file:` path to the SQLite database |
-| `PORT` | HTTP port (default 3000) |
+| `PORT` | HTTP port (default 80 for the installer, 3000 otherwise) |
 | `HOST` | Bind address (default `0.0.0.0`) |
 | `LOG_LEVEL` | `error`, `warn`, `info`, or `debug` |
 | `NODE_ENV` | `production` defaults logging to `warn` |
@@ -83,7 +87,7 @@ report data — a failure that looks like broken hardware.
 
 | Port | Protocol | Purpose |
 |---|---|---|
-| 3000 | TCP | Web interface, API, and Socket.io |
+| 80 | TCP | Web interface, API, and Socket.io |
 | 53212 | UDP | Sennheiser MCP — G3/G4 discovery and telemetry |
 | 5353 | UDP | mDNS / Bonjour — EW-DX discovery |
 
@@ -96,7 +100,7 @@ The Ubuntu installer opens these automatically when `ufw` is active. On Linux
 otherwise:
 
 ```bash
-sudo ufw allow 3000/tcp
+sudo ufw allow 80/tcp
 sudo ufw allow 53212/udp
 sudo ufw allow 5353/udp
 ```
@@ -104,8 +108,9 @@ sudo ufw allow 5353/udp
 On Windows, run `scripts\open-firewall.ps1` as Administrator. The desktop build
 also adds its own rules at startup.
 
-The server binds only unprivileged ports, so it needs no elevated capabilities
-and runs as an ordinary service account.
+The service runs as an unprivileged account. Port 80 is the only privileged
+bind, and the systemd unit grants exactly `CAP_NET_BIND_SERVICE` for it — the
+UDP discovery ports are all above 1024 and need nothing.
 
 ### Multiple network interfaces
 
@@ -234,7 +239,7 @@ Run these before trusting an install with a show. Details in
 ## Troubleshooting
 
 **Devices discovered but never report telemetry.** Almost always a UDP port
-blocked inbound. Check 53212 and 5353 specifically — TCP 3000 being open is not
+blocked inbound. Check 53212 and 5353 specifically — TCP 80 being open is not
 enough, and this failure looks exactly like broken hardware.
 
 **No devices discovered at all.** Check the bind interface is on the receivers'

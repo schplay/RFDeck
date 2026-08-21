@@ -18,7 +18,7 @@
 #
 set -euo pipefail
 
-PORT=3000
+PORT=80
 INSTALL_DIR=/opt/rfdeck
 DATA_DIR=/var/lib/rfdeck
 SERVICE_USER=rfdeck
@@ -251,6 +251,11 @@ ExecStart=/usr/bin/node dist/server.js
 Restart=always
 RestartSec=5
 
+# Ports below 1024 are privileged. Rather than run as root, grant only the
+# capability needed to bind one — the service drops nothing else.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=rfdeck
@@ -320,7 +325,12 @@ echo "  Open it from any device on this network:"
 echo
 for ADDR in $(hostname -I 2>/dev/null); do
   case "$ADDR" in *:*) continue ;; esac   # skip IPv6
-  printf '      %shttp://%s:%s%s\n' "$BOLD" "$ADDR" "$PORT" "$OFF"
+  # Port 80 is implicit in a URL — printing it makes the address look wrong.
+  if [[ "$PORT" == "80" ]]; then
+    printf '      %shttp://%s%s\n' "$BOLD" "$ADDR" "$OFF"
+  else
+    printf '      %shttp://%s:%s%s\n' "$BOLD" "$ADDR" "$PORT" "$OFF"
+  fi
 done
 echo
 echo "  ${DIM}Access is open to the network. To require a PIN, open Settings →${OFF}"

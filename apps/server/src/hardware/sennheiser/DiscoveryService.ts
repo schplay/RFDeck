@@ -1,6 +1,7 @@
 import Bonjour from 'bonjour-service';
 import os from 'os';
 import https from 'https';
+import tls from 'tls';
 import axios from 'axios';
 import { EventEmitter } from 'events';
 import { mcpBus } from './McpBus';
@@ -34,6 +35,54 @@ const sscProbeClient = axios.create({
 
 // SSCv2 probe paths in priority order
 const SSC_PROBE_PATHS = ['/api/device/identity', '/api/ssc/version'];
+
+// ── Is this actually a Sennheiser device? ────────────────────────────────────
+//
+// Probing an unknown host for two API paths is not identification. Plenty of
+// things on a venue network answer HTTPS on 443 — routers, NAS boxes, cameras,
+// printers, hypervisors — and most return 401 on an unknown path, or return
+// JSON that has nothing to do with SSC. Treating either as proof produced a
+// discovery list full of devices that were never Sennheiser.
+//
+// A host is only claimed when something positively identifies it:
+//   • the response body names Sennheiser, or an SSC/EW product, or carries a
+//     structure only SSC serves, or
+//   • the TLS certificate names Sennheiser.
+//
+// Anything else is skipped, and logged at debug so a genuine device that is
+// being missed can still be diagnosed.
+
+const VENDOR_RE  = /sennheiser/i;
+// EW-DX, EW-D, EM 2/4, SKM, SK, EM 6000, EM 9046, and the G3/G4 EM families.
+const PRODUCT_RE = /\b(ew[\s-]?dx|ew[\s-]?d\b|ewdx|em[\s-]?\d+|skm[\s-]?\d+|sk[\s-]?\d+|ebp|evolution\s?wireless)\b/i;
+
+function textOf(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
+// Does this JSON body identify a Sennheiser SSC device?
+export function bodyIdentifiesSennheiser(d: any): boolean {
+  if (!d || typeof d !== 'object') return false;
+
+  // Explicit vendor field is the strongest signal — SSC's /api/device/identity
+  // carries one.
+  const vendorFields = [d.vendor, d.manufacturer, d.make, d.brand,
+                        d.device?.vendor, d.identity?.vendor];
+  if (vendorFields.some(v => VENDOR_RE.test(textOf(v)))) return true;
+
+  // Product/model naming an EW or EM family unit.
+  const productFields = [d.product, d.model, d.device?.product, d.device?.model,
+                         d.identity?.product, d.name, d.device?.name, d.deviceName];
+  if (productFields.some(v => PRODUCT_RE.test(textOf(v)) || VENDOR_RE.test(textOf(v)))) return true;
+
+  // SSC-specific shape: the version endpoint returns an `ssc` version key.
+  if (d.ssc !== undefined) return true;
+
+  return false;
+}
 
 // Short-lived subscription to make devices respond; 500ms is the min accepted interval
 const MCP_PUSH = 'Push 5 500 3';
@@ -209,12 +258,56 @@ export class DiscoveryService extends EventEmitter {
     }
   }
 
+  // Read the TLS certificate without completing an HTTP request. Sennheiser
+  // devices present a self-signed cert that names them, which identifies a unit
+  // whose API is behind auth and would otherwise answer nothing but 401.
+  private async certificateIdentifiesSennheiser(ip: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (result: boolean) => {
+        if (settled) return;
+        settled = true;
+        try { socket.destroy(); } catch { /* ignore */ }
+        resolve(result);
+      };
+
+      const socket = tls.connect({
+        host: ip,
+        port: SSC_PORT,
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1' as any,
+        ciphers: 'DEFAULT@SECLEVEL=0',
+        timeout: 2500,
+      }, () => {
+        try {
+          const cert: any = socket.getPeerCertificate();
+          if (!cert) return done(false);
+          // Subject and issuer both matter: some units are signed by a
+          // Sennheiser CA while the leaf names only the serial.
+          const fields = [
+            cert.subject?.CN, cert.subject?.O, cert.subject?.OU,
+            cert.issuer?.CN,  cert.issuer?.O,  cert.issuer?.OU,
+          ].filter(Boolean).join(' ');
+          done(VENDOR_RE.test(fields) || PRODUCT_RE.test(fields));
+        } catch {
+          done(false);
+        }
+      });
+
+      socket.on('error',   () => done(false));
+      socket.on('timeout', () => done(false));
+    });
+  }
+
   private async httpProbeHost(ip: string): Promise<void> {
     const key = `${ip}:${SSC_PORT}`;
     if (this.seenIps.has(key)) return;
 
     // Probe both SSC paths concurrently — first success wins, halving worst-case time.
-    type Hit = { name: string; serial: string | null } | { auth: true };
+    type Hit =
+      | { kind: 'body'; data: any; name: string; serial: string | null }
+      | { kind: 'auth' };
+
     const attempt = async (path: string): Promise<Hit> => {
       const url = `https://${ip}:${SSC_PORT}${path}`;
       try {
@@ -225,9 +318,11 @@ export class DiscoveryService extends EventEmitter {
         const raw  = d.device?.name || d.name || d.identity?.device_name || d.deviceName;
         if (raw && typeof raw === 'string') name = raw;
         const serial = d.serial_number ?? d.serial ?? d.sn ?? null;
-        return { name, serial };
+        return { kind: 'body', data: d, name, serial };
       } catch (err: any) {
-        if (err.response?.status === 401) return { auth: true };
+        // 401 means *something* is there, but says nothing about what. Carry it
+        // forward as a weak signal to be confirmed against the certificate.
+        if (err.response?.status === 401) return { kind: 'auth' };
         throw err;
       }
     };
@@ -236,13 +331,31 @@ export class DiscoveryService extends EventEmitter {
     try {
       hit = await Promise.any(SSC_PROBE_PATHS.map(p => attempt(p)));
     } catch {
-      return; // all paths failed — not a Sennheiser device
+      return; // nothing answered — not a Sennheiser device
     }
 
-    if ('auth' in hit) {
-      log.debug(`[Discovery] HTTP probe: auth-protected device at ${ip}`);
-      this.emitDiscovered(ip, SSC_PORT, `Sennheiser EW-DX (${ip})`, 'ssc');
+    if (hit.kind === 'auth') {
+      // Auth-protected. Only claim it if the certificate identifies the vendor;
+      // a bare 401 is something almost every appliance on the network returns.
+      if (await this.certificateIdentifiesSennheiser(ip)) {
+        log.debug(`[Discovery] ${ip}: auth-protected, TLS certificate identifies Sennheiser`);
+        this.emitDiscovered(ip, SSC_PORT, `Sennheiser EW-DX (${ip})`, 'ssc');
+      } else {
+        log.debug(`[Discovery] ${ip}: HTTPS 401 but nothing identifies it as Sennheiser — skipping`);
+      }
       return;
+    }
+
+    // Responded with JSON. Require it to actually look like SSC, or the
+    // certificate to vouch for it — any appliance can return a JSON error body.
+    if (!bodyIdentifiesSennheiser(hit.data)) {
+      if (!(await this.certificateIdentifiesSennheiser(ip))) {
+        log.debug(
+          `[Discovery] ${ip}: answered but the response is not SSC ` +
+          `(${JSON.stringify(hit.data).slice(0, 120)}) — skipping`
+        );
+        return;
+      }
     }
 
     if (hit.serial) {

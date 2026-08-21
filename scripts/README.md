@@ -27,6 +27,10 @@ Or straight from a repository URL, without cloning first:
 sudo ./scripts/install-ubuntu.sh --repo https://github.com/you/rfdeck.git
 ```
 
+It serves on port 80, so the address is just the server's IP with nothing to
+remember. Binding a privileged port does not require running as root — the
+systemd unit grants `CAP_NET_BIND_SERVICE` and nothing else.
+
 It prints the addresses to open in a browser when it finishes.
 
 ### What it does
@@ -45,7 +49,7 @@ It prints the addresses to open in a browser when it finishes.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--port` | `3000` | Web interface and API port |
+| `--port` | `80` | Web interface and API port |
 | `--repo` / `--branch` | — | Clone instead of copying the local checkout |
 | `--install-dir` | `/opt/rfdeck` | Application location |
 | `--data-dir` | `/var/lib/rfdeck` | Database location |
@@ -122,15 +126,16 @@ broken hardware rather than a firewall problem.
 
 | Port | Protocol | Purpose |
 |---|---|---|
-| 3000 | TCP | Web interface, API, realtime socket |
+| 80 | TCP | Web interface, API, realtime socket |
 | 53212 | UDP | Sennheiser MCP — G3/G4 discovery and telemetry |
 | 5353 | UDP | mDNS / Bonjour — EW-DX discovery |
 
 EW-DX SSCv1 telemetry arrives on an ephemeral port rather than a fixed one, so
 it needs no rule of its own on Linux — connection tracking handles the replies.
 
-The server binds only unprivileged ports, so it runs as a normal service account
-with no elevated capabilities.
+The service runs as an unprivileged account. Port 80 is the only privileged
+bind, granted via `CAP_NET_BIND_SERVICE` in the systemd unit; the UDP ports are
+all above 1024.
 
 ---
 
