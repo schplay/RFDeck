@@ -195,25 +195,82 @@ RFDeck is **open by default**: any device that can reach the server connects
 freely. That is the right default on an isolated show network, where a login
 prompt between an operator and a failing channel is a liability.
 
-If the show network is shared with house or guest traffic, require a PIN:
+If the show network is shared with house or guest traffic, require a PIN — from
+any browser under **Settings → Remote Access**, or from a shell on the server
+with `rfdeck set-pin 4821`.
 
-**Settings → Remote Access**, on the machine running RFDeck.
+There are no user accounts. Access is decided by three rules:
 
-- Set a PIN (4+ digits), then enable the requirement
-- Choose how often remote devices must re-enter it — **never** suits a resident
-  booth display; shorter intervals suit devices that leave the venue
-- **Sign out all devices** forces everyone to re-enter it, for a crew change
+| | Can connect | Can change access settings |
+|---|---|---|
+| A browser on the server, or the desktop app | Always | Always |
+| Any client, while no PIN is set | Yes | Yes — this is how the first PIN gets set |
+| Any client, once a PIN is set | After entering the PIN | Only after entering the PIN |
+| A shell on the server | — | Always, including resetting a forgotten PIN |
 
-Two rules that are deliberate:
+Three choices worth stating plainly:
 
 - **Loopback is always exempt.** Physical access to the host already implies
   control, and the desktop window must never be locked out of its own server.
-- **Access settings can only be changed from the host machine.** Without user
-  accounts there is no way to distinguish an admin from any other client, so
-  allowing remote changes would make the control worthless.
+- **Knowing the PIN is the credential for changing it.** A second admin
+  credential to lose is worse than useless for a crew sharing one rack.
+- **Setting the first PIN is unauthenticated.** Until one exists the server is
+  open to everyone anyway, so this grants nothing that was not already
+  available — and it is what allows a PIN to be set from a laptop rather than
+  requiring a screen on the server. A "loopback only" rule would make the PIN
+  unreachable on the deployment it exists for.
+
+A forgotten PIN is recovered from a shell, which is the one thing a headless
+server always has:
+
+```bash
+sudo rfdeck set-pin 1234     # replace it
+sudo rfdeck disable-pin      # or turn it off entirely
+```
+
+Changing or disabling a PIN applies to new connections immediately; use **Sign
+out all devices**, or restart the service, to drop sessions already established.
 
 Both the REST API and the realtime socket are gated. Control commands travel over
 the socket, so gating only REST would leave the real surface open.
+
+---
+
+## Administering from the shell
+
+A headless server has no browser on it, so `rfdeck` is how it is administered
+over SSH — and the recovery path when a PIN is lost. Installed on `PATH` by
+`install-ubuntu.sh`.
+
+```bash
+rfdeck status              # access and audio configuration at a glance
+rfdeck set-pin 4821        # require a PIN from remote devices
+rfdeck disable-pin         # network becomes open again
+rfdeck audio-devices       # capture devices and the current channel patch
+```
+
+`rfdeck status` is the first command to reach for when something looks wrong:
+
+```
+Remote access
+  PIN required   : yes
+  PIN configured : yes
+  Re-ask after   : 24h
+
+Audio
+  Channels patched : 8
+```
+
+It reads the database path from the running systemd unit rather than assuming
+one, so it always acts on the same data as the service — the same failure mode
+that made an earlier hardcoded path silently open the wrong database.
+
+`rfdeck audio-devices` also confirms whether the AES67 kernel module loaded: its
+virtual capture device appears in the list once it has.
+
+Installed by `install-ubuntu.sh`, not by `update-server.sh`, which touches only
+application code. Run the installer once after upgrading from a version that
+predates the CLI.
 
 ---
 

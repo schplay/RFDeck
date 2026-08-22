@@ -152,13 +152,16 @@ desktop app, each serving multiple concurrent clients over the network.
 
 - **Open by default** — on a trusted show network, any device that can reach the
   host connects freely
-- **Optional PIN** — an admin can require a PIN from remote devices, with a
-  configurable re-authentication interval (never, 12h, 1 day, 3 days, 1 week)
-- The machine running RFDeck is always exempt, and access settings can only be
-  changed there
+- **Optional PIN** — require a PIN from remote devices, with a configurable
+  re-authentication interval (never, 12h, 1 day, 3 days, 1 week)
+- **Whoever knows the PIN can change it** — no separate admin account to manage
+- **A shell on the server can always take over**, which is what makes a headless
+  install administrable and recoverable
 - "Sign out all devices" for a crew change mid-run
 - Both REST and the realtime socket are gated, since control commands travel over
   the socket
+
+See [Restricting access](#5-restricting-access-optional) for the full model.
 
 #### User Roles (RBAC) 📋
 Named user accounts with per-role permissions are planned. The PIN above is a
@@ -400,25 +403,105 @@ Authentication** to avoid repeating it.
 If devices are **discovered but never show levels**, that is almost always a
 blocked UDP port rather than the hardware. See Ports below.
 
-### 5. Restrict access (optional)
+### 5. Restricting access (optional)
 
-RFDeck is open to the network by default, which is right on an isolated show
-network — a login prompt between an operator and a failing channel is a
-liability.
+RFDeck is **open to the network by default**. On an isolated show network that is
+the right default — a login prompt standing between an operator and a failing
+channel is a liability, not a safeguard.
 
-If the network is shared with house or guest traffic, set a PIN — from any
-browser under **Settings → Remote Access**, or from a shell on the server:
+Set a PIN when the network is shared with house or guest traffic.
+
+#### Who can do what
+
+There are no user accounts. Access is decided by three rules:
+
+| | Can connect | Can change access settings |
+|---|---|---|
+| A browser **on the server**, or the desktop app | Always | Always |
+| Any client, **while no PIN is set** | Yes | Yes — this is how the first PIN gets set |
+| Any client, **once a PIN is set** | After entering the PIN | Only after entering the PIN |
+| A **shell** on the server | — | Always, including resetting a forgotten PIN |
+
+Two consequences worth being explicit about:
+
+- **Knowing the PIN is the credential for changing it.** Anyone who can get in
+  can also change the terms of getting in. That is deliberate — a second admin
+  credential to lose is worse than useless for a crew sharing one rack.
+- **Setting the first PIN is unauthenticated**, because until one exists the
+  server is already open to everyone. Allowing it grants nothing that was not
+  already available, and it is what lets you set a PIN from a laptop rather than
+  needing a screen attached to the server.
+
+#### Setting a PIN
+
+From any browser: **Settings → Remote Access**. Or from a shell on the server:
 
 ```bash
 sudo rfdeck set-pin 4821
+sudo rfdeck set-pin 4821 --reauth-hours 24
 ```
 
-Choose how often devices must re-enter it; **never** suits a resident booth
-display.
+Choose how often devices must re-enter it. **Never** suits a resident booth
+display; a shorter interval suits devices that leave the venue.
 
-Once a PIN is set, only a device that has entered it can change it. If it is
-forgotten, reset it from the server with the same command — shell access is the
-recovery path, since a headless machine has no browser to fall back to.
+Changing or disabling the PIN applies to new connections immediately. Devices
+already connected keep their session until you either use **Sign out all
+devices** in Settings, or restart the service:
+
+```bash
+sudo systemctl restart rfdeck
+```
+
+#### If the PIN is forgotten
+
+There is no way back in from a browser — that is what a PIN is for. Reset it from
+a shell on the server:
+
+```bash
+sudo rfdeck set-pin 1234     # replace it
+sudo rfdeck disable-pin      # or turn it off entirely
+```
+
+`disable-pin` keeps the stored PIN, so re-enabling later does not need it typed
+again.
+
+### 6. Managing from the shell
+
+A headless server has no browser on it, so the `rfdeck` command is how you
+administer one over SSH — and the recovery path when the PIN is lost. It is
+installed on `PATH` by `install-ubuntu.sh`.
+
+```bash
+rfdeck status              # access and audio configuration at a glance
+rfdeck set-pin 4821        # require a PIN from remote devices
+rfdeck disable-pin         # network becomes open again
+rfdeck audio-devices       # capture devices and the current channel patch
+```
+
+`rfdeck status` is the first thing to run when something looks wrong. It shows
+whether a PIN is required, whether one is actually set, the re-auth interval, and
+how many channels are patched to audio inputs:
+
+```
+Remote access
+  PIN required   : yes
+  PIN configured : yes
+  Re-ask after   : 24h
+
+Audio
+  Channels patched : 8
+```
+
+`rfdeck audio-devices` lists what the machine can capture from, with the input
+count each interface reports and the current patch — useful for confirming the
+AES67 kernel module loaded, since its virtual device appears here once it has.
+
+The command reads the database path out of the running systemd unit rather than
+assuming one, so it always acts on the same data as the service.
+
+> Installed by `install-ubuntu.sh`, not by `update-server.sh` — the update script
+> deliberately touches only application code. After upgrading from a version
+> without the CLI, run the installer once to get the command.
 
 ### Ports
 
@@ -454,7 +537,9 @@ Two things to know:
 
 Skip it with `--no-aes67` if the machine only ever monitors RF.
 
-### Operating
+### Operating the service
+
+`rfdeck` configures the application; `systemctl` runs the process.
 
 ```bash
 systemctl status rfdeck          # is it running
