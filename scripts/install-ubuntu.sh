@@ -99,6 +99,29 @@ verify_audio_access() {
   fi
 }
 
+# Set a key in the AES67 daemon's JSON config, but ONLY if it already exists.
+#
+# The daemon's config schema differs between versions, and a key it does not
+# read would leave the install looking configured while changing nothing — the
+# worst kind of failure, since it never announces itself. Reports what it did so
+# a missing key is visible rather than silent.
+#
+#   conf_set sap_enabled true
+#   conf_set interface_name '"eth0"'      # quote string values
+conf_set() {
+  local key="$1" value="$2" conf=/etc/daemon.conf
+  [[ -f "$conf" ]] || return 1
+
+  if ! grep -q "\"$key\"[[:space:]]*:" "$conf"; then
+    warn "AES67: no '$key' setting in $conf (daemon version differs); left alone"
+    return 1
+  fi
+
+  # Replace the value between the colon and the line's comma/brace terminator.
+  sed -i "s|\(\"$key\"[[:space:]]*:[[:space:]]*\)[^,}]*|\1$value|" "$conf" || return 1
+  return 0
+}
+
 [[ $EUID -eq 0 ]] || die "Run with sudo: sudo $0 $*"
 
 # ── Uninstall ────────────────────────────────────────────────────────────────
@@ -519,9 +542,23 @@ install_aes67() {
   local iface
   iface="$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')"
   if [[ -n "$iface" && -f /etc/daemon.conf ]]; then
-    sed -i "s/\"interface_name\".*:.*\"[^\"]*\"/\"interface_name\": \"$iface\"/" \
-      /etc/daemon.conf 2>/dev/null || true
-    ok "Daemon bound to interface $iface"
+    conf_set interface_name "\"$iface\"" && ok "Daemon bound to interface $iface"
+  fi
+
+  # Stream discovery. SAP is how AES67 senders announce themselves and how this
+  # daemon learns what is available to receive; without it a sink has to be
+  # created by hand from an SDP file. mDNS covers the RAVENNA/Ravenna-native
+  # side of the same job.
+  #
+  # Only keys already present in the file are touched — the daemon's config
+  # schema varies between versions, and inventing a key it does not read would
+  # look configured while doing nothing.
+  if [[ -f /etc/daemon.conf ]]; then
+    conf_set sap_enabled  true && ok "SAP announcement and discovery enabled"
+    conf_set mdns_enabled true && ok "mDNS discovery enabled"
+    # Sinks track SAP announcements as senders come and go, rather than going
+    # stale when a transmitter changes address.
+    conf_set auto_sinks_update true && ok "Sinks follow SAP announcements"
   fi
 
   systemctl enable aes67-daemon >/dev/null 2>&1 || true
@@ -584,6 +621,14 @@ if [[ "$SKIP_FIREWALL" == "0" ]] && command -v ufw >/dev/null 2>&1; then
       ufw allow 8080/tcp >/dev/null && ok "TCP 8080 — AES67 daemon web UI"
       ufw allow 319/udp  >/dev/null && ok "UDP 319 — PTP event"
       ufw allow 320/udp  >/dev/null && ok "UDP 320 — PTP general"
+      # Discovery and media. Without these the daemon runs and the device shows
+      # up in RFDeck, but no sender is ever heard and no audio arrives — which
+      # looks like broken hardware rather than a closed port.
+      ufw allow 9875/udp >/dev/null && ok "UDP 9875 — SAP stream announcements"
+      ufw allow 8854/tcp >/dev/null && ok "TCP 8854 — RTSP (SDP retrieval)"
+      # One RTP port pair per stream from rtp_port upwards; 5004-5100 covers far
+      # more simultaneous streams than a receiver rack will ever carry.
+      ufw allow 5004:5100/udp >/dev/null && ok "UDP 5004-5100 — AES67 RTP audio"
     fi
   else
     warn "ufw is installed but inactive; no rules added."
