@@ -59,7 +59,11 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      // Only claim a JSON body when there is one. Fastify rejects an empty body
+      // under this content type with 400 "Bad Request", which silently broke
+      // every bodyless POST and DELETE routed through here — revoke-all, clear
+      // alerts, delete show, unsubscribe — while calls that send a body worked.
+      ...(init.body != null ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { 'x-rfdeck-token': token } : {}),
       ...(init.headers ?? {}),
     },
@@ -76,7 +80,13 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(body?.error ?? `Request failed (${res.status})`, res.status);
+    // RFDeck's own routes put the explanation in `error`. Fastify's built-in
+    // errors put a generic label there ("Bad Request") and the actual reason in
+    // `message` — surface the specific one, or the label reads as the whole story.
+    throw new ApiError(
+      body?.message ?? body?.error ?? `Request failed (${res.status})`,
+      res.status,
+    );
   }
 
   if (res.status === 204) return undefined as T;
