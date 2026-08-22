@@ -1,5 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate } from '@roamhq/wrtc';
+import { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, MediaStream } from '@roamhq/wrtc';
 import { AES67Manager } from './AES67Manager';
 import { CaptureManager } from './CaptureManager';
 import { prisma } from '../db';
@@ -72,7 +72,14 @@ export class WebRTCSignaling {
 
         // Fall back to the shared source (AES67 stream or test tone).
         if (!track) track = this.audioManager.audioSource.createTrack();
-        pc.addTrack(track);
+
+        // The stream is not optional. A track added on its own has no stream
+        // association in the SDP, so the browser's ontrack fires with an EMPTY
+        // streams array; a client doing `srcObject = event.streams[0]` then
+        // assigns undefined and plays nothing, with no error anywhere. Verified
+        // against node-webrtc directly: bare addTrack -> 0 streams, with a
+        // MediaStream -> 1.
+        pc.addTrack(track, new MediaStream([track]));
 
         pc.onicecandidate = ({ candidate }: any) => {
           if (candidate) socket.emit('webrtc:ice-candidate', candidate);

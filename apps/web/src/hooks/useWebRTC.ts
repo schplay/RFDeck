@@ -14,7 +14,9 @@ export const useWebRTC = (socket: Socket | null) => {
 
     pc.ontrack = (event) => {
       console.log('[WebRTC] Received remote track');
-      setStream(event.streams[0]);
+      // event.streams is empty when the sender added the track without a
+      // stream; wrap it ourselves rather than hand the player undefined.
+      setStream(event.streams[0] ?? new MediaStream([event.track]));
     };
 
     pc.onicecandidate = (event) => {

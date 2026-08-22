@@ -24,6 +24,10 @@ RFDeck server administration
                                       Set the remote-access PIN and enable it
   rfdeck disable-pin                  Turn off the PIN (network becomes open)
   rfdeck audio-devices                List capture devices on this machine
+  rfdeck audio-level <device> [input ...]
+                                      Capture one second and report the level
+                                      on each input, to tell whether signal is
+                                      reaching this machine at all
 
 The PIN gates remote clients only; a browser on this machine is always trusted.
 Changing or disabling the PIN signs out every remote device.
@@ -101,6 +105,103 @@ async function cmdDisablePin(): Promise<void> {
   console.log('  sudo systemctl restart rfdeck');
 }
 
+// Is signal actually reaching this machine?
+//
+// "I hear nothing" has two halves — audio not arriving at the server, and
+// audio not reaching the browser — and they need different fixes. This answers
+// the first half on its own by opening the device exactly the way RFDeck does
+// (same format, rate and width) and measuring what comes out, with WebRTC and
+// the browser out of the picture entirely.
+async function cmdAudioLevel(args: string[]): Promise<void> {
+  const { probeChannelCount, FALLBACK_CHANNELS } = await import('./audio/deviceList');
+  const { spawnSync } = await import('child_process');
+
+  const deviceId = args[0];
+  if (!deviceId) {
+    console.error('Usage: rfdeck audio-level <device> [input ...]   e.g. rfdeck audio-level hw:2,0 1 2');
+    process.exit(1);
+  }
+  const wanted = args.slice(1).map(Number).filter(n => Number.isInteger(n) && n >= 1);
+
+  const probed = probeChannelCount(deviceId);
+  const channels = probed ?? FALLBACK_CHANNELS;
+  if (probed === null) {
+    console.log(`Could not read the channel count for ${deviceId}; assuming ${channels}.\n`);
+  }
+
+  const SECONDS = 1;
+  const RATE = 48000;
+  console.log(
+    `Capturing ${SECONDS}s from ${deviceId} as ${channels}-channel S16_LE ${RATE / 1000} kHz ` +
+    `— the same way RFDeck opens it.\n`,
+  );
+
+  // Identical arguments to CaptureManager, so a format the device refuses
+  // fails here with arecord's own words rather than silently in the service.
+  const r = spawnSync('arecord', [
+    '-D', deviceId, '-f', 'S16_LE', '-r', String(RATE), '-c', String(channels),
+    '-t', 'raw', '-d', String(SECONDS), '-q',
+  ], { maxBuffer: 256 * 1024 * 1024 });
+
+  if (r.error) {
+    console.log(`arecord could not be started: ${r.error.message}`);
+    process.exit(1);
+  }
+  const stderr = r.stderr?.toString().trim();
+  if (stderr) console.log(`arecord said:\n  ${stderr.split('\n').join('\n  ')}\n`);
+
+  const buf = r.stdout ?? Buffer.alloc(0);
+  const frameBytes = channels * 2;
+  const frames = Math.floor(buf.length / frameBytes);
+  if (frames === 0) {
+    console.log(
+      'No audio data came back. If arecord reported an error above, that is the ' +
+      'reason — and it is why the service gets nothing either.',
+    );
+    process.exit(1);
+  }
+  console.log(`Received ${frames} frames (${(frames / RATE).toFixed(2)}s).\n`);
+
+  const dbfs = (v: number) => (v > 0 ? (20 * Math.log10(v / 32768)).toFixed(1) : '-inf');
+  const list = wanted.length > 0 ? wanted : Array.from({ length: channels }, (_, i) => i + 1);
+
+  console.log('  input     peak dBFS    rms dBFS');
+  let silent = 0;
+  for (const ch of list) {
+    if (ch > channels) {
+      console.log(`  ${String(ch).padEnd(9)} (device has only ${channels} inputs)`);
+      continue;
+    }
+    let peak = 0;
+    let sumSq = 0;
+    const offset = (ch - 1) * 2;
+    for (let f = 0; f < frames; f++) {
+      const s = buf.readInt16LE(f * frameBytes + offset);
+      const a = Math.abs(s);
+      if (a > peak) peak = a;
+      sumSq += s * s;
+    }
+    const rms = Math.sqrt(sumSq / frames);
+    if (peak === 0) silent++;
+    console.log(
+      `  ${String(ch).padEnd(9)} ${dbfs(peak).padStart(9)}   ${dbfs(rms).padStart(9)}` +
+      (peak === 0 ? '   silent' : ''),
+    );
+  }
+
+  if (silent === list.length) {
+    console.log(
+      '\nEvery input measured is silent: nothing is arriving at this server on ' +
+      'those channels. Look at the AES67 subscription and PTP lock before the browser.',
+    );
+  } else {
+    console.log(
+      '\nSignal is reaching this server. If the browser still plays nothing, the ' +
+      'fault is between the service and the browser, not in the audio network.',
+    );
+  }
+}
+
 async function cmdAudioDevices(): Promise<void> {
   // Imported lazily so `status` works on a machine with no sound subsystem.
   const { listAudioInputDevices, describeNoDevices, describeAccessProblem } =
@@ -149,6 +250,7 @@ async function main(): Promise<void> {
     case 'set-pin':        await cmdSetPin(rest); break;
     case 'disable-pin':    await cmdDisablePin(); break;
     case 'audio-devices':  await cmdAudioDevices(); break;
+    case 'audio-level':    await cmdAudioLevel(rest); break;
     case undefined:
     case '-h':
     case '--help':         usage(); break;

@@ -46,7 +46,10 @@ export function useChannelAudio() {
         audioRef.current = new Audio();
         audioRef.current.autoplay = true;
       }
-      audioRef.current.srcObject = event.streams[0];
+      // A track can arrive with no stream association, in which case
+      // event.streams is empty and srcObject would silently become undefined.
+      // Wrap the track ourselves rather than depend on the sender having done so.
+      audioRef.current.srcObject = event.streams[0] ?? new MediaStream([event.track]);
       // Autoplay can be blocked until the page has been interacted with; a
       // click on Listen counts, so this normally succeeds.
       audioRef.current.play().catch(() => {
