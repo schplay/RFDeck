@@ -2,7 +2,8 @@
 
 | Script | Use |
 |---|---|
-| **`install-ubuntu.sh`** | **Deploy a server.** Clean Ubuntu box → running service on the network. |
+| **`install-ubuntu.sh`** | **Provision a server.** Clean Ubuntu box → running service on the network. |
+| **`update-server.sh`** | **Deploy code updates** to a server that is already provisioned. |
 | `deploy-server.ps1` | Run a server on a Windows dev machine for local testing. |
 | `deploy-server.sh` | Same, for a Linux or macOS dev machine. |
 | `open-firewall.ps1` | Open the inbound ports on Windows (as Administrator). |
@@ -56,33 +57,57 @@ It prints the addresses to open in a browser when it finishes.
 | `--skip-firewall` | off | Leave `ufw` alone |
 | `--uninstall` | — | Remove the service and application, keep the database |
 
-### Upgrading
+### Updating
 
-Re-run the installer. It rewrites the systemd unit and reapplies the schema, so
-configuration changes — a new port, for instance — take effect without editing
-anything by hand. Existing data is preserved.
+Two different jobs, two scripts:
 
-**Run it from a checkout with the new code, not from `/opt/rfdeck`.** The
-install directory has no `.git` (the copy excludes it), so there is nothing to
-pull there:
+| | `update-server.sh` | `install-ubuntu.sh` |
+|---|---|---|
+| Purpose | Ship new code | Provision or reconfigure |
+| Typical time | Under a minute | Several minutes |
+| Runs apt / installs Node | No | Yes |
+| Rebuilds the AES67 kernel module | No | Yes |
+| Rewrites the systemd unit | No | Yes |
+| Rolls back automatically on failure | Yes | No |
+
+**For a code update**, which is nearly always what you want:
+
+```bash
+cd ~/rfdeck
+sudo ./scripts/update-server.sh --pull
+```
+
+It stages the new code, rebuilds, applies additive schema changes, restarts, and
+checks the service actually answers. If the build fails or the service does not
+come back, it **restores the previous build and restarts it** — so an update
+during a show week cannot leave you with nothing running.
+
+Undo a good-but-unwanted update the same way:
+
+```bash
+sudo ./scripts/update-server.sh --rollback
+```
+
+It reads the port, scheme, database path and service account out of the live
+systemd unit rather than assuming defaults, so it cannot build against one
+database and restart a service pointed at another.
+
+**Re-run the installer instead** when configuration changes — switching to TLS,
+changing the port, adding or removing AES67 — because those live in the systemd
+unit, which `update-server.sh` deliberately leaves alone:
 
 ```bash
 cd ~/rfdeck && git pull
 sudo ./scripts/install-ubuntu.sh
 ```
 
-Or let the installer fetch the code itself, which works from anywhere:
+Neither script touches the database, the TLS certificate, or the encryption key:
+those live in `/var/lib/rfdeck`, outside the install directory, precisely so
+that replacing the application can never take a venue's show history with it.
 
-```bash
-sudo /opt/rfdeck/scripts/install-ubuntu.sh --repo https://github.com/you/rfdeck.git
-```
+Running the installer *from* `/opt/rfdeck` rebuilds in place but cannot fetch
+new code — the install directory has no `.git`.
 
-Running it *from* `/opt/rfdeck` is still safe — it rebuilds and reconfigures in
-place, and says so — but it cannot fetch newer code.
-
-The database deliberately lives in `/var/lib/rfdeck` rather than inside the
-install directory, so replacing the application on upgrade can never take a
-venue's show history with it.
 
 ---
 

@@ -460,18 +460,26 @@ sudo systemctl edit rfdeck       # add: Environment=LOG_LEVEL=debug
 sudo systemctl restart rfdeck
 ```
 
-### Upgrading
+### Updating
 
-Re-run the installer from a checkout that has the new code. The schema updates
-in place and existing data is preserved:
+For a code update — the usual case — use the fast path. It stages, builds,
+migrates, restarts and verifies in under a minute, and **rolls back
+automatically** if the build fails or the service does not come back:
 
 ```bash
-cd ~/rfdeck && git pull
-sudo ./scripts/install-ubuntu.sh
+cd ~/rfdeck
+sudo ./scripts/update-server.sh --pull
 ```
 
-Running it *from* `/opt/rfdeck` rebuilds and reconfigures in place but cannot
-fetch new code — the install directory has no `.git`.
+`sudo ./scripts/update-server.sh --rollback` undoes it.
+
+Re-run `install-ubuntu.sh` instead when *configuration* changes — switching to
+or from TLS, changing the port, adding or removing AES67 — since those live in
+the systemd unit the update script leaves alone. That path also reruns apt and
+rebuilds the AES67 kernel module, which is why it takes minutes rather than
+seconds.
+
+Neither touches the database, certificate, or encryption key.
 
 ### Backup
 
