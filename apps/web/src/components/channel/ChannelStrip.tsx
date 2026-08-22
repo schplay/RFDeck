@@ -16,7 +16,7 @@ interface ChannelStripProps {
 export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, deviceType = 'input', deviceOnline = true }) => {
   const { socket, isConnected } = useSocket();
   const { channelAssignments } = useAudioStore();
-  const { monitorChannel, stopMonitoring, monitoringChannelId } = useAudioDevice();
+  const { monitorChannel, stopMonitoring, monitoringChannelId, support: audio } = useAudioDevice();
   const [isListening, setIsListening] = useState(false);
   const assignedInput = channelAssignments[channel.id];
   const isOutput = deviceType === 'output';
@@ -175,8 +175,16 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
         <button
           className={`cs-btn ${isListening ? 'btn-active' : 'btn-primary'}`}
           onClick={handleListen}
-          disabled={assignedInput == null}
-          title={assignedInput == null ? 'Assign an audio input in device settings first' : undefined}
+          disabled={!audio.available || assignedInput == null}
+          title={
+            // Say which of the two reasons applies — "assign an input" is
+            // useless advice when the browser has no audio API to begin with.
+            !audio.available
+              ? 'Audio monitoring needs an HTTPS connection, or a browser on the machine running RFDeck'
+              : assignedInput == null
+                ? 'Assign an audio input in device settings first'
+                : undefined
+          }
         >
           <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
         </button>

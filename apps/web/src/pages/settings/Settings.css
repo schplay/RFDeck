@@ -180,3 +180,12 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+/* Explanation shown when a capability is unavailable for environmental
+   reasons — not an error, so it should not read like one. */
+.settings-notice {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgba(240, 166, 58, 0.07);
+  border: 1px solid rgba(240, 166, 58, 0.25);
+}

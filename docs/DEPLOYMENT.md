@@ -112,6 +112,24 @@ The service runs as an unprivileged account. Port 80 is the only privileged
 bind, and the systemd unit grants exactly `CAP_NET_BIND_SERVICE` for it — the
 UDP discovery ports are all above 1024 and need nothing.
 
+### Audio monitoring over the network
+
+Browsers only expose audio capture to pages in a **secure context** — served
+over HTTPS, or from `localhost`. A headless server reached at
+`http://192.168.1.50` is neither, so `navigator.mediaDevices` is absent and
+audio monitoring cannot work there. This is a browser rule, not a limitation of
+RFDeck or of the server's hardware; a machine with no soundcard behaves exactly
+the same as one with a rack of interfaces.
+
+Everything else — telemetry, inventory, shows, mic check, alerts — is
+unaffected, and the Settings page explains the situation rather than reporting
+missing hardware.
+
+To monitor audio from a browser, either open RFDeck from the machine running it
+(`http://localhost`), or put it behind HTTPS. A self-signed certificate is
+enough for a closed show network, though every client will have to accept the
+warning once.
+
 ### Multiple network interfaces
 
 A machine with both a house network and an isolated show network will broadcast

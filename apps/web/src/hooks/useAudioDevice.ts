@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAudioStore } from '../stores/audioStore';
+import { audioSupport, AudioSupport } from '../lib/audioSupport';
 
 interface AudioDeviceHook {
+  /** Whether audio capture is usable here, and why not if it isn't. */
+  support: AudioSupport;
   availableDevices: MediaDeviceInfo[];
   refreshDevices: () => Promise<void>;
   monitoringChannelId: string | null;
@@ -54,23 +57,35 @@ export function useAudioDevice(): AudioDeviceHook {
   const { selectedDeviceId } = useAudioStore();
 
   const refreshDevices = useCallback(async () => {
+    // No API at all outside a secure context — nothing to enumerate.
+    if (!audioSupport.available) {
+      setAvailableDevices([]);
+      return;
+    }
+
     try {
       // Request permission first so labels are populated
       await navigator.mediaDevices.getUserMedia({ audio: true }).then(s => s.getTracks().forEach(t => t.stop()));
     } catch { /* permission denied — list what we can */ }
 
-    const all = await navigator.mediaDevices.enumerateDevices();
-    setAvailableDevices(all.filter(d => d.kind === 'audioinput'));
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setAvailableDevices(all.filter(d => d.kind === 'audioinput'));
+    } catch (err) {
+      console.warn('[useAudioDevice] Could not enumerate audio devices:', err);
+      setAvailableDevices([]);
+    }
   }, []);
 
   useEffect(() => {
     refreshDevices();
+    if (!audioSupport.available) return;
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
     return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
   }, [refreshDevices]);
 
   const monitorChannel = useCallback(async (channelId: string, inputIndex: number) => {
-    if (!selectedDeviceId) return;
+    if (!audioSupport.available || !selectedDeviceId) return;
 
     try {
       const ctx = getAudioContext();
@@ -122,5 +137,5 @@ export function useAudioDevice(): AudioDeviceHook {
     setMonitoringChannelId(null);
   }, []);
 
-  return { availableDevices, refreshDevices, monitoringChannelId, monitorChannel, stopMonitoring };
+  return { support: audioSupport, availableDevices, refreshDevices, monitoringChannelId, monitorChannel, stopMonitoring };
 }

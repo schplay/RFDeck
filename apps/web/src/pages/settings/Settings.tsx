@@ -26,7 +26,7 @@ interface NetworkInterface {
 
 function AudioDeviceSettings() {
   const { selectedDeviceId, setSelectedDevice } = useAudioStore();
-  const { availableDevices, refreshDevices } = useAudioDevice();
+  const { availableDevices, refreshDevices, support } = useAudioDevice();
 
   return (
     <div className="settings-card">
@@ -41,7 +41,24 @@ function AudioDeviceSettings() {
         After selecting an interface, open each device in the Inventory to assign its channels to specific inputs.
       </p>
 
-      {availableDevices.length === 0 ? (
+      {!support.available ? (
+        // Distinguish "the browser withheld the API" from "no hardware" — the
+        // first is about how this page was reached, and telling someone to
+        // check their cabling would send them the wrong way entirely.
+        <div className="settings-notice">
+          <p className="settings-desc settings-warn" style={{ marginBottom: 8 }}>
+            <strong>Audio monitoring is unavailable on this connection.</strong>
+          </p>
+          <p className="settings-desc">{support.detail}</p>
+          {support.reason === 'insecure-context' && (
+            <p className="settings-desc" style={{ marginTop: 8 }}>
+              Everything else — telemetry, inventory, mic check — works normally.
+              To monitor audio, open RFDeck over HTTPS, or from a browser on the
+              machine running it.
+            </p>
+          )}
+        </div>
+      ) : availableDevices.length === 0 ? (
         <p className="settings-desc settings-warn">
           No audio input devices found. Make sure your interface is connected and the browser has microphone permission.
         </p>
