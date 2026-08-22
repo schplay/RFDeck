@@ -83,6 +83,7 @@ if [[ "$UNINSTALL" == "1" ]]; then
   systemctl stop    "$SERVICE_NAME" 2>/dev/null || true
   systemctl disable "$SERVICE_NAME" 2>/dev/null || true
   rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  rm -f /usr/local/bin/rfdeck
   systemctl daemon-reload
   rm -rf "$INSTALL_DIR"
   ok "Service and application removed"
@@ -497,6 +498,36 @@ if [[ "$WITH_AES67" == "1" ]]; then
   fi
 fi
 
+# ── Admin CLI ─────────────────────────────────────────────────────────────────
+#
+# A headless server has no browser on the host, so shell access has to be a
+# first-class way to administer it — and the only way back in if the PIN is
+# forgotten. Installed as `rfdeck` on PATH.
+
+step "Installing the rfdeck admin CLI"
+
+cat > /usr/local/bin/rfdeck <<'CLI'
+#!/usr/bin/env bash
+# RFDeck server administration. Reads the same database as the service.
+set -euo pipefail
+INSTALL_DIR=__INSTALL_DIR__
+UNIT=/etc/systemd/system/rfdeck.service
+
+# Take the database path from the running unit so the CLI can never act on a
+# different database than the service.
+if [[ -f "$UNIT" ]]; then
+  DB_URL="$(sed -n 's/^Environment=DATABASE_URL=\(.*\)$/\1/p' "$UNIT" | head -1)"
+fi
+export DATABASE_URL="${DATABASE_URL:-${DB_URL:-}}"
+
+cd "$INSTALL_DIR/apps/server"
+exec node dist/cli.js "$@"
+CLI
+
+sed -i "s|__INSTALL_DIR__|$INSTALL_DIR|" /usr/local/bin/rfdeck
+chmod +x /usr/local/bin/rfdeck
+ok "rfdeck command installed"
+
 # ── Firewall ─────────────────────────────────────────────────────────────────
 #
 # Only the HTTP port is obvious. The UDP ports are where deployments fail: with
@@ -593,6 +624,11 @@ if [[ "$WITH_AES67" == "1" ]]; then
 fi
 echo "  ${DIM}Access is open to the network. To require a PIN, open Settings →${OFF}"
 echo "  ${DIM}Remote Access in a browser on this machine.${OFF}"
+echo
+echo "  Administer from this machine:"
+echo "      rfdeck status"
+echo "      rfdeck set-pin 1234"
+echo "      rfdeck audio-devices"
 echo
 echo "  Manage the service:"
 echo "      systemctl status ${SERVICE_NAME}"

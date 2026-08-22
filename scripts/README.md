@@ -122,6 +122,26 @@ new code — the install directory has no `.git`.
 
 ---
 
+## Administering the server
+
+A headless server has no browser on the host, so shell access is a first-class
+way to administer it — and the only way back in if the PIN is forgotten.
+
+```bash
+rfdeck status              # access and audio configuration
+rfdeck set-pin 4821        # require a PIN from remote devices
+rfdeck set-pin 4821 --reauth-hours 24
+rfdeck disable-pin         # network becomes open again
+rfdeck audio-devices       # capture devices and the current patch
+```
+
+Changing or disabling the PIN takes effect for new connections immediately;
+restart the service to sign out devices already connected.
+
+Everything except the PIN reset can also be done from a browser: whoever knows
+the current PIN may change it. Only recovery from a *forgotten* PIN requires the
+shell.
+
 ## Operating the service
 
 ```bash

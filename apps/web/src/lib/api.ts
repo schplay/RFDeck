@@ -86,6 +86,8 @@ export async function apiFetch<T = unknown>(path: string, init: RequestInit = {}
 export interface AuthStatus {
   pinEnabled: boolean;
   isLocal: boolean;
+  /** Whether THIS client is permitted to change access settings. */
+  canConfigure: boolean;
   reauthHours: number;
   authenticated: boolean;
 }

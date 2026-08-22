@@ -406,9 +406,19 @@ RFDeck is open to the network by default, which is right on an isolated show
 network — a login prompt between an operator and a failing channel is a
 liability.
 
-If the network is shared with house or guest traffic, open **Settings**,
-**Remote Access** *on the server itself* and set a PIN. Choose how often devices
-must re-enter it; **never** suits a resident booth display.
+If the network is shared with house or guest traffic, set a PIN — from any
+browser under **Settings → Remote Access**, or from a shell on the server:
+
+```bash
+sudo rfdeck set-pin 4821
+```
+
+Choose how often devices must re-enter it; **never** suits a resident booth
+display.
+
+Once a PIN is set, only a device that has entered it can change it. If it is
+forgotten, reset it from the server with the same command — shell access is the
+recovery path, since a headless machine has no browser to fall back to.
 
 ### Ports
 

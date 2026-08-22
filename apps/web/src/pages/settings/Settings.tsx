@@ -76,13 +76,24 @@ function RemoteAccessSettings() {
     return <div className="settings-card"><p className="settings-desc">Loading access settings…</p></div>;
   }
 
-  if (!status.isLocal) {
+  // A headless server has no browser on the host, so "configure it locally" is
+  // not advice anyone can follow. Whoever knows the current PIN may change it;
+  // shell access to the server is the recovery path when nobody does.
+  if (!status.canConfigure) {
     return (
       <div className="settings-card">
         <div className="settings-card-header"><h3>Remote Access</h3></div>
         <p className="settings-desc settings-warn">
-          Access settings can only be changed from the machine running RFDeck.
+          <strong>Enter the current PIN to change these settings.</strong>
         </p>
+        <p className="settings-desc">
+          This device has not authenticated with the PIN, so it cannot change it.
+          Reload and enter the PIN, then come back here.
+        </p>
+        <p className="settings-desc" style={{ marginTop: 8 }}>
+          Forgotten it? Reset from a shell on the server:
+        </p>
+        <pre className="settings-code">sudo rfdeck set-pin 1234</pre>
       </div>
     );
   }
@@ -93,7 +104,8 @@ function RemoteAccessSettings() {
       <p className="settings-desc">
         RFDeck trusts the local network by default, so any device that can reach this
         machine can connect. Require a PIN if the show network is shared with house or
-        guest traffic. The machine running RFDeck is always exempt.
+        guest traffic. A browser on the machine running RFDeck is always exempt, and a
+        shell there can always reset the PIN with `rfdeck set-pin`.
       </p>
 
       <div className="settings-form">
