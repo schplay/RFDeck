@@ -1,6 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import { nonstandard } from '@roamhq/wrtc';
-import { probeChannelCount } from './deviceList';
+import { probeChannelCount, FALLBACK_CHANNELS } from './deviceList';
 import { log } from '../logger';
 
 const { RTCAudioSource } = nonstandard;
@@ -78,7 +78,18 @@ export class CaptureManager {
     if (existing) return existing;
 
     // Open at the device's own width — never a fixed stereo assumption.
-    const channels = probeChannelCount(deviceId);
+    // If the probe failed we still have to pick something to open with, but the
+    // demuxer strides by this number: guessing wrong scrambles which input maps
+    // to which channel, so it is worth saying so loudly.
+    const probed = probeChannelCount(deviceId);
+    if (probed === null) {
+      log.warn(
+        `[capture] Unknown channel width for ${deviceId}; opening as ` +
+        `${FALLBACK_CHANNELS}-channel. If inputs appear on the wrong channels, ` +
+        `this is why.`,
+      );
+    }
+    const channels = probed ?? FALLBACK_CHANNELS;
 
     const proc = spawn('arecord', [
       '-D', deviceId,

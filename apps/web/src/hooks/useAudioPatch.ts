@@ -13,6 +13,8 @@ export interface ServerAudioDevice {
   id: string;
   label: string;
   channels: number;
+  /** False when the server could not read the width and is assuming one. */
+  channelsProbed: boolean;
 }
 
 export interface Assignment {

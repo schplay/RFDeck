@@ -210,6 +210,27 @@ fi
 
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
+# ── Audio device permissions ─────────────────────────────────────────────────
+#
+# /dev/snd is group-owned by 'audio'. A service account without that membership
+# enumerates no capture devices, so the UI reports none while the same commands
+# under sudo list every card. Repaired here because this script does not rewrite
+# the unit, so installs predating the fix would never otherwise pick it up.
+if getent group audio >/dev/null 2>&1; then
+  if ! id -nG "$SERVICE_USER" 2>/dev/null | tr ' ' '\n' | grep -qx audio; then
+    usermod -aG audio "$SERVICE_USER"
+    ok "User '$SERVICE_USER' added to the audio group"
+  fi
+
+  # The account-level group only takes effect on a fresh login, which a nologin
+  # system account never gets; the unit setting is what reaches the process.
+  if ! grep -q '^SupplementaryGroups=.*audio' "$UNIT"; then
+    sed -i "/^Group=/a SupplementaryGroups=audio" "$UNIT"
+    systemctl daemon-reload
+    ok "Granted the service access to audio devices"
+  fi
+fi
+
 # ── Restart and verify ───────────────────────────────────────────────────────
 
 if [[ "$RESTART" == "0" ]]; then

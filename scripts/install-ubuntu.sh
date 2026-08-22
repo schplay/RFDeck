@@ -180,6 +180,22 @@ else
   ok "User '$SERVICE_USER' created"
 fi
 
+# Capture devices in /dev/snd are group-owned by 'audio'. Without membership the
+# service opens no devices at all and the UI shows an empty device list, while
+# the same commands run under sudo see every card — a discrepancy that reads as
+# a broken audio stack rather than a permissions problem. Runs unconditionally
+# so installs predating this also get repaired.
+if getent group audio >/dev/null 2>&1; then
+  if id -nG "$SERVICE_USER" 2>/dev/null | tr ' ' '\n' | grep -qx audio; then
+    ok "User '$SERVICE_USER' is in the audio group"
+  else
+    usermod -aG audio "$SERVICE_USER"
+    ok "User '$SERVICE_USER' added to the audio group"
+  fi
+else
+  warn "No 'audio' group on this system; capture devices may be unreadable"
+fi
+
 # ── Source ───────────────────────────────────────────────────────────────────
 
 step "Staging the application"
@@ -354,6 +370,10 @@ Wants=network-online.target
 Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
+# Granted here as well as via usermod: a supplementary group added to the
+# account only reaches the process on a fresh login, which a system account
+# with nologin never gets. This applies it to the service directly.
+SupplementaryGroups=audio
 WorkingDirectory=${INSTALL_DIR}/apps/server
 
 Environment=NODE_ENV=production

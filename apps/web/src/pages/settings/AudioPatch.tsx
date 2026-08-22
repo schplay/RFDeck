@@ -49,8 +49,15 @@ export function AudioPatchSettings() {
         <>
           <div className="audio-patch-devices">
             {devices.map(d => (
-              <span key={d.id} className="audio-patch-chip">
-                {d.label} · {d.channels} in
+              <span
+                key={d.id}
+                className="audio-patch-chip"
+                title={d.channelsProbed
+                  ? undefined
+                  : 'RFDeck could not read this device’s channel count and is ' +
+                    'assuming ' + d.channels + '. Run "rfdeck audio-devices" on the server.'}
+              >
+                {d.label} · {d.channels} in{d.channelsProbed ? '' : '?'}
               </span>
             ))}
           </div>

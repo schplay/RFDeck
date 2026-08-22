@@ -20,9 +20,18 @@ export interface AudioInputDevice {
   label: string;
   card: number;
   device: number;
-  /** Input channels the device reports. Probed, never assumed. */
+  /** Input channels. Probed when `channelsProbed`, otherwise the fallback. */
   channels: number;
+  /**
+   * Whether `channels` came from the hardware or is a guess. Kept separate so a
+   * failed probe cannot masquerade as a real 2-channel reading — that ambiguity
+   * previously hid a parser bug behind an entirely plausible number.
+   */
+  channelsProbed: boolean;
 }
+
+/** Used only when the hardware will not tell us; always paired with a warning. */
+export const FALLBACK_CHANNELS = 2;
 
 // "00-00: ALC257 Analog : ALC257 Analog : playback 1 : capture 1"
 const PCM_LINE = /^(\d+)-(\d+):\s*([^:]*?)\s*:\s*([^:]*?)\s*:(.*)$/;
@@ -49,7 +58,7 @@ function readCardNames(): Map<number, string> {
 // "card 2: RAVENNA [RAVENNA], device 0: RAVENNA [RAVENNA]"
 // The ALSA id before each bracket can contain spaces ("ALC257 Analog"), so match
 // up to the bracket rather than assuming a single token.
-const ARECORD_LINE =
+export const ARECORD_LINE =
   /^card\s+(\d+):\s*[^[]*\[([^\]]*)\]\s*,\s*device\s+(\d+):\s*[^[]*\[([^\]]*)\]/;
 
 function labelFor(cardName: string, pcmName: string): string {
@@ -79,7 +88,7 @@ function fromArecord(): AudioInputDevice[] {
     const card = Number(m[1]);
     const device = Number(m[3]);
     const id = `hw:${card},${device}`;
-    devices.push({ id, label: labelFor(m[2].trim(), m[4].trim()), card, device, channels: 0 });
+    devices.push({ id, label: labelFor(m[2].trim(), m[4].trim()), card, device, channels: 0, channelsProbed: false });
   }
   return devices;
 }
@@ -109,7 +118,8 @@ function fromProcAsound(): AudioInputDevice[] {
     const id = `hw:${card},${device}`;
     const cardName = cardNames.get(card) ?? `Card ${card}`;
     devices.push({
-      id, label: labelFor(cardName, (m[4] || m[3] || '').trim()), card, device, channels: 0,
+      id, label: labelFor(cardName, (m[4] || m[3] || '').trim()), card, device,
+      channels: 0, channelsProbed: false,
     });
   }
   return devices;
@@ -126,7 +136,11 @@ export function listAudioInputDevices(): AudioInputDevice[] {
     a.card - b.card || a.device - b.device);
 
   // Probe width only after de-duplicating — each probe opens the device.
-  for (const d of devices) d.channels = probeChannelCount(d.id);
+  for (const d of devices) {
+    const probed = probeChannelCount(d.id);
+    d.channelsProbed = probed !== null;
+    d.channels = probed ?? FALLBACK_CHANNELS;
+  }
   return devices;
 }
 
@@ -139,13 +153,16 @@ export function listAudioInputDevices(): AudioInputDevice[] {
 //
 // ALSA reports this through `arecord --dump-hw-params`, which prints a CHANNELS
 // line that is either a single value or a range.
-const channelCache = new Map<string, number>();
+//
+// Returns null when the hardware will not say, rather than a plausible-looking
+// default — callers must decide what to do about not knowing.
+const channelCache = new Map<string, number | null>();
 
-export function probeChannelCount(deviceId: string): number {
+export function probeChannelCount(deviceId: string): number | null {
   const cached = channelCache.get(deviceId);
   if (cached !== undefined) return cached;
 
-  let channels = 2; // sane floor if the probe tells us nothing
+  let channels: number | null = null;
   try {
     // Writes hw_params to stderr and exits non-zero by design, so capture both
     // and ignore the status.
@@ -161,7 +178,13 @@ export function probeChannelCount(deviceId: string): number {
     if (parsed !== null) {
       channels = parsed;
     } else {
-      log.debug(`[audio] Could not probe channel count for ${deviceId}; assuming ${channels}`);
+      // Warn, not debug: this silently capped every device at the fallback
+      // width once already, and it was invisible in the default log level.
+      log.warn(
+        `[audio] Could not read the channel count for ${deviceId}. ` +
+        `Check "arecord -D ${deviceId} --dump-hw-params" on the server. ` +
+        `Assuming ${FALLBACK_CHANNELS} inputs.`,
+      );
     }
   }
 
@@ -170,7 +193,7 @@ export function probeChannelCount(deviceId: string): number {
 }
 
 // "CHANNELS: 2" or "CHANNELS: [1 32]" — take the maximum the device offers.
-function parseChannels(text: string): number | null {
+export function parseChannels(text: string): number | null {
   const m = text.match(/^CHANNELS:\s*(.+)$/m);
   if (!m) return null;
   const nums = m[1].match(/\d+/g);

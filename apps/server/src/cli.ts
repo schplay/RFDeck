@@ -113,7 +113,10 @@ async function cmdAudioDevices(): Promise<void> {
 
   console.log('Capture devices on this machine:\n');
   for (const d of devices) {
-    console.log(`  ${d.id.padEnd(10)} ${d.label}  (${d.channels} input${d.channels === 1 ? '' : 's'})`);
+    const width = d.channelsProbed
+      ? `${d.channels} input${d.channels === 1 ? '' : 's'}`
+      : `width unknown, assuming ${d.channels}`;
+    console.log(`  ${d.id.padEnd(10)} ${d.label}  (${width})`);
   }
 
   const patches = await prisma.channelAudioMap.findMany();

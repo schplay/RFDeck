@@ -323,6 +323,30 @@ subnet, and that UDP 5353 is open for mDNS.
 server suppresses the Dante address once the device connects; if it persists, the
 device is probably not yet reachable on its control interface.
 
+**The settings page shows "No capture devices" but `arecord -l` lists them.**
+Check whether the service account can see them, which is the question that
+matters — `sudo` answers a different one:
+
+```bash
+sudo -u rfdeck arecord -l          # what the service actually sees
+```
+
+If that prints "no soundcards found", the account is missing the `audio` group
+that owns `/dev/snd`. Re-running `install-ubuntu.sh` or `update-server.sh`
+repairs it, or by hand:
+
+```bash
+sudo usermod -aG audio rfdeck
+sudo systemctl restart rfdeck
+```
+
+**A device reports fewer inputs than it has.** Run `sudo rfdeck audio-devices`.
+A width shown as "width unknown, assuming 2" means the probe failed and RFDeck
+is guessing — check `arecord -D hw:X,Y --dump-hw-params` on the server. A width
+reported without that caveat was read from the hardware; if it is still too low
+for an AES67 device, the limit is the sink configured in the daemon UI on port
+8080, not RFDeck.
+
 **Remote clients get a PIN prompt unexpectedly.** The re-auth interval elapsed.
 Set it to "never" for resident displays.
 
