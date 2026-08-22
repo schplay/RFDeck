@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
 import {
   listAudioInputDevices, describeNoDevices, audioSubsystemPresent, clearChannelCache,
+  describeAccessProblem,
 } from '../audio/deviceList';
 import { log } from '../logger';
 
@@ -20,10 +21,15 @@ export const audioRoutes: FastifyPluginAsync = async (fastify) => {
     const devices = listAudioInputDevices();
     const assignments = await prisma.channelAudioMap.findMany();
 
+    // A device list that is present but unopenable needs its own explanation:
+    // it looks healthy while nothing about it works.
+    const accessProblem = describeAccessProblem();
+
     return {
       devices,
       assignments,
-      hint: devices.length === 0 ? describeNoDevices() : null,
+      hint: devices.length === 0 ? describeNoDevices() : accessProblem,
+      accessProblem,
       alsaPresent: audioSubsystemPresent(),
     };
   });

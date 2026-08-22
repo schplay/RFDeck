@@ -212,6 +212,50 @@ export function audioSubsystemPresent(): boolean {
   return fs.existsSync('/proc/asound');
 }
 
+// Can this process actually OPEN a capture device, as opposed to merely listing
+// one?
+//
+// The two need different permissions, and that asymmetry is genuinely
+// confusing: /proc/asound is world-readable, so enumeration succeeds for any
+// user, while /dev/snd is group-owned by 'audio'. A service account outside
+// that group therefore lists every card and can open none — which surfaced as
+// devices appearing correctly but always reporting the fallback width.
+//
+// Tested by checking the device nodes directly rather than by matching words in
+// an error message, which would break under any non-English locale.
+//
+// Returns null when there is nothing to test (no /dev/snd, or no capture nodes).
+export function canOpenCaptureDevices(): boolean | null {
+  let entries: string[];
+  try {
+    entries = fs.readdirSync('/dev/snd');
+  } catch {
+    return null;
+  }
+
+  // pcmC0D0c — card 0, device 0, 'c' for capture.
+  const captureNodes = entries.filter(e => /^pcmC\d+D\d+c$/.test(e));
+  if (captureNodes.length === 0) return null;
+
+  return captureNodes.some(node => {
+    try {
+      fs.accessSync(`/dev/snd/${node}`, fs.constants.R_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+// Explains a device list that is present but unusable. Null when nothing is wrong.
+export function describeAccessProblem(): string | null {
+  if (canOpenCaptureDevices() !== false) return null;
+  return 'RFDeck can list capture devices but cannot open them, so channel ' +
+         'counts fall back to a default and audio will not stream. The account ' +
+         'running RFDeck is missing the "audio" group that owns /dev/snd. ' +
+         'On the server: sudo usermod -aG audio rfdeck && sudo systemctl restart rfdeck';
+}
+
 export function describeNoDevices(): string {
   if (!audioSubsystemPresent()) {
     return 'This machine has no ALSA sound subsystem, so there are no capture devices. ' +

@@ -28,6 +28,7 @@ export function useAudioPatch() {
   const [devices, setDevices] = useState<ServerAudioDevice[]>([]);
   const [assignments, setAssignments] = useState<Record<string, Assignment>>({});
   const [hint, setHint] = useState<string | null>(null);
+  const [accessProblem, setAccessProblem] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,9 +40,11 @@ export function useAudioPatch() {
         devices: ServerAudioDevice[];
         assignments: Assignment[];
         hint: string | null;
+        accessProblem?: string | null;
       }>(`/audio/devices${rescan ? '?rescan=1' : ''}`);
       setDevices(data.devices);
       setHint(data.hint);
+      setAccessProblem(data.accessProblem ?? null);
       setAssignments(Object.fromEntries(data.assignments.map(a => [a.channelKey, a])));
     } catch {
       setError('Could not reach the server to list audio devices.');
@@ -91,5 +94,5 @@ export function useAudioPatch() {
     }
   }, [assignments]);
 
-  return { devices, assignments, hint, loading, error, patch, reload: load };
+  return { devices, assignments, hint, accessProblem, loading, error, patch, reload: load };
 }

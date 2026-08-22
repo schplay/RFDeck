@@ -103,8 +103,18 @@ async function cmdDisablePin(): Promise<void> {
 
 async function cmdAudioDevices(): Promise<void> {
   // Imported lazily so `status` works on a machine with no sound subsystem.
-  const { listAudioInputDevices, describeNoDevices } = await import('./audio/deviceList');
+  const { listAudioInputDevices, describeNoDevices, describeAccessProblem } =
+    await import('./audio/deviceList');
   const devices = listAudioInputDevices();
+
+  // This CLI is normally run under sudo, so it sees more than the service does.
+  // Say so plainly: a root-only success here reads as "audio works" while the
+  // service is still shut out, which is exactly how a permissions fault gets
+  // mistaken for a hardware limit.
+  if (process.getuid?.() === 0) {
+    console.log('Note: running as root. To check what the service itself sees:');
+    console.log('  sudo -u rfdeck arecord -l\n');
+  }
 
   if (devices.length === 0) {
     console.log(describeNoDevices());
@@ -118,6 +128,9 @@ async function cmdAudioDevices(): Promise<void> {
       : `width unknown, assuming ${d.channels}`;
     console.log(`  ${d.id.padEnd(10)} ${d.label}  (${width})`);
   }
+
+  const accessProblem = describeAccessProblem();
+  if (accessProblem) console.log(`\n! ${accessProblem}`);
 
   const patches = await prisma.channelAudioMap.findMany();
   if (patches.length > 0) {

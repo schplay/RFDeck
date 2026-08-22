@@ -14,7 +14,8 @@ import { channelKey as keyFor } from '../../lib/channelKey';
 
 export function AudioPatchSettings() {
   const channels = useActiveChannels();
-  const { devices, assignments, hint, loading, error, patch, reload } = useAudioPatch();
+  const { devices, assignments, hint, accessProblem, loading, error, patch, reload } =
+    useAudioPatch();
 
   return (
     <div className="settings-card">
@@ -31,6 +32,17 @@ export function AudioPatchSettings() {
       </p>
 
       {error && <p className="settings-desc settings-warn">{error}</p>}
+
+      {/* Devices listing correctly while being unopenable looks like working
+          hardware with an odd channel count, so it needs saying outright. */}
+      {accessProblem && devices.length > 0 && (
+        <div className="settings-notice">
+          <p className="settings-desc settings-warn" style={{ marginBottom: 8 }}>
+            <strong>Devices are listed but cannot be opened.</strong>
+          </p>
+          <p className="settings-desc">{accessProblem}</p>
+        </div>
+      )}
 
       {loading ? (
         <p className="settings-desc">Scanning the server for audio devices…</p>
