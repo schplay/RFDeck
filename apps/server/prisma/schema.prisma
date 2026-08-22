@@ -37,6 +37,10 @@ model Settings {
   dropoutSensitivity Int      @default(20)
   bindInterface      String   @default("0.0.0.0")
   defaultPassword    String?
+  // ALSA device on the SERVER that monitoring captures from, e.g. "hw:1,0".
+  // The interface is in the rack, so the device list is the server's, not a
+  // browser's — see src/audio/deviceList.ts.
+  audioInputDevice   String?
 
   // ── Remote access ──
   // Default is an open, trusted show network. When authPinEnabled is on,

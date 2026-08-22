@@ -5,6 +5,9 @@ import { DiscoveredDevice } from '../hardware/sennheiser/DiscoveryService';
 import { mcpBus } from '../hardware/sennheiser/McpBus';
 import { WebRTCSignaling } from '../audio/WebRTCSignaling';
 import { AES67Manager } from '../audio/AES67Manager';
+import { listAudioInputDevices } from '../audio/deviceList';
+import { prisma } from '../db';
+import { log } from '../logger';
 import { isRequestAuthorized } from '../auth/pinAuth';
 
 export default fp(async (fastify, opts) => {
@@ -50,6 +53,27 @@ export default fp(async (fastify, opts) => {
   fastify.addHook('onReady', async () => {
     await mcpBus.init(); // shared UDP :53212 must be ready before any G3G4Client or DiscoveryService
     deviceManager.start();
+
+    // Resume capturing from the configured audio interface. Without this a
+    // restart silently leaves monitoring dead until someone reopens Settings.
+    try {
+      const settings = await prisma.settings.findFirst();
+      const deviceId = settings?.audioInputDevice;
+      if (deviceId) {
+        if (listAudioInputDevices().some(d => d.id === deviceId)) {
+          audioManager.startLocalCapture(deviceId);
+        } else {
+          // Kept in settings rather than cleared: the interface may simply be
+          // switched off, and silently forgetting the choice would be worse.
+          log.warn(
+            `Configured audio device ${deviceId} is not present — monitoring is idle. ` +
+            'Reselect it in Settings once the interface is connected.'
+          );
+        }
+      }
+    } catch (err: any) {
+      log.warn('Could not restore the audio capture device:', err?.message);
+    }
     fastify.log.info('Socket.io server listening and DeviceManager started');
   });
 

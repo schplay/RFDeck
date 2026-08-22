@@ -6,6 +6,7 @@ import { systemRoutes } from './system';
 import { showRoutes } from './shows';
 import { authRoutes } from './auth';
 import { eventRoutes } from './events';
+import { audioRoutes } from './audio';
 
 export default async function routes(fastify: FastifyInstance) {
   fastify.register(healthRoutes, { prefix: '/health' });
@@ -15,6 +16,7 @@ export default async function routes(fastify: FastifyInstance) {
   fastify.register(systemRoutes);
   fastify.register(showRoutes);
   fastify.register(eventRoutes);
+  fastify.register(audioRoutes);
 }
 
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAudioStore } from '../stores/audioStore';
-import { audioSupport, AudioSupport } from '../lib/audioSupport';
+import { audioSupport, AudioSupport, canCaptureLocally } from '../lib/audioSupport';
 
 interface AudioDeviceHook {
   /** Whether audio capture is usable here, and why not if it isn't. */
@@ -57,8 +57,9 @@ export function useAudioDevice(): AudioDeviceHook {
   const { selectedDeviceId } = useAudioStore();
 
   const refreshDevices = useCallback(async () => {
-    // No API at all outside a secure context — nothing to enumerate.
-    if (!audioSupport.available) {
+    // Either the hardware is not on this machine, or the browser withholds
+    // the API. Enumerating local devices is wrong or impossible in both cases.
+    if (!canCaptureLocally()) {
       setAvailableDevices([]);
       return;
     }
@@ -79,13 +80,13 @@ export function useAudioDevice(): AudioDeviceHook {
 
   useEffect(() => {
     refreshDevices();
-    if (!audioSupport.available) return;
+    if (!canCaptureLocally()) return;
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
     return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
   }, [refreshDevices]);
 
   const monitorChannel = useCallback(async (channelId: string, inputIndex: number) => {
-    if (!audioSupport.available || !selectedDeviceId) return;
+    if (!canCaptureLocally() || !selectedDeviceId) return;
 
     try {
       const ctx = getAudioContext();

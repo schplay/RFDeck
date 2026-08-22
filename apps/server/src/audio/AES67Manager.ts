@@ -1,4 +1,5 @@
 import * as dgram from 'dgram';
+import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { nonstandard } from '@roamhq/wrtc';
 import { log } from '../logger';
@@ -11,6 +12,8 @@ const FRAMES_PER_CHUNK = SAMPLE_RATE / 100; // 480 frames = 10ms at 48 kHz
 
 export class AES67Manager extends EventEmitter {
   public readonly audioSource: nonstandard.RTCAudioSource;
+  private captureProc: ChildProcess | null = null;
+  private captureChannels = CHANNEL_COUNT;
   public readonly isAvailable = true;
 
   private udpSocket: dgram.Socket | null = null;
@@ -79,6 +82,77 @@ export class AES67Manager extends EventEmitter {
     }
   }
 
+
+  // ── Local capture ──────────────────────────────────────────────────────────
+  //
+  // Capture from an audio interface attached to this machine and feed it into
+  // the same WebRTC source the AES67 path uses, so remote clients hear the rack
+  // rather than their own laptop microphone.
+  //
+  // Uses `arecord` rather than a native binding: it ships with alsa-utils
+  // (already a dependency of the AES67 daemon), needs no compilation, and
+  // survives Node upgrades. The cost is one extra process, which is nothing
+  // beside the WebRTC encoder.
+
+  startLocalCapture(deviceId: string, channels = CHANNEL_COUNT): void {
+    this.stop();
+
+    const args = [
+      '-D', deviceId,
+      '-f', 'S16_LE',              // matches what RTCAudioSource expects
+      '-r', String(SAMPLE_RATE),
+      '-c', String(channels),
+      '-t', 'raw',
+      '--buffer-size=8192',        // small enough to keep monitoring latency low
+      '-q',
+    ];
+
+    log.info(`[AES67Manager] Capturing from ${deviceId} (${channels}ch)`);
+    const proc = spawn('arecord', args);
+    this.captureProc = proc;
+    this.captureChannels = channels;
+
+    proc.stdout.on('data', (chunk: Buffer) => this.handlePcmChunk(chunk));
+
+    proc.stderr.on('data', (chunk: Buffer) => {
+      const msg = chunk.toString().trim();
+      if (msg) log.warn(`[arecord] ${msg}`);
+    });
+
+    proc.on('error', (err: Error) => {
+      log.error(`[AES67Manager] Could not start arecord: ${err.message}`);
+      this.captureProc = null;
+    });
+
+    proc.on('exit', (code: number | null, signal: NodeJS.Signals | null) => {
+      // A non-zero exit while we still expect to be capturing means the device
+      // went away or is held by something else — worth saying, not worth
+      // crashing the server over.
+      if (this.captureProc === proc && code !== 0 && signal !== 'SIGTERM') {
+        log.error(`[AES67Manager] Capture from ${deviceId} stopped (exit ${code})`);
+      }
+      if (this.captureProc === proc) this.captureProc = null;
+    });
+  }
+
+  // arecord delivers arbitrary-sized chunks; RTCAudioSource wants fixed frames.
+  private handlePcmChunk(chunk: Buffer): void {
+    for (let i = 0; i + 1 < chunk.length; i += 2) {
+      this.sampleBuffer[this.bufferOffset++] = chunk.readInt16LE(i);
+
+      if (this.bufferOffset >= this.sampleBuffer.length) {
+        this.audioSource.onData({
+          samples: this.sampleBuffer,
+          sampleRate: SAMPLE_RATE,
+          bitsPerSample: 16,
+          channelCount: CHANNEL_COUNT,
+          numberOfFrames: FRAMES_PER_CHUNK,
+        });
+        this.bufferOffset = 0;
+      }
+    }
+  }
+
   startTestTone(): void {
     this.stop();
     this.testTonePhase = 0;
@@ -104,6 +178,10 @@ export class AES67Manager extends EventEmitter {
   }
 
   stop(): void {
+    if (this.captureProc) {
+      this.captureProc.kill('SIGTERM');
+      this.captureProc = null;
+    }
     if (this.udpSocket) {
       this.udpSocket.close();
       this.udpSocket = null;

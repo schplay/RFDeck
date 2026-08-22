@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Volume2, BellRing, Network, RefreshCw, ShieldCheck } from 'lucide-react';
-import { useAudioStore } from '../../stores/audioStore';
-import { useAudioDevice } from '../../hooks/useAudioDevice';
 import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
 import './Settings.css';
 
@@ -24,66 +22,120 @@ interface NetworkInterface {
   label: string;
 }
 
+// Audio interface selection.
+//
+// The device list comes from the SERVER, because that is where the interface
+// carrying the receiver outputs is plugged in. Enumerating the browser's own
+// hardware would offer whoever is viewing their laptop's built-in microphone.
+interface ServerAudioDevice {
+  id: string;
+  label: string;
+  card: number;
+  device: number;
+}
+
 function AudioDeviceSettings() {
-  const { selectedDeviceId, setSelectedDevice } = useAudioStore();
-  const { availableDevices, refreshDevices, support } = useAudioDevice();
+  const [devices, setDevices] = useState<ServerAudioDevice[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch<{
+        devices: ServerAudioDevice[];
+        selected: string | null;
+        hint: string | null;
+      }>('/audio/devices');
+      setDevices(data.devices);
+      setSelected(data.selected);
+      setHint(data.hint);
+    } catch {
+      setMessage({ kind: 'err', text: 'Could not reach the server to list audio devices.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const choose = async (deviceId: string | null) => {
+    setSaving(true);
+    setMessage(null);
+    const previous = selected;
+    setSelected(deviceId);
+    try {
+      await apiFetch('/audio/device', {
+        method: 'PUT',
+        body: JSON.stringify({ deviceId }),
+      });
+      setMessage({
+        kind: 'ok',
+        text: deviceId ? 'Capturing from this interface.' : 'Monitoring source cleared.',
+      });
+    } catch (err: any) {
+      setSelected(previous);
+      setMessage({ kind: 'err', text: err?.message ?? 'Could not change the audio source.' });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="settings-card">
       <div className="settings-card-header">
         <h3>Audio Interface</h3>
-        <button className="btn-icon" onClick={refreshDevices} title="Refresh device list">
+        <button className="btn-icon" onClick={load} title="Rescan devices" disabled={loading}>
           <RefreshCw size={14} />
         </button>
       </div>
       <p className="settings-desc">
-        Select the audio interface whose inputs are connected to your wireless receivers.
-        After selecting an interface, open each device in the Inventory to assign its channels to specific inputs.
+        The capture device on the machine running RFDeck — the one your receiver
+        outputs are connected to. Monitoring streams this audio to every client,
+        so it is the same source wherever you listen from.
       </p>
 
-      {!support.available ? (
-        // Distinguish "the browser withheld the API" from "no hardware" — the
-        // first is about how this page was reached, and telling someone to
-        // check their cabling would send them the wrong way entirely.
+      {loading ? (
+        <p className="settings-desc">Scanning the server for audio devices…</p>
+      ) : devices.length === 0 ? (
         <div className="settings-notice">
           <p className="settings-desc settings-warn" style={{ marginBottom: 8 }}>
-            <strong>Audio monitoring is unavailable on this connection.</strong>
+            <strong>No capture devices found on the server.</strong>
           </p>
-          <p className="settings-desc">{support.detail}</p>
-          {support.reason === 'insecure-context' && (
-            <p className="settings-desc" style={{ marginTop: 8 }}>
-              Everything else — telemetry, inventory, mic check — works normally.
-              To monitor audio, open RFDeck over HTTPS, or from a browser on the
-              machine running it.
-            </p>
-          )}
+          <p className="settings-desc">{hint}</p>
         </div>
-      ) : availableDevices.length === 0 ? (
-        <p className="settings-desc settings-warn">
-          No audio input devices found. Make sure your interface is connected and the browser has microphone permission.
-        </p>
       ) : (
         <div className="settings-form">
           <div className="form-group">
-            <label>Audio Input Device</label>
+            <label>Capture Device</label>
             <select
-              value={selectedDeviceId ?? ''}
-              onChange={e => setSelectedDevice(e.target.value || null)}
+              value={selected ?? ''}
+              disabled={saving}
+              onChange={e => choose(e.target.value || null)}
             >
-              <option value="">— Select an interface —</option>
-              {availableDevices.map(d => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {d.label || `Audio Input ${d.deviceId.slice(0, 8)}`}
+              <option value="">— None (monitoring off) —</option>
+              {devices.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.label} ({d.id})
                 </option>
               ))}
             </select>
           </div>
-          {selectedDeviceId && (
+          {selected && (
             <p className="settings-desc settings-ok">
-              Interface selected. Open a device in Inventory to map its channels to audio inputs.
+              Use the speaker control in the header to listen.
             </p>
           )}
         </div>
+      )}
+
+      {message && (
+        <p className={`settings-desc ${message.kind === 'ok' ? 'settings-ok' : 'settings-warn'}`}>
+          {message.text}
+        </p>
       )}
     </div>
   );

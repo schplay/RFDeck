@@ -175,15 +175,20 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
         <button
           className={`cs-btn ${isListening ? 'btn-active' : 'btn-primary'}`}
           onClick={handleListen}
-          disabled={!audio.available || assignedInput == null}
+          disabled={audio.mode === 'server-stream' || !audio.available || assignedInput == null}
           title={
-            // Say which of the two reasons applies — "assign an input" is
-            // useless advice when the browser has no audio API to begin with.
-            !audio.available
-              ? 'Audio monitoring needs an HTTPS connection, or a browser on the machine running RFDeck'
-              : assignedInput == null
-                ? 'Assign an audio input in device settings first'
-                : undefined
+            // Three distinct reasons this can be unavailable, and the advice
+            // differs completely between them.
+            audio.mode === 'server-stream'
+              // The interface is on the server. Per-channel monitoring needs a
+              // per-channel source there, which is not wired up yet — the
+              // header monitor plays the server's current source meanwhile.
+              ? 'Per-channel monitoring is not available over the network yet — use the speaker control in the header'
+              : !audio.available
+                ? 'Audio monitoring needs an HTTPS connection, or a browser on the machine running RFDeck'
+                : assignedInput == null
+                  ? 'Assign an audio input in device settings first'
+                  : undefined
           }
         >
           <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
