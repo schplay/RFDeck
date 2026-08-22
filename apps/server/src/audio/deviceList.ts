@@ -102,7 +102,7 @@ function fromProcAsound(): AudioInputDevice[] {
     if (!m) continue;
 
     // Playback-only devices would just be noise in the picker.
-    if (!/captures+d+/.test(m[5] ?? '')) continue;
+    if (!/capture\s+\d+/.test(m[5] ?? '')) continue;
 
     const card = Number(m[1]);
     const device = Number(m[2]);
@@ -171,9 +171,9 @@ export function probeChannelCount(deviceId: string): number {
 
 // "CHANNELS: 2" or "CHANNELS: [1 32]" — take the maximum the device offers.
 function parseChannels(text: string): number | null {
-  const m = text.match(/^CHANNELS:s*(.+)$/m);
+  const m = text.match(/^CHANNELS:\s*(.+)$/m);
   if (!m) return null;
-  const nums = m[1].match(/d+/g);
+  const nums = m[1].match(/\d+/g);
   if (!nums || nums.length === 0) return null;
   const max = Math.max(...nums.map(Number));
   return Number.isFinite(max) && max > 0 ? max : null;
