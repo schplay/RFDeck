@@ -20,6 +20,7 @@
 #   sudo ./scripts/install-ubuntu.sh --no-tls          plain HTTP on port 80
 #   sudo ./scripts/install-ubuntu.sh --regenerate-cert  new cert (address changed)
 #   sudo ./scripts/install-ubuntu.sh --no-aes67         skip the AES67 daemon
+#   sudo ./scripts/install-ubuntu.sh --nmos-registry 10.0.0.5   NMOS registry address
 #   sudo ./scripts/install-ubuntu.sh --uninstall
 #
 # Re-running upgrades in place: the database and settings are preserved.
@@ -38,6 +39,12 @@ UNINSTALL=0
 USE_TLS=1
 FORCE_CERT=0
 WITH_AES67=1
+# NMOS (IS-04/IS-05) advertises this machine as a receiver so a controller can
+# route senders to it. It needs a registry; default to loopback and let the
+# operator point it at a real one.
+NMOS_REGISTRY="127.0.0.1"
+NMOS_REGISTRY_PORT=3210
+NMOS_NODE_PORT=3218
 # Port is chosen after argument parsing, so it can follow the TLS decision.
 PORT=""
 HTTP_REDIRECT_PORT=80
@@ -53,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     --no-tls)          USE_TLS=0; shift ;;
     --regenerate-cert) FORCE_CERT=1; shift ;;
     --no-aes67)        WITH_AES67=0; shift ;;
+    --nmos-registry)   NMOS_REGISTRY="$2"; shift 2 ;;
     --uninstall)     UNINSTALL=1; shift ;;
     # Print the header comment, stopping at the first line of actual script.
     -h|--help)       awk 'NR>2 && /^#/ { sub(/^# ?/,""); print; next } NR>2 { exit }' "$0"; exit 0 ;;
@@ -119,6 +127,40 @@ conf_set() {
 
   # Replace the value between the colon and the line's comma/brace terminator.
   sed -i "s|\(\"$key\"[[:space:]]*:[[:space:]]*\)[^,}]*|\1$value|" "$conf" || return 1
+  return 0
+}
+
+# Set a key, adding it if the installed config predates it.
+#
+# The config shipped to /etc lags the daemon binary: the NMOS keys exist in the
+# daemon's own defaults but not in the file systemd/install.sh copies, so a key
+# being absent does not mean the daemon cannot read it. Absent keys fall back to
+# compiled-in defaults, which is why they have to be written explicitly to change
+# anything.
+conf_upsert() {
+  local key="$1" value="$2" conf=/etc/daemon.conf
+  [[ -f "$conf" ]] || return 1
+
+  if grep -q "\"$key\"[[:space:]]*:" "$conf"; then
+    conf_set "$key" "$value"
+    return $?
+  fi
+
+  # Insert after the opening brace, keeping the file valid JSON. Python is
+  # already a dependency of the build, and parsing beats hand-editing braces.
+  python3 - "$conf" "$key" "$value" <<'PY' || { warn "Could not add '$key' to $conf"; return 1; }
+import json, sys
+path, key, raw = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    conf = json.load(f)
+try:
+    conf[key] = json.loads(raw)
+except json.JSONDecodeError:
+    conf[key] = raw
+with open(path, 'w') as f:
+    json.dump(conf, f, indent=2)
+    f.write('\n')
+PY
   return 0
 }
 
@@ -569,6 +611,28 @@ install_aes67() {
     else
       ok "SAP active — announcing every ${sap_iv:-30}s"
     fi
+
+    conf_set mdns_enabled true && ok "mDNS advertisement enabled"
+
+    # NMOS (IS-04/IS-05). Unlike SAP and mDNS, which advertise senders only,
+    # NMOS advertises this machine's *receivers* — so an NMOS controller can
+    # route a sender to it. build.sh compiles the daemon with -DWITH_NMOS=ON, so
+    # the binary supports it even though the installed config omits the keys.
+    #
+    # It registers with an NMOS registry rather than working peer-to-peer, so
+    # without one on the network this is inert. Enabled anyway so that adding a
+    # registry later needs no reconfiguration here.
+    conf_upsert nmos_enabled          true            && ok "NMOS (IS-04/IS-05) enabled"
+    conf_upsert nmos_registry_address "\"$NMOS_REGISTRY\""
+    conf_upsert nmos_registry_port    "$NMOS_REGISTRY_PORT"
+    conf_upsert nmos_node_port        "$NMOS_NODE_PORT"
+    conf_upsert nmos_label            "\"RFDeck ${HOSTNAME:-server}\""
+    if [[ "$NMOS_REGISTRY" == "127.0.0.1" ]]; then
+      warn "NMOS points at a registry on localhost. If your registry is elsewhere,"
+      warn "re-run with --nmos-registry <address> — until then NMOS will not register."
+    else
+      ok "NMOS registry ${NMOS_REGISTRY}:${NMOS_REGISTRY_PORT}"
+    fi
   fi
 
   systemctl enable aes67-daemon >/dev/null 2>&1 || true
@@ -639,6 +703,10 @@ if [[ "$SKIP_FIREWALL" == "0" ]] && command -v ufw >/dev/null 2>&1; then
       # One RTP port pair per stream from rtp_port upwards; 5004-5100 covers far
       # more simultaneous streams than a receiver rack will ever carry.
       ufw allow 5004:5100/udp >/dev/null && ok "UDP 5004-5100 — AES67 RTP audio"
+      # NMOS advertises this machine as a receiver; the node serves IS-04/IS-05
+      # on its own port, which a controller connects back to.
+      ufw allow "$NMOS_NODE_PORT"/tcp >/dev/null \
+        && ok "TCP $NMOS_NODE_PORT — NMOS node (IS-04/IS-05)"
     fi
   else
     warn "ufw is installed but inactive; no rules added."

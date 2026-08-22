@@ -3,6 +3,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { Volume2, BellRing, Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
 import { AudioPatchSettings } from './AudioPatch';
+import { AES67RoutingSettings } from './AES67Routing';
 import './Settings.css';
 
 interface AppSettings {
@@ -269,6 +270,9 @@ export default function Settings() {
         </Tabs.List>
 
         <Tabs.Content value="audio" className="tabs-content">
+          {/* Routing first, then patching: a stream has to be arriving at the
+              server before there is anything to patch a channel to. */}
+          <AES67RoutingSettings />
           <AudioPatchSettings />
         </Tabs.Content>
 
