@@ -44,6 +44,11 @@ Real-time telemetry for all active wireless channels:
 - Double-click a channel to open its device details
 
 ### Audio Monitoring
+> Browsers only expose audio capture to pages in a **secure context**, so
+> monitoring from a browser needs HTTPS or a connection from the machine
+> running the server. The Ubuntu installer sets up HTTPS by default for this
+> reason — see [Server Setup Guide](#server-setup-guide).
+
 - Route any channel to local audio output for real-time headphone monitoring
 - AES-67 network audio support (native Node.js WebRTC bridge — no external dependencies)
 - OS audio device support on desktop (USB interfaces, WASAPI, CoreAudio)
@@ -61,9 +66,8 @@ Real-time telemetry for all active wireless channels:
   Clipping, sustained silence, sudden level drops, and low SNR are not yet detected.*
 - Alert feed with severity levels (CRITICAL / WARNING / INFO); acknowledgement is
   shared across all connected clients 🚧 *— actionable CTAs not yet implemented*
-- Event log: timestamped history of all system events 🚧 *— RF events and alerts are
-  held in memory and replayed to clients on connect, but are not yet persisted to
-  the database and there is no export*
+- Event log: timestamped history of all system events, persisted to the database
+  and exportable as CSV 🚧 *— no PDF export yet*
 
 ### RF Environment Visualization
 - Channel frequency and signal-strength map, drawn from what connected receivers
@@ -276,6 +280,213 @@ The RFDeck interface is engineered for **high-stakes live production environment
   - **Inter** — UI labels and body text
   - **JetBrains Mono** — all numeric telemetry (MHz, dBm, %) to prevent layout shift on live updates
 - **Components:** Tonal-layered cards with status-coded top borders, segmented RF meters, glassmorphism modals, tactile toggle switches
+
+---
+
+## Server Setup Guide
+
+RFDeck runs as a network service that everyone opens in a browser — FOH on a
+laptop, a tech on a phone walking the stage, a display backstage. This section
+takes a bare Ubuntu machine to that state.
+
+### 1. Prepare the machine
+
+A small box is plenty: 2 cores and 2 GB of RAM comfortably handles the target of
+128 channels and 10 concurrent clients.
+
+- **Ubuntu Server 22.04 or 24.04**, freshly installed
+- **Wired** to the same network as the receivers. Discovery uses multicast and
+  broadcast, which Wi-Fi networks frequently filter.
+- **A fixed address** — static IP or a DHCP reservation. The TLS certificate is
+  issued for the addresses the machine has at install time, so a changing IP
+  means reissuing it.
+
+### 2. Install
+
+```bash
+sudo apt update && sudo apt install -y git
+git clone <your-repo-url> rfdeck
+cd rfdeck
+sudo ./scripts/install-ubuntu.sh
+```
+
+The installer prints the address to open when it finishes. It takes a few
+minutes, most of it compiling the AES67 kernel module.
+
+<details>
+<summary>What it actually does</summary>
+
+1. Installs Node 24 and the toolchain the native modules need
+2. Creates an unprivileged `rfdeck` service account with no login shell
+3. Builds the application into `/opt/rfdeck`
+4. Creates the database in `/var/lib/rfdeck`, outside the install directory
+5. Generates a self-signed TLS certificate covering every address the machine answers on
+6. Builds and installs the AES67 audio daemon and its kernel module
+7. Registers a hardened systemd unit that starts on boot
+8. Opens the firewall
+9. Starts the service and verifies it responds before reporting success
+
+</details>
+
+| Flag | Purpose |
+|---|---|
+| `--no-tls` | Serve plain HTTP on port 80 instead |
+| `--regenerate-cert` | Reissue the certificate after the machine's addresses change |
+| `--no-aes67` | Skip the AES67 daemon |
+| `--port <n>` | Serve on a different port |
+| `--data-dir <path>` | Keep the database elsewhere |
+| `--uninstall` | Remove the service, keep the database |
+
+### 3. Trust the certificate
+
+RFDeck serves **HTTPS** by default using a self-signed certificate, so the first
+visit from each device shows a warning.
+
+**This is not cosmetic.** Browsers only expose audio capture —
+`navigator.mediaDevices` — to pages in a *secure context*. Over plain HTTP to a
+network address that API does not exist at all, so audio monitoring cannot work
+for anyone except someone sitting at the server. Accepting the certificate is
+what grants the page secure-context status.
+
+Everything else — telemetry, inventory, shows, mic check, alerts — works fine
+over plain HTTP, so `--no-tls` is reasonable if you never need audio monitoring
+from a browser.
+
+**To accept it, once per device:**
+
+| Browser | Steps |
+|---|---|
+| Chrome / Edge | **Advanced** then **Proceed to (address) (unsafe)** |
+| Firefox | **Advanced** then **Accept the Risk and Continue** |
+| Safari | **Show Details** then **visit this website** |
+| iOS / Android | Same as above; once per browser |
+
+<details>
+<summary>Removing the warning entirely (optional)</summary>
+
+Install the certificate as a trusted root on each client. Read it off the
+server:
+
+```bash
+sudo cat /var/lib/rfdeck/certs/rfdeck.crt
+```
+
+- **Windows** — save as `rfdeck.crt`, double-click, **Install Certificate**,
+  **Local Machine**, **Trusted Root Certification Authorities**
+- **macOS** — open in Keychain Access, add to **System**, set **Always Trust**
+- **iOS** — AirDrop or email it, install the profile, then enable it under
+  **Settings, General, About, Certificate Trust Settings**
+- **Android** — **Settings, Security, Encryption & credentials, Install a
+  certificate, CA certificate**
+
+Worth doing for a permanent install; not worth it for a one-off gig.
+
+</details>
+
+If the server's IP changes the certificate no longer matches and browsers refuse
+it. Reissue with:
+
+```bash
+sudo /opt/rfdeck/scripts/install-ubuntu.sh --regenerate-cert
+```
+
+### 4. Add your receivers
+
+Open the address the installer printed, go to **Inventory**, **Add Device**, and
+either pick discovered units or enter an IP directly. EW-DX units with a
+password need it entered once; set a default under **Settings**, **Device
+Authentication** to avoid repeating it.
+
+If devices are **discovered but never show levels**, that is almost always a
+blocked UDP port rather than the hardware. See Ports below.
+
+### 5. Restrict access (optional)
+
+RFDeck is open to the network by default, which is right on an isolated show
+network — a login prompt between an operator and a failing channel is a
+liability.
+
+If the network is shared with house or guest traffic, open **Settings**,
+**Remote Access** *on the server itself* and set a PIN. Choose how often devices
+must re-enter it; **never** suits a resident booth display.
+
+### Ports
+
+Only the web port is obvious. **The UDP ports are where deployments fail** —
+blocked, receivers are discovered but never report telemetry, which looks
+exactly like broken hardware.
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| 443 | TCP | Web interface, API, realtime socket |
+| 80 | TCP | Redirects to HTTPS |
+| 53212 | UDP | Sennheiser MCP — G3/G4 discovery and telemetry |
+| 5353 | UDP | mDNS — EW-DX discovery |
+| 8080 | TCP | AES67 daemon web UI |
+| 319, 320 | UDP | PTP clock sync for AES67 |
+
+The installer opens these when `ufw` is active.
+
+### AES67 audio
+
+The installer also builds and installs
+[aes67-linux-daemon](https://github.com/bondagit/aes67-linux-daemon), turning the
+machine into an AES67 endpoint so RFDeck has network audio to monitor. Its own
+web UI is on port **8080**.
+
+Two things to know:
+
+- It compiles an **out-of-tree kernel module** (Merging Technologies RAVENNA
+  ALSA). That needs headers matching the running kernel, and **a kernel upgrade
+  breaks it until it is rebuilt** — re-run the installer after one.
+- The install is **non-fatal**: if the module will not build, RF monitoring is
+  unaffected and the installer says so. Build log: `/tmp/aes67-build.log`.
+
+Skip it with `--no-aes67` if the machine only ever monitors RF.
+
+### Operating
+
+```bash
+systemctl status rfdeck          # is it running
+systemctl restart rfdeck         # restart
+journalctl -u rfdeck -f          # follow the log
+```
+
+The service is quiet by default — warnings and errors only. For per-device
+protocol detail while chasing a device that will not connect:
+
+```bash
+sudo systemctl edit rfdeck       # add: Environment=LOG_LEVEL=debug
+sudo systemctl restart rfdeck
+```
+
+### Upgrading
+
+Re-run the installer from a checkout that has the new code. The schema updates
+in place and existing data is preserved:
+
+```bash
+cd ~/rfdeck && git pull
+sudo ./scripts/install-ubuntu.sh
+```
+
+Running it *from* `/opt/rfdeck` rebuilds and reconfigures in place but cannot
+fetch new code — the install directory has no `.git`.
+
+### Backup
+
+```bash
+sudo systemctl stop rfdeck
+sudo tar czf rfdeck-backup.tar.gz -C /var/lib rfdeck
+sudo systemctl start rfdeck
+```
+
+That covers the database, the TLS certificate, and the key that encrypts device
+passwords. **A backup of the database alone will not restore those passwords** —
+they are encrypted with `/var/lib/rfdeck/.rfdeck-key`, kept outside the database
+deliberately so copying one file does not carry the credentials with it.
+
+Full reference including troubleshooting: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ---
 
