@@ -58,6 +58,18 @@ export class SinkManager {
     return source.name || sessionName || `AES67 ${source.id}`;
   }
 
+  // The daemon refuses a sink whose name is already taken (stream_name_in_use),
+  // and two identical units announce identical session names — so the second
+  // of a matched pair would fail for no reason an operator could see.
+  static uniqueName(base: string, sinks: DaemonSink[]): string {
+    const taken = new Set(sinks.map(s => s.name));
+    if (!taken.has(base)) return base;
+    for (let n = 2; ; n++) {
+      const candidate = `${base} (${n})`;
+      if (!taken.has(candidate)) return candidate;
+    }
+  }
+
   // Which sender is a sink currently receiving? Matched on the SDP Originator
   // (o=), which is what the daemon itself uses to pair the two — so a sender
   // that changes address is still recognised as the same one.
@@ -137,7 +149,7 @@ export class SinkManager {
     }
 
     const id = SinkManager.nextSinkId(sinks);
-    const name = SinkManager.sourceName(source);
+    const name = SinkManager.uniqueName(SinkManager.sourceName(source), sinks);
 
     await this.daemon.createSink(id, {
       name,
@@ -146,6 +158,9 @@ export class SinkManager {
       // re-fetch it over RTSP — one less thing to fail on a locked-down network.
       use_sdp: true,
       sdp: source.sdp,
+      // Ignored when use_sdp is true, but the daemon's parser still demands the
+      // key be present: omitting it is a 400, not a default.
+      source: '',
       delay: 576,
       ignore_refclk_gmid: false,
       map: channels,

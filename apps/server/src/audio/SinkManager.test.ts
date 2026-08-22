@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SinkManager } from './SinkManager';
-import type { DaemonSink, RemoteSource } from './AES67DaemonClient';
+import type { AES67DaemonClient, DaemonSink, RemoteSource } from './AES67DaemonClient';
 
 // Channel allocation is the part worth testing hardest: two sinks sharing a
 // channel produce audio that flips between two senders, which sounds like a
@@ -114,5 +114,75 @@ describe('sourceName', () => {
 
   it('falls back to the SDP session name', () => {
     expect(SinkManager.sourceName(source(SDP_8CH))).toBe('AES67 Stagebox A');
+  });
+});
+
+// The daemon parses a sink with throwing getters and no defaults, so the
+// contract is "every key, every time". This shipped once without `source`
+// and every subscribe attempt came back HTTP 400.
+const REQUIRED_SINK_KEYS = [
+  'name', 'io', 'source', 'use_sdp', 'sdp', 'delay', 'ignore_refclk_gmid', 'map',
+];
+
+function fakeDaemon(existing: DaemonSink[] = []) {
+  const created: Array<{ id: number; sink: Omit<DaemonSink, 'id'> }> = [];
+  const client = {
+    listSinks: async () => existing,
+    createSink: async (id: number, sink: Omit<DaemonSink, 'id'>) => {
+      created.push({ id, sink });
+    },
+  } as unknown as AES67DaemonClient;
+  return { client, created };
+}
+
+const existingSink = (id: number, name: string, sdp: string, map: number[]): DaemonSink => ({
+  id, name, io: 'Audio Device', use_sdp: true, source: '', sdp,
+  delay: 576, ignore_refclk_gmid: false, map,
+});
+
+describe('provision', () => {
+  it('sends every field the daemon requires', async () => {
+    const { client, created } = fakeDaemon();
+    await new SinkManager(client).provision(source(SDP_8CH), 128);
+
+    expect(created).toHaveLength(1);
+    for (const key of REQUIRED_SINK_KEYS) {
+      expect(created[0].sink, `missing "${key}"`).toHaveProperty(key);
+    }
+  });
+
+  it('reserves as many channels as the sender carries', async () => {
+    const { client, created } = fakeDaemon();
+    const result = await new SinkManager(client).provision(source(SDP_8CH), 128);
+
+    expect(created[0].sink.map).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(result.inputChannels).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it('returns the existing sink instead of creating a duplicate', async () => {
+    const { client, created } = fakeDaemon([existingSink(0, 'AES67 Stagebox A', SDP_8CH, [0, 1, 2, 3, 4, 5, 6, 7])]);
+    const result = await new SinkManager(client).provision(source(SDP_8CH), 128);
+
+    expect(created).toHaveLength(0);
+    expect(result.created).toBe(false);
+    expect(result.sinkId).toBe(0);
+  });
+
+  it('gives a second sender with the same name a distinct sink name', async () => {
+    // Two identical units announce identical session names but different
+    // originators; the daemon rejects a duplicate name outright.
+    const other = SDP_8CH.replace('o=- 1311738121 1311738121', 'o=- 555 555');
+    const { client, created } = fakeDaemon([existingSink(0, 'AES67 Stagebox A', SDP_8CH, [0, 1, 2, 3, 4, 5, 6, 7])]);
+    await new SinkManager(client).provision(source(other, 'y'), 128);
+
+    expect(created[0].sink.name).toBe('AES67 Stagebox A (2)');
+    expect(created[0].sink.map).toEqual([8, 9, 10, 11, 12, 13, 14, 15]);
+  });
+
+  it('refuses a sender whose SDP does not state a channel count', async () => {
+    const { client, created } = fakeDaemon();
+    await expect(new SinkManager(client).provision(source('v=0\ns=x\no=- 1 1 IN IP4 1.2.3.4'), 128))
+      .rejects.toThrow(/channel count/);
+    expect(created).toHaveLength(0);
   });
 });

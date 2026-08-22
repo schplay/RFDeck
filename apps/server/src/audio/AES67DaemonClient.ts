@@ -35,15 +35,21 @@ export interface RemoteSource {
   announce_period?: number;
 }
 
+// Every field is required. The daemon parses each one with a throwing getter
+// (json_to_sink in daemon/json.cpp: pt.get<T>("key")) and has no defaults, so
+// an omitted key is an HTTP 400 — not a field quietly left at zero. The type
+// says so, rather than marking fields optional and letting the daemon be the
+// one to complain.
 export interface DaemonSink {
   id: number;
   name: string;
   io: string;
   use_sdp: boolean;
-  source?: string;
-  sdp?: string;
-  delay?: number;
-  ignore_refclk_gmid?: boolean;
+  /** SDP URL fetched when use_sdp is false. Ignored, but still required, otherwise. */
+  source: string;
+  sdp: string;
+  delay: number;
+  ignore_refclk_gmid: boolean;
   /** ALSA capture channels this sink writes into. */
   map: number[];
 }
@@ -136,10 +142,17 @@ export class AES67DaemonClient {
         headers: body ? { 'Content-Type': 'application/json' } : undefined,
         body: body ? JSON.stringify(body) : undefined,
       });
-      if (!res.ok) {
-        throw new Error(`AES67 daemon ${method} ${path} returned ${res.status}`);
-      }
       const text = await res.text();
+      if (!res.ok) {
+        // The daemon puts the actual reason in the body — on a 400 it is the
+        // parser's exception text, naming the missing or malformed field. A bare
+        // status code hides exactly the information needed to fix the request.
+        const detail = text.trim();
+        throw new Error(
+          `AES67 daemon ${method} ${path} returned ${res.status}` +
+          (detail ? `: ${detail}` : ''),
+        );
+      }
       return (text ? JSON.parse(text) : undefined) as T;
     } finally {
       clearTimeout(timer);
