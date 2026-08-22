@@ -545,20 +545,30 @@ install_aes67() {
     conf_set interface_name "\"$iface\"" && ok "Daemon bound to interface $iface"
   fi
 
-  # Stream discovery. SAP is how AES67 senders announce themselves and how this
-  # daemon learns what is available to receive; without it a sink has to be
-  # created by hand from an SDP file. mDNS covers the RAVENNA/Ravenna-native
-  # side of the same job.
+  # Stream discovery.
   #
-  # Only keys already present in the file are touched — the daemon's config
-  # schema varies between versions, and inventing a key it does not read would
-  # look configured while doing nothing.
+  # SAP needs no enabling: this daemon always announces and discovers over SAP,
+  # and its config carries no on/off flag — only `sap_interval`, the
+  # announcement period in seconds. What SAP does need is the firewall open on
+  # UDP 9875, which is handled with the other rules below.
+  #
+  # Key names verified against the daemon's own daemon.conf upstream rather than
+  # assumed: there is no `sap_enabled` and no `mdns_enabled`.
   if [[ -f /etc/daemon.conf ]]; then
-    conf_set sap_enabled  true && ok "SAP announcement and discovery enabled"
-    conf_set mdns_enabled true && ok "mDNS discovery enabled"
-    # Sinks track SAP announcements as senders come and go, rather than going
-    # stale when a transmitter changes address.
+    # Sinks follow SAP announcements as senders come and go, instead of going
+    # stale when a transmitter changes address. Upstream default is already
+    # true; set explicitly so an older config that predates it is corrected.
     conf_set auto_sinks_update true && ok "Sinks follow SAP announcements"
+
+    # A zero interval would silence announcements entirely.
+    local sap_iv
+    sap_iv="$(sed -n 's/.*"sap_interval"[[:space:]]*:[[:space:]]*\([0-9]\+\).*/\1/p' \
+      /etc/daemon.conf | head -1)"
+    if [[ "$sap_iv" == "0" ]]; then
+      conf_set sap_interval 30 && ok "SAP announcements re-enabled (interval was 0)"
+    else
+      ok "SAP active — announcing every ${sap_iv:-30}s"
+    fi
   fi
 
   systemctl enable aes67-daemon >/dev/null 2>&1 || true
