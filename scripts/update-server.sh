@@ -46,6 +46,31 @@ ok()   { printf '  %s+%s %s\n' "$GRN" "$OFF" "$1"; }
 warn() { printf '  %s!%s %s\n' "$YEL" "$OFF" "$1"; }
 die()  { printf '\n  %sx%s %s\n\n' "$RED" "$OFF" "$1" >&2; exit 1; }
 
+# Confirm the service account can actually OPEN a capture device.
+#
+# Worth checking the capability rather than the configuration: enumeration reads
+# world-readable /proc/asound and succeeds even with no audio access at all, so
+# a device list proves nothing. Only opening a node does.
+verify_audio_access() {
+  local node
+  node="$(find /dev/snd -maxdepth 1 -name 'pcm*c' 2>/dev/null | head -1)"
+  # No capture hardware on this machine — nothing to verify, and not a fault.
+  [[ -n "$node" ]] || return 0
+
+  # Without runuser we cannot ask what another account can see; staying quiet
+  # beats warning about something we did not actually test.
+  command -v runuser >/dev/null 2>&1 || return 0
+
+  if runuser -u "$SERVICE_USER" -- test -r "$node" 2>/dev/null; then
+    ok "Service account can open capture devices"
+  else
+    warn "'$SERVICE_USER' still cannot open $node."
+    warn "Audio devices will be listed but report wrong channel counts and will"
+    warn "not stream. Try:"
+    warn "    usermod -aG audio $SERVICE_USER && systemctl restart $SERVICE_NAME"
+  fi
+}
+
 [[ $EUID -eq 0 ]] || die "Run with sudo: sudo $0 $*"
 
 UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -216,19 +241,24 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 # enumerates no capture devices, so the UI reports none while the same commands
 # under sudo list every card. Repaired here because this script does not rewrite
 # the unit, so installs predating the fix would never otherwise pick it up.
+# `usermod -aG` is a no-op when the account is already a member, so it runs
+# unconditionally. An earlier version gated it on a membership test, the grant
+# was silently skipped, and the symptom — devices listed but every width wrong —
+# read as a hardware quirk rather than a permissions fault. The test saved
+# nothing but a log line.
 if getent group audio >/dev/null 2>&1; then
-  if ! id -nG "$SERVICE_USER" 2>/dev/null | tr ' ' '\n' | grep -qx audio; then
-    usermod -aG audio "$SERVICE_USER"
-    ok "User '$SERVICE_USER' added to the audio group"
-  fi
+  usermod -aG audio "$SERVICE_USER" \
+    || warn "Could not add '$SERVICE_USER' to the audio group"
 
   # The account-level group only takes effect on a fresh login, which a nologin
   # system account never gets; the unit setting is what reaches the process.
   if ! grep -q '^SupplementaryGroups=.*audio' "$UNIT"; then
     sed -i "/^Group=/a SupplementaryGroups=audio" "$UNIT"
     systemctl daemon-reload
-    ok "Granted the service access to audio devices"
   fi
+  ok "Service account granted access to audio devices"
+else
+  warn "No 'audio' group on this system; capture devices may be unreadable"
 fi
 
 # ── Restart and verify ───────────────────────────────────────────────────────
@@ -274,6 +304,8 @@ if [[ "$HEALTHY" != "1" ]]; then
 fi
 
 ok "Service is running and responding"
+
+verify_audio_access
 
 printf '\n%s%s  Update complete%s\n\n' "$BOLD" "$GRN" "$OFF"
 for ADDR in $(hostname -I 2>/dev/null); do
