@@ -268,9 +268,8 @@ that made an earlier hardcoded path silently open the wrong database.
 `rfdeck audio-devices` also confirms whether the AES67 kernel module loaded: its
 virtual capture device appears in the list once it has.
 
-Installed by `install-ubuntu.sh`, not by `update-server.sh`, which touches only
-application code. Run the installer once after upgrading from a version that
-predates the CLI.
+Installed by `install-ubuntu.sh` and refreshed by `update-server.sh`, so it is
+present whichever path a server was last through.
 
 ---
 

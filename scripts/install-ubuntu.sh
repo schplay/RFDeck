@@ -506,26 +506,10 @@ fi
 
 step "Installing the rfdeck admin CLI"
 
-cat > /usr/local/bin/rfdeck <<'CLI'
-#!/usr/bin/env bash
-# RFDeck server administration. Reads the same database as the service.
-set -euo pipefail
-INSTALL_DIR=__INSTALL_DIR__
-UNIT=/etc/systemd/system/rfdeck.service
-
-# Take the database path from the running unit so the CLI can never act on a
-# different database than the service.
-if [[ -f "$UNIT" ]]; then
-  DB_URL="$(sed -n 's/^Environment=DATABASE_URL=\(.*\)$/\1/p' "$UNIT" | head -1)"
-fi
-export DATABASE_URL="${DATABASE_URL:-${DB_URL:-}}"
-
-cd "$INSTALL_DIR/apps/server"
-exec node dist/cli.js "$@"
-CLI
-
-sed -i "s|__INSTALL_DIR__|$INSTALL_DIR|" /usr/local/bin/rfdeck
-chmod +x /usr/local/bin/rfdeck
+# A standalone file rather than a generated one, so the installer and the
+# update script cannot drift apart. It reads the install directory and
+# database from the systemd unit at run time, so nothing is substituted in.
+install -m 755 "$INSTALL_DIR/scripts/rfdeck" /usr/local/bin/rfdeck
 ok "rfdeck command installed"
 
 # ── Firewall ─────────────────────────────────────────────────────────────────

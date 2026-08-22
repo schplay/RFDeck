@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#
+# RFDeck server administration.
+#
+# A thin launcher for the CLI in the installed application. Everything it needs
+# is read from the running systemd unit rather than baked in at install time, so
+# the same file works regardless of where RFDeck was installed and cannot drift
+# out of step with the service.
+#
+set -euo pipefail
+
+UNIT=/etc/systemd/system/rfdeck.service
+
+if [[ ! -f "$UNIT" ]]; then
+  echo "RFDeck does not appear to be installed on this machine." >&2
+  echo "Expected a systemd unit at $UNIT" >&2
+  exit 1
+fi
+
+unit_value() { sed -n "s|^$1=\(.*\)$|\1|p" "$UNIT" | head -1; }
+
+# WorkingDirectory is <install>/apps/server, which is where dist/cli.js lives.
+WORKDIR="$(unit_value WorkingDirectory)"
+if [[ -z "$WORKDIR" || ! -d "$WORKDIR" ]]; then
+  echo "Could not determine the RFDeck install directory from $UNIT" >&2
+  exit 1
+fi
+
+# Take the database from the unit so the CLI can never act on a different one
+# than the service is using.
+if [[ -z "${DATABASE_URL:-}" ]]; then
+  DATABASE_URL="$(sed -n 's|^Environment=DATABASE_URL=\(.*\)$|\1|p' "$UNIT" | head -1)"
+  export DATABASE_URL
+fi
+
+if [[ ! -f "$WORKDIR/dist/cli.js" ]]; then
+  echo "The RFDeck CLI is not built at $WORKDIR/dist/cli.js" >&2
+  echo "Run the installer or update script to build it." >&2
+  exit 1
+fi
+
+cd "$WORKDIR"
+exec node dist/cli.js "$@"

@@ -499,9 +499,8 @@ AES67 kernel module loaded, since its virtual device appears here once it has.
 The command reads the database path out of the running systemd unit rather than
 assuming one, so it always acts on the same data as the service.
 
-> Installed by `install-ubuntu.sh`, not by `update-server.sh` — the update script
-> deliberately touches only application code. After upgrading from a version
-> without the CLI, run the installer once to get the command.
+> Installed and kept current by both `install-ubuntu.sh` and
+> `update-server.sh`, so a server that has only ever been updated still has it.
 
 ### Ports
 

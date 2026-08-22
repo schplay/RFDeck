@@ -88,8 +88,8 @@ cd ~/rfdeck
 sudo ./scripts/update-server.sh --pull
 ```
 
-It stages the new code, rebuilds, applies additive schema changes, restarts, and
-checks the service actually answers. If the build fails or the service does not
+It stages the new code, rebuilds, applies additive schema changes, refreshes the
+`rfdeck` command, restarts, and checks the service actually answers. If the build fails or the service does not
 come back, it **restores the previous build and restarts it** — so an update
 during a show week cannot leave you with nothing running.
 

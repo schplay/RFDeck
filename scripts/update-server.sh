@@ -200,6 +200,14 @@ pnpm --filter @rfdeck/server exec prisma db push --skip-generate >/dev/null \
   || build_failed "Applying the database schema failed"
 ok "Schema up to date"
 
+# Refresh the admin CLI alongside the code it launches. Omitting this left
+# `rfdeck` missing on servers that had only ever been updated — exactly when
+# it is needed, since it is the recovery path for a lost PIN.
+if [[ -f "$INSTALL_DIR/scripts/rfdeck" ]]; then
+  install -m 755 "$INSTALL_DIR/scripts/rfdeck" /usr/local/bin/rfdeck
+  ok "rfdeck command up to date"
+fi
+
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
 # ── Restart and verify ───────────────────────────────────────────────────────
