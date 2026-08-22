@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { InventoryDevice, useDeviceStore } from '../../../stores/deviceStore';
 import { useSocket } from '../../../hooks/useSocket';
-import { useAudioStore } from '../../../stores/audioStore';
+import { useAudioPatch } from '../../../hooks/useAudioPatch';
+import { channelKey } from '../../../lib/channelKey';
 import { useChannelStore } from '../../../stores/channelStore';
 import './DeviceDrawer.css';
 
@@ -18,7 +19,14 @@ interface Props {
 export function DeviceDrawer({ device, onClose }: Props) {
   const { removeFromInventory, updateInventoryDevice, setDeviceActive } = useDeviceStore();
   const { socket, isConnected } = useSocket();
-  const { channelAssignments, assignChannelToInput, selectedDeviceId } = useAudioStore();
+  // The patch lives on the server: the interface is in the rack, and every
+  // client should see the same wiring.
+  const {
+    devices: audioDevices,
+    assignments: audioAssignments,
+    hint: audioHint,
+    patch: patchAudio,
+  } = useAudioPatch();
   const channels = useChannelStore((s) => s.channels.filter(c => device && c.deviceId.startsWith(device.ip)));
 
   const [isEditing, setIsEditing] = useState(false);
@@ -274,33 +282,60 @@ export function DeviceDrawer({ device, onClose }: Props) {
                   )}
                 </DrawerSection>
 
-                {/* Audio Input Assignment */}
+                {/* Audio patch — which server input each channel is wired to */}
                 <DrawerSection title="Audio Inputs" icon={<Headphones size={14} />}>
-                  {!selectedDeviceId ? (
+                  {audioDevices.length === 0 ? (
                     <p className="drawer-section-desc">
-                      No audio interface selected. Configure one in Settings → Audio Device.
+                      {audioHint ?? 'No capture devices found on the server.'}
                     </p>
                   ) : channels.length === 0 ? (
                     <p className="drawer-section-desc">
-                      {device.online ? 'Waiting for channel data from device…' : 'Device offline — connect to assign audio inputs.'}
+                      {device.online
+                        ? 'Waiting for channel data from device…'
+                        : 'Device offline — connect to patch audio inputs.'}
                     </p>
                   ) : (
                     <div className="audio-assignments">
-                      {channels.map(ch => (
-                        <div key={ch.id} className="audio-assignment-row">
-                          <span className="drawer-row-label">{ch.name || `Channel ${ch.channelIndex}`}</span>
-                          <select
-                            className="drawer-input audio-input-select"
-                            value={channelAssignments[ch.id] ?? ''}
-                            onChange={e => assignChannelToInput(ch.id, e.target.value === '' ? null : parseInt(e.target.value, 10))}
-                          >
-                            <option value="">— Not assigned —</option>
-                            {Array.from({ length: 16 }, (_, i) => (
-                              <option key={i + 1} value={i + 1}>Input {i + 1}</option>
-                            ))}
-                          </select>
-                        </div>
-                      ))}
+                      {channels.map(ch => {
+                        const key = channelKey(ch);
+                        const current = audioAssignments[key];
+                        // Input count comes from the selected interface itself,
+                        // so a 2-in box and a 32-in card both list correctly.
+                        const selectedDevice = audioDevices.find(d => d.id === current?.deviceId);
+                        const inputCount = selectedDevice?.channels ?? 0;
+
+                        return (
+                          <div key={ch.id} className="audio-assignment-row">
+                            <span className="drawer-row-label">
+                              {ch.name || `Channel ${ch.channelIndex}`}
+                            </span>
+                            <select
+                              className="drawer-input audio-input-select"
+                              value={current?.deviceId ?? ''}
+                              onChange={e => {
+                                const id = e.target.value || null;
+                                patchAudio(key, id, id ? 1 : null);
+                              }}
+                            >
+                              <option value="">— Not patched —</option>
+                              {audioDevices.map(d => (
+                                <option key={d.id} value={d.id}>{d.label}</option>
+                              ))}
+                            </select>
+                            <select
+                              className="drawer-input audio-input-select"
+                              value={current?.inputChannel ?? ''}
+                              disabled={!current}
+                              onChange={e => patchAudio(key, current!.deviceId, Number(e.target.value))}
+                            >
+                              {!current && <option value="">—</option>}
+                              {Array.from({ length: inputCount }, (_, i) => i + 1).map(n => (
+                                <option key={n} value={n}>Input {n}</option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </DrawerSection>

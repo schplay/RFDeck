@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { execFileSync } from 'child_process';
 import { log } from '../logger';
 
 // Audio capture devices on the machine running RFDeck.
@@ -19,8 +20,8 @@ export interface AudioInputDevice {
   label: string;
   card: number;
   device: number;
-  /** Channels the device reports, when ALSA tells us. */
-  channels?: number;
+  /** Input channels the device reports. Probed, never assumed. */
+  channels: number;
 }
 
 // "00-00: ALC257 Analog : ALC257 Analog : playback 1 : capture 1"
@@ -75,10 +76,65 @@ export function listAudioInputDevices(): AudioInputDevice[] {
       ? `${cardName} — ${pcmName}`
       : cardName;
 
-    devices.push({ id: `hw:${card},${device}`, label, card, device });
+    const id = `hw:${card},${device}`;
+    devices.push({ id, label, card, device, channels: probeChannelCount(id) });
   }
 
   return devices;
+}
+
+// How many input channels does this device actually have?
+//
+// There is no single answer to "how is a rig wired" — a interface might be a
+// 2-channel USB box, a 32-channel Dante card, or the virtual RAVENNA device the
+// AES67 daemon creates. So ask the device rather than assuming, and let the
+// operator map any channel of any device.
+//
+// ALSA reports this through `arecord --dump-hw-params`, which prints a CHANNELS
+// line that is either a single value or a range.
+const channelCache = new Map<string, number>();
+
+export function probeChannelCount(deviceId: string): number {
+  const cached = channelCache.get(deviceId);
+  if (cached !== undefined) return cached;
+
+  let channels = 2; // sane floor if the probe tells us nothing
+  try {
+    // Writes hw_params to stderr and exits non-zero by design, so capture both
+    // and ignore the status.
+    const out = execFileSync(
+      'arecord',
+      ['-D', deviceId, '--dump-hw-params', '-d', '1', '/dev/null'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 4000 },
+    );
+    channels = parseChannels(out) ?? channels;
+  } catch (err: any) {
+    const text = `${err?.stdout ?? ''}${err?.stderr ?? ''}`;
+    const parsed = parseChannels(text);
+    if (parsed !== null) {
+      channels = parsed;
+    } else {
+      log.debug(`[audio] Could not probe channel count for ${deviceId}; assuming ${channels}`);
+    }
+  }
+
+  channelCache.set(deviceId, channels);
+  return channels;
+}
+
+// "CHANNELS: 2" or "CHANNELS: [1 32]" — take the maximum the device offers.
+function parseChannels(text: string): number | null {
+  const m = text.match(/^CHANNELS:s*(.+)$/m);
+  if (!m) return null;
+  const nums = m[1].match(/d+/g);
+  if (!nums || nums.length === 0) return null;
+  const max = Math.max(...nums.map(Number));
+  return Number.isFinite(max) && max > 0 ? max : null;
+}
+
+// Forget cached probes so a re-scan re-reads hardware that has changed.
+export function clearChannelCache(): void {
+  channelCache.clear();
 }
 
 // A quick sanity check used by the API so the UI can explain an empty list.

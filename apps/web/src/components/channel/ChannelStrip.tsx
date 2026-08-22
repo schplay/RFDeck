@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
 import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff } from 'lucide-react';
 import { useSocket } from '../../hooks/useSocket';
-import { useAudioStore } from '../../stores/audioStore';
-import { useAudioDevice } from '../../hooks/useAudioDevice';
+import { useChannelAudio } from '../../hooks/useChannelAudio';
+import { channelKey } from '../../lib/channelKey';
 import './ChannelStrip.css';
 
 interface ChannelStripProps {
@@ -15,10 +15,11 @@ interface ChannelStripProps {
 
 export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, deviceType = 'input', deviceOnline = true }) => {
   const { socket, isConnected } = useSocket();
-  const { channelAssignments } = useAudioStore();
-  const { monitorChannel, stopMonitoring, monitoringChannelId, support: audio } = useAudioDevice();
-  const [isListening, setIsListening] = useState(false);
-  const assignedInput = channelAssignments[channel.id];
+  // Audio is captured on the server and streamed here, so this works from any
+  // client rather than only from a browser sitting at the interface.
+  const { listen, stop, listeningTo, error: audioError } = useChannelAudio();
+  const audioKey = channelKey(channel);
+  const isListening = listeningTo === audioKey;
   const isOutput = deviceType === 'output';
 
   const statusBorder = !deviceOnline ? 'error'
@@ -72,13 +73,10 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   };
 
   const handleListen = () => {
-    if (isListening) {
-      stopMonitoring();
-      setIsListening(false);
-    } else if (assignedInput != null) {
-      monitorChannel(channel.id, assignedInput);
-      setIsListening(true);
-    }
+    // The server resolves which input this channel is patched to, so the
+    // client only has to name the channel.
+    if (isListening) stop();
+    else listen(audioKey);
   };
 
   // Offline overlay — device disconnected, show stale data dimmed with a banner
@@ -175,21 +173,7 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
         <button
           className={`cs-btn ${isListening ? 'btn-active' : 'btn-primary'}`}
           onClick={handleListen}
-          disabled={audio.mode === 'server-stream' || !audio.available || assignedInput == null}
-          title={
-            // Three distinct reasons this can be unavailable, and the advice
-            // differs completely between them.
-            audio.mode === 'server-stream'
-              // The interface is on the server. Per-channel monitoring needs a
-              // per-channel source there, which is not wired up yet — the
-              // header monitor plays the server's current source meanwhile.
-              ? 'Per-channel monitoring is not available over the network yet — use the speaker control in the header'
-              : !audio.available
-                ? 'Audio monitoring needs an HTTPS connection, or a browser on the machine running RFDeck'
-                : assignedInput == null
-                  ? 'Assign an audio input in device settings first'
-                  : undefined
-          }
+          title={audioError ?? (isListening ? 'Stop listening' : 'Listen to this channel')}
         >
           <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
         </button>

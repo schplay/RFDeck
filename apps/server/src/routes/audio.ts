@@ -1,57 +1,74 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
-import { listAudioInputDevices, describeNoDevices, audioSubsystemPresent } from '../audio/deviceList';
+import {
+  listAudioInputDevices, describeNoDevices, audioSubsystemPresent, clearChannelCache,
+} from '../audio/deviceList';
 import { log } from '../logger';
 
-// Audio devices belong to the SERVER.
-//
-// The interface carrying the receiver outputs is plugged into this machine, so
-// the device list and the selection both live here. A browser enumerating its
-// own hardware would offer the operator their laptop's built-in microphone.
+// Audio devices belong to the SERVER — the interface carrying the receiver
+// outputs is plugged into this machine, not into whichever laptop is viewing
+// the dashboard. The patch map lives here too, so every client sees the same
+// wiring rather than each keeping a private guess at it.
 
 export const audioRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.get('/audio/devices', async () => {
+  // Every capture device on this machine, with the input count each reports.
+  fastify.get('/audio/devices', async (request) => {
+    const q = request.query as Record<string, string | undefined>;
+    // A rescan should re-read hardware that has been plugged in since boot.
+    if (q.rescan === '1') clearChannelCache();
+
     const devices = listAudioInputDevices();
-    const settings = await prisma.settings.findFirst();
+    const assignments = await prisma.channelAudioMap.findMany();
 
     return {
       devices,
-      selected: settings?.audioInputDevice ?? null,
-      // Explain an empty list rather than leaving the UI to guess.
+      assignments,
       hint: devices.length === 0 ? describeNoDevices() : null,
       alsaPresent: audioSubsystemPresent(),
     };
   });
 
-  fastify.put('/audio/device', async (request, reply) => {
-    const { deviceId } = request.body as { deviceId: string | null };
+  // Patch one RF channel to one input of one device.
+  fastify.put('/audio/assignments/:channelKey', async (request, reply) => {
+    const { channelKey } = request.params as { channelKey: string };
+    const { deviceId, inputChannel } = request.body as {
+      deviceId: string | null;
+      inputChannel: number | null;
+    };
 
-    // Reject anything not currently present, so a stale selection from an
-    // interface that has been unplugged cannot silently do nothing.
-    if (deviceId) {
-      const known = listAudioInputDevices().some(d => d.id === deviceId);
-      if (!known) {
-        return reply.code(400).send({ error: `No such capture device: ${deviceId}` });
-      }
+    // Clearing the patch.
+    if (!deviceId || !inputChannel) {
+      await prisma.channelAudioMap.deleteMany({ where: { channelKey } });
+      (fastify as any).io?.emit('audio:assignments-changed');
+      return { channelKey, deviceId: null, inputChannel: null };
     }
 
-    let settings = await prisma.settings.findFirst();
-    if (!settings) settings = await prisma.settings.create({ data: {} });
+    // Validate against what the hardware actually offers, so a patch cannot
+    // point at an input that does not exist — it would fail silently at listen
+    // time, long after the mistake was made.
+    const device = listAudioInputDevices().find(d => d.id === deviceId);
+    if (!device) {
+      return reply.code(400).send({ error: `No such capture device: ${deviceId}` });
+    }
+    if (inputChannel < 1 || inputChannel > device.channels) {
+      return reply.code(400).send({
+        error: `${device.label} has ${device.channels} input(s); ${inputChannel} is out of range`,
+      });
+    }
 
-    await prisma.settings.update({
-      where: { id: settings.id },
-      data: { audioInputDevice: deviceId },
+    const saved = await prisma.channelAudioMap.upsert({
+      where:  { channelKey },
+      create: { channelKey, deviceId, inputChannel },
+      update: { deviceId, inputChannel },
     });
 
-    const audioManager = (fastify as any).audioManager;
-    if (deviceId) {
-      audioManager.startLocalCapture(deviceId);
-      log.info(`Monitoring audio source set to ${deviceId}`);
-    } else {
-      audioManager.stop();
-      log.info('Monitoring audio source cleared');
-    }
+    log.info(`[audio] ${channelKey} patched to ${deviceId} input ${inputChannel}`);
+    (fastify as any).io?.emit('audio:assignments-changed');
+    return saved;
+  });
 
-    return { selected: deviceId };
+  // What is currently being listened to, for diagnostics.
+  fastify.get('/audio/active', async () => {
+    return { active: (fastify as any).captureManager.activeChannels() };
   });
 };

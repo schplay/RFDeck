@@ -5,6 +5,7 @@ import { DiscoveredDevice } from '../hardware/sennheiser/DiscoveryService';
 import { mcpBus } from '../hardware/sennheiser/McpBus';
 import { WebRTCSignaling } from '../audio/WebRTCSignaling';
 import { AES67Manager } from '../audio/AES67Manager';
+import { CaptureManager } from '../audio/CaptureManager';
 import { listAudioInputDevices } from '../audio/deviceList';
 import { prisma } from '../db';
 import { log } from '../logger';
@@ -20,11 +21,13 @@ export default fp(async (fastify, opts) => {
 
   const deviceManager = new DeviceManagerService(io);
   const audioManager = new AES67Manager();
-  const webrtcSignaling = new WebRTCSignaling(io, audioManager);
+  const captureManager = new CaptureManager();
+  const webrtcSignaling = new WebRTCSignaling(io, audioManager, captureManager);
 
   fastify.decorate('io', io);
   fastify.decorate('deviceManager', deviceManager);
   fastify.decorate('audioManager', audioManager);
+  fastify.decorate('captureManager', captureManager);
 
   // Forward mDNS discovery events to all connected frontend clients
   deviceManager.on('device:discovered', (device: DiscoveredDevice) => {
@@ -54,26 +57,6 @@ export default fp(async (fastify, opts) => {
     await mcpBus.init(); // shared UDP :53212 must be ready before any G3G4Client or DiscoveryService
     deviceManager.start();
 
-    // Resume capturing from the configured audio interface. Without this a
-    // restart silently leaves monitoring dead until someone reopens Settings.
-    try {
-      const settings = await prisma.settings.findFirst();
-      const deviceId = settings?.audioInputDevice;
-      if (deviceId) {
-        if (listAudioInputDevices().some(d => d.id === deviceId)) {
-          audioManager.startLocalCapture(deviceId);
-        } else {
-          // Kept in settings rather than cleared: the interface may simply be
-          // switched off, and silently forgetting the choice would be worse.
-          log.warn(
-            `Configured audio device ${deviceId} is not present — monitoring is idle. ` +
-            'Reselect it in Settings once the interface is connected.'
-          );
-        }
-      }
-    } catch (err: any) {
-      log.warn('Could not restore the audio capture device:', err?.message);
-    }
     fastify.log.info('Socket.io server listening and DeviceManager started');
   });
 

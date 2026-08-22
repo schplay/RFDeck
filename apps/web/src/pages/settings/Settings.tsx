@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { Volume2, BellRing, Network, RefreshCw, ShieldCheck } from 'lucide-react';
 import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
+import { AudioPatchSettings } from './AudioPatch';
 import './Settings.css';
 
 interface AppSettings {
@@ -20,125 +21,6 @@ interface NetworkInterface {
   name: string;
   address: string;
   label: string;
-}
-
-// Audio interface selection.
-//
-// The device list comes from the SERVER, because that is where the interface
-// carrying the receiver outputs is plugged in. Enumerating the browser's own
-// hardware would offer whoever is viewing their laptop's built-in microphone.
-interface ServerAudioDevice {
-  id: string;
-  label: string;
-  card: number;
-  device: number;
-}
-
-function AudioDeviceSettings() {
-  const [devices, setDevices] = useState<ServerAudioDevice[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [hint, setHint] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const data = await apiFetch<{
-        devices: ServerAudioDevice[];
-        selected: string | null;
-        hint: string | null;
-      }>('/audio/devices');
-      setDevices(data.devices);
-      setSelected(data.selected);
-      setHint(data.hint);
-    } catch {
-      setMessage({ kind: 'err', text: 'Could not reach the server to list audio devices.' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
-
-  const choose = async (deviceId: string | null) => {
-    setSaving(true);
-    setMessage(null);
-    const previous = selected;
-    setSelected(deviceId);
-    try {
-      await apiFetch('/audio/device', {
-        method: 'PUT',
-        body: JSON.stringify({ deviceId }),
-      });
-      setMessage({
-        kind: 'ok',
-        text: deviceId ? 'Capturing from this interface.' : 'Monitoring source cleared.',
-      });
-    } catch (err: any) {
-      setSelected(previous);
-      setMessage({ kind: 'err', text: err?.message ?? 'Could not change the audio source.' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="settings-card">
-      <div className="settings-card-header">
-        <h3>Audio Interface</h3>
-        <button className="btn-icon" onClick={load} title="Rescan devices" disabled={loading}>
-          <RefreshCw size={14} />
-        </button>
-      </div>
-      <p className="settings-desc">
-        The capture device on the machine running RFDeck — the one your receiver
-        outputs are connected to. Monitoring streams this audio to every client,
-        so it is the same source wherever you listen from.
-      </p>
-
-      {loading ? (
-        <p className="settings-desc">Scanning the server for audio devices…</p>
-      ) : devices.length === 0 ? (
-        <div className="settings-notice">
-          <p className="settings-desc settings-warn" style={{ marginBottom: 8 }}>
-            <strong>No capture devices found on the server.</strong>
-          </p>
-          <p className="settings-desc">{hint}</p>
-        </div>
-      ) : (
-        <div className="settings-form">
-          <div className="form-group">
-            <label>Capture Device</label>
-            <select
-              value={selected ?? ''}
-              disabled={saving}
-              onChange={e => choose(e.target.value || null)}
-            >
-              <option value="">— None (monitoring off) —</option>
-              {devices.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.label} ({d.id})
-                </option>
-              ))}
-            </select>
-          </div>
-          {selected && (
-            <p className="settings-desc settings-ok">
-              Use the speaker control in the header to listen.
-            </p>
-          )}
-        </div>
-      )}
-
-      {message && (
-        <p className={`settings-desc ${message.kind === 'ok' ? 'settings-ok' : 'settings-warn'}`}>
-          {message.text}
-        </p>
-      )}
-    </div>
-  );
 }
 
 // ── Remote access ──
@@ -361,7 +243,7 @@ export default function Settings() {
       <Tabs.Root className="settings-tabs" value={activeTab} onValueChange={setActiveTab}>
         <Tabs.List className="tabs-list">
           <Tabs.Trigger value="audio" className="tabs-trigger">
-            <Volume2 size={16} /> Audio Device
+            <Volume2 size={16} /> Audio Patch
           </Tabs.Trigger>
           <Tabs.Trigger value="alerts" className="tabs-trigger">
             <BellRing size={16} /> Alert Thresholds
@@ -375,7 +257,7 @@ export default function Settings() {
         </Tabs.List>
 
         <Tabs.Content value="audio" className="tabs-content">
-          <AudioDeviceSettings />
+          <AudioPatchSettings />
         </Tabs.Content>
 
         <Tabs.Content value="access" className="tabs-content">

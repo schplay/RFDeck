@@ -51,6 +51,21 @@ model Settings {
   authReauthHours    Int      @default(0)
 }
 
+// Which audio input each RF channel is patched to.
+//
+// Server-side because the patch describes the rack, not a viewer's preference —
+// every client should see the same mapping. Any device, any input: nothing here
+// assumes a channel count or a single interface.
+model ChannelAudioMap {
+  // Channel NAME, matching the rest of the app — ids embed the device IP and
+  // would break on DHCP reassignment.
+  channelKey   String @id
+  // ALSA device on the server, e.g. "hw:1,0".
+  deviceId     String
+  // 1-based input on that device.
+  inputChannel Int
+}
+
 // ── Show & mic check ──
 // Shows may live indefinitely or be archived; archiving is a soft flag so the
 // record and its history are always recoverable.
