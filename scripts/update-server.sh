@@ -145,6 +145,11 @@ else
   ok "Code staged into $INSTALL_DIR"
 fi
 
+# Shell scripts are committed from a Windows checkout, where git may not have
+# recorded the executable bit. Restore it on the deployed copy so the next
+# upgrade can always be run straight from the install directory.
+chmod +x "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
+
 # ── Snapshot the running build ───────────────────────────────────────────────
 
 step "Snapshotting the current build"

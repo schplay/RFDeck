@@ -220,6 +220,11 @@ else
   ok "Copied from $SOURCE_DIR"
 fi
 
+# Shell scripts are committed from a Windows checkout, where git may not have
+# recorded the executable bit. Restore it on the deployed copy so the next
+# upgrade can always be run straight from the install directory.
+chmod +x "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
+
 # ── Build ────────────────────────────────────────────────────────────────────
 #
 # The application is TypeScript, so it has to be compiled once at install time.

@@ -11,6 +11,17 @@
 The first is the deployment path. The rest are development conveniences and do
 not install anything.
 
+> **Adding a shell script from Windows?** Set the executable bit in git
+> explicitly — `core.filemode` is `false` there, so `chmod +x` alone does not
+> reach the index and the file lands non-executable on the server:
+>
+> ```bash
+> git update-index --chmod=+x scripts/your-script.sh
+> ```
+>
+> The deploy scripts also `chmod +x` the scripts directory after staging, so a
+> missed bit cannot leave the *next* upgrade unrunnable.
+
 ---
 
 ## Deploying a server
