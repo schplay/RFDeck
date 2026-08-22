@@ -46,7 +46,47 @@ function readCardNames(): Map<number, string> {
   return names;
 }
 
-export function listAudioInputDevices(): AudioInputDevice[] {
+// "card 2: RAVENNA [RAVENNA], device 0: RAVENNA [RAVENNA]"
+// The ALSA id before each bracket can contain spaces ("ALC257 Analog"), so match
+// up to the bracket rather than assuming a single token.
+const ARECORD_LINE =
+  /^card\s+(\d+):\s*[^[]*\[([^\]]*)\]\s*,\s*device\s+(\d+):\s*[^[]*\[([^\]]*)\]/;
+
+function labelFor(cardName: string, pcmName: string): string {
+  // Avoid "RAVENNA — RAVENNA" when ALSA repeats itself.
+  return pcmName && !cardName.includes(pcmName) ? `${cardName} — ${pcmName}` : cardName;
+}
+
+// Ask ALSA directly. This is the canonical listing and, unlike /proc/asound/pcm,
+// it reports devices from drivers that do not populate that file — the RAVENNA
+// module the AES67 daemon installs among them.
+function fromArecord(): AudioInputDevice[] {
+  let out = '';
+  try {
+    out = execFileSync('arecord', ['-l'], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 4000,
+    });
+  } catch (err: any) {
+    // arecord exits non-zero when there are no capture devices at all, but
+    // still prints whatever it found.
+    out = err?.stdout ?? '';
+  }
+
+  const devices: AudioInputDevice[] = [];
+  for (const line of out.split('\n')) {
+    const m = line.match(ARECORD_LINE);
+    if (!m) continue;
+    const card = Number(m[1]);
+    const device = Number(m[3]);
+    const id = `hw:${card},${device}`;
+    devices.push({ id, label: labelFor(m[2].trim(), m[4].trim()), card, device, channels: 0 });
+  }
+  return devices;
+}
+
+// Fallback for a machine without alsa-utils. Some drivers do not appear here,
+// which is why it is not the primary source.
+function fromProcAsound(): AudioInputDevice[] {
   let pcm: string;
   try {
     pcm = fs.readFileSync('/proc/asound/pcm', 'utf8');
@@ -61,25 +101,32 @@ export function listAudioInputDevices(): AudioInputDevice[] {
     const m = line.match(PCM_LINE);
     if (!m) continue;
 
-    // Only capture-capable devices are useful here; playback-only ones would
-    // just be noise in the picker.
-    const capabilities = m[5] ?? '';
-    if (!/capture\s+\d+/.test(capabilities)) continue;
+    // Playback-only devices would just be noise in the picker.
+    if (!/captures+d+/.test(m[5] ?? '')) continue;
 
     const card = Number(m[1]);
     const device = Number(m[2]);
-    const pcmName = (m[4] || m[3] || '').trim();
-    const cardName = cardNames.get(card) ?? `Card ${card}`;
-
-    // Avoid "Scarlett — Scarlett" when ALSA repeats itself.
-    const label = pcmName && !cardName.includes(pcmName)
-      ? `${cardName} — ${pcmName}`
-      : cardName;
-
     const id = `hw:${card},${device}`;
-    devices.push({ id, label, card, device, channels: probeChannelCount(id) });
+    const cardName = cardNames.get(card) ?? `Card ${card}`;
+    devices.push({
+      id, label: labelFor(cardName, (m[4] || m[3] || '').trim()), card, device, channels: 0,
+    });
+  }
+  return devices;
+}
+
+export function listAudioInputDevices(): AudioInputDevice[] {
+  // Merge both sources so a device missing from either still appears.
+  const merged = new Map<string, AudioInputDevice>();
+  for (const d of [...fromArecord(), ...fromProcAsound()]) {
+    if (!merged.has(d.id)) merged.set(d.id, d);
   }
 
+  const devices = [...merged.values()].sort((a, b) =>
+    a.card - b.card || a.device - b.device);
+
+  // Probe width only after de-duplicating — each probe opens the device.
+  for (const d of devices) d.channels = probeChannelCount(d.id);
   return devices;
 }
 
@@ -148,6 +195,7 @@ export function describeNoDevices(): string {
            'On a headless server, audio devices normally appear once the AES67 daemon ' +
            'and its kernel module are installed.';
   }
-  return 'No capture devices found. Check that the interface is connected, and that ' +
-         'the AES67 kernel module is loaded (lsmod | grep MergingRavenna).';
+  return 'No capture devices found. Check the interface is connected and that ' +
+         '"arecord -l" lists it on the server. For AES67, confirm the kernel ' +
+         'module is loaded: lsmod | grep MergingRavenna';
 }
