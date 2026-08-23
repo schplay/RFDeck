@@ -1,18 +1,19 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
+import { findOrCreatePerformer, listPerformers } from '../performers/roster';
 
 // Shows are server-authoritative: RFDeck is a multi-client application, so a
 // mic-check tick made backstage must appear at FOH immediately. Every mutation
 // broadcasts over the socket rather than relying on clients to refetch.
 
-const showInclude = {
+export const showInclude = {
   players:  { orderBy: { sortIndex: 'asc' } },
   micCheck: true,
 } as const;
 
 // Shape the DB rows into the client's Show model (acts keyed by act number,
 // then by channel key) so the frontend store needs no translation layer.
-function serializeShow(row: any) {
+export function serializeShow(row: any) {
   const acts: Record<number, Record<string, any>> = {};
   for (const entry of row.micCheck ?? []) {
     (acts[entry.act] ??= {})[entry.channelKey] = {
@@ -34,6 +35,7 @@ function serializeShow(row: any) {
     players: (row.players ?? []).map((p: any) => ({
       id:                 p.id,
       showId:             p.showId,
+      performerId:        p.performerId ?? null,
       realName:           p.realName,
       characterName:      p.characterName,
       notes:              p.notes,
@@ -139,27 +141,53 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
     const show = await prisma.show.findUnique({ where: { id } });
     if (!show) return reply.code(404).send({ error: 'Show not found' });
 
+    // Cast either an existing performer or a name. A typed name joins the
+    // roster rather than living only in this show, so the next show can pick
+    // the same person instead of retyping them — that is the point of having
+    // a roster at all.
+    let performer: { id: string; name: string } | null = null;
+    if (typeof d.performerId === 'string' && d.performerId) {
+      performer = await prisma.performer.findUnique({ where: { id: d.performerId } });
+      if (!performer) return reply.code(404).send({ error: 'Performer not found' });
+    } else {
+      const name = String(d.realName ?? '').trim();
+      if (!name) return reply.code(400).send({ error: 'A performer or a name is required' });
+      performer = await findOrCreatePerformer(name);
+    }
+
     const count = await prisma.player.count({ where: { showId: id } });
     await prisma.player.create({
       data: {
         showId:        id,
-        realName:      String(d.realName ?? '').trim(),
+        performerId:   performer.id,
+        realName:      performer.name,
         characterName: String(d.characterName ?? '').trim(),
         notes:         d.notes ?? '',
         sortIndex:     count,
       },
     });
+    // The roster may have grown, and casting counts changed either way.
+    io()?.emit('performers:updated', await listPerformers());
     return await pushShow(id);
   });
 
   fastify.put('/shows/:id/players/:playerId', async (request, reply) => {
     const { id, playerId } = request.params as { id: string; playerId: string };
     const d = request.body as any;
+    // Recasting: point this slot at a different roster entry. The name follows
+    // the performer; a casting's name is never edited directly any more.
+    let recast: { id: string; name: string } | null = null;
+    if (typeof d.performerId === 'string' && d.performerId) {
+      recast = await prisma.performer.findUnique({ where: { id: d.performerId } });
+      if (!recast) return reply.code(404).send({ error: 'Performer not found' });
+    }
+
     try {
       await prisma.player.update({
         where: { id: playerId },
         data: {
-          realName:      d.realName      ?? undefined,
+          performerId:   recast ? recast.id   : undefined,
+          realName:      recast ? recast.name : (d.realName ?? undefined),
           characterName: d.characterName ?? undefined,
           notes:         d.notes         ?? undefined,
           assignedChannelKey: Object.prototype.hasOwnProperty.call(d, 'assignedChannelKey')
@@ -168,6 +196,7 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
           sortIndex: typeof d.sortIndex === 'number' ? d.sortIndex : undefined,
         },
       });
+      if (recast) io()?.emit('performers:updated', await listPerformers());
     } catch (err: any) {
       if (err?.code === 'P2025') return reply.code(404).send({ error: 'Player not found' });
       request.log.error({ err }, 'Failed to update player');
@@ -180,6 +209,7 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
     const { id, playerId } = request.params as { id: string; playerId: string };
     try {
       await prisma.player.delete({ where: { id: playerId } });
+      io()?.emit('performers:updated', await listPerformers()); // casting counts
     } catch (err: any) {
       if (err?.code === 'P2025') return reply.code(404).send({ error: 'Player not found' });
       request.log.error({ err }, 'Failed to delete player');

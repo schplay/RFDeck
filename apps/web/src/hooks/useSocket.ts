@@ -8,7 +8,8 @@ import { useRfEventStore, RfEvent } from '../stores/rfEventStore';
 import { useShowStore } from '../stores/showStore';
 import { useBatteryStore, BatteryEstimate } from '../stores/batteryStore';
 import { getToken, serverOrigin } from '../lib/api';
-import { Channel, Alert, Show } from '@rfdeck/shared-types';
+import { Channel, Alert, Show, Performer } from '@rfdeck/shared-types';
+import { usePerformerStore } from '../stores/performerStore';
 
 // Same origin resolution as the REST client — a hardcoded localhost here would
 // leave every remote client permanently disconnected. See lib/api.ts.
@@ -156,6 +157,11 @@ function getSocket(): Socket {
   // device answers, it just will not hand over channel data.
   _socket.on('device:auth', (data: { ip: string; port: number; failed: boolean; reason: string | null }) => {
     useDeviceStore.getState().setDeviceAuth(data.ip, data.port, data.failed ? (data.reason ?? 'Password refused') : null);
+  });
+
+  // Performer roster — the whole list on every change, so clients never drift.
+  _socket.on('performers:updated', (list: Performer[]) => {
+    usePerformerStore.getState().applyServerList(list);
   });
 
   // SSCv2 device metadata (firmware, serial, mac)

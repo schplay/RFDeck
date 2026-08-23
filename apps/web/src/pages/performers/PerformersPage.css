@@ -1,0 +1,127 @@
+.performers-page {
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1100px;
+}
+
+.performers-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.performers-subtitle {
+  margin: 4px 0 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.9em;
+}
+
+.performers-count {
+  font-size: 0.85em;
+  color: var(--color-on-surface-variant);
+  white-space: nowrap;
+  padding-top: 6px;
+}
+
+.performers-error {
+  color: var(--color-error);
+  font-size: 0.9em;
+  margin: 0;
+}
+
+.performers-add {
+  display: grid;
+  grid-template-columns: 1.2fr 2fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.performers-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-surface-container-highest);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+  font: inherit;
+  font-size: 0.9em;
+}
+.performers-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.performers-filter {
+  max-width: 320px;
+}
+
+.performers-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-surface-container-highest);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.performers-list-header,
+.performers-row {
+  display: grid;
+  grid-template-columns: 1.2fr 2fr 70px 40px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+}
+
+.performers-list-header {
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-container-low, var(--color-surface-container));
+  border-bottom: 1px solid var(--color-surface-container-highest);
+}
+
+.performers-row + .performers-row {
+  border-top: 1px solid var(--color-surface-container-highest);
+}
+
+.performers-castings {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-on-surface-variant);
+}
+
+.performers-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+}
+.performers-delete:hover {
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+  color: var(--color-error);
+}
+
+.performers-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 16px;
+  color: var(--color-on-surface-variant);
+  text-align: center;
+  margin: 0;
+}
+.performers-empty p {
+  margin: 0;
+  max-width: 420px;
+}

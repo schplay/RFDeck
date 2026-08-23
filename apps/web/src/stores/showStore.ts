@@ -26,7 +26,12 @@ interface ShowStore {
   setActiveShow: (id: string | null) => void;
   setShowArchived: (id: string, archived: boolean) => Promise<void>;
 
-  addPlayer: (showId: string, realName: string, characterName: string) => Promise<void>;
+  /** Cast an existing performer (by id) or a typed name, which joins the roster. */
+  addPlayer: (
+    showId: string,
+    who: { performerId?: string; realName?: string },
+    characterName: string,
+  ) => Promise<void>;
   updatePlayer: (showId: string, playerId: string, partial: Partial<Omit<Player, 'id' | 'showId'>>) => Promise<void>;
   deletePlayer: (showId: string, playerId: string) => Promise<void>;
 
@@ -118,11 +123,11 @@ export const useShowStore = create<ShowStore>()(
         }
       },
 
-      addPlayer: async (showId, realName, characterName) => {
+      addPlayer: async (showId, who, characterName) => {
         try {
           const show = await apiFetch<Show>(`/shows/${showId}/players`, {
             method: 'POST',
-            body: JSON.stringify({ realName, characterName }),
+            body: JSON.stringify({ ...who, characterName }),
           });
           set(s => ({ shows: upsert(s.shows, show) }));
         } catch (err) {

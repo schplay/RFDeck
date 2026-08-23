@@ -296,3 +296,24 @@
   color: var(--color-warning, #d97706);
   border-left: 3px solid var(--color-warning, #d97706);
 }
+
+/* Global mute lock. Locked is the resting state during a show; unlocking is
+   the deliberate act, so the unlocked state is the one that looks alarming. */
+.mute-lock-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-surface-container-highest);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+  font-size: 0.8em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mute-lock-toggle.unlocked {
+  border-color: color-mix(in srgb, var(--color-warning, #d97706) 60%, transparent);
+  background: color-mix(in srgb, var(--color-warning, #d97706) 14%, transparent);
+  color: var(--color-warning, #d97706);
+}

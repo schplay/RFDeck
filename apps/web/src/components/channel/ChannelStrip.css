@@ -321,3 +321,22 @@
 .drawer-input:focus {
   border-color: var(--color-primary);
 }
+
+/* Listening: filled, unmistakably "on". The idle button is the quiet one. */
+.cs-btn.btn-primary.is-listening {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary, #003238);
+}
+.cs-btn.btn-primary.is-listening:hover {
+  background: color-mix(in srgb, var(--color-primary) 85%, black);
+}
+
+/* Mute locked from the dashboard: visibly inert, not merely unresponsive. */
+.cs-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cs-btn:disabled:hover {
+  background: var(--color-surface-container);
+}

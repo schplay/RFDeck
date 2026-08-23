@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
 import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff } from 'lucide-react';
+import { useUiStore } from '../../stores/uiStore';
 import { useSocket } from '../../hooks/useSocket';
 import { useChannelAudio } from '../../hooks/useChannelAudio';
 import { channelKey } from '../../lib/channelKey';
@@ -20,6 +21,9 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   const { listen, stop, listeningTo, error: audioError } = useChannelAudio();
   const audioKey = channelKey(channel);
   const isListening = listeningTo === audioKey;
+  // Global safety switch from the dashboard toolbar; applies on every view
+  // that renders a strip, Backstage included.
+  const mutesLocked = useUiStore(s => s.mutesLocked);
   const isOutput = deviceType === 'output';
 
   const statusBorder = !deviceOnline ? 'error'
@@ -167,13 +171,23 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
           />
           <span className="gain-unit">dB</span>
         </div>
-        <button className="cs-btn btn-secondary" onClick={handleMuteToggle}>
+        <button
+          className="cs-btn btn-secondary"
+          onClick={handleMuteToggle}
+          disabled={mutesLocked}
+          title={mutesLocked
+            ? 'Mute controls are locked — unlock them from the dashboard toolbar'
+            : (channel.isMuted ? 'Unmute this channel' : 'Mute this channel')}
+        >
           <VolumeX size={14} /> {channel.isMuted ? 'Unmute' : 'Mute'}
         </button>
+        {/* Listening is the emphasised state; idle is the quiet one. It used
+            to be the reverse, because "btn-active" had no styling at all. */}
         <button
-          className={`cs-btn ${isListening ? 'btn-active' : 'btn-primary'}`}
+          className={`cs-btn ${isListening ? 'btn-primary is-listening' : 'btn-secondary'}`}
           onClick={handleListen}
           title={audioError ?? (isListening ? 'Stop listening' : 'Listen to this channel')}
+          aria-pressed={isListening}
         >
           <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
         </button>

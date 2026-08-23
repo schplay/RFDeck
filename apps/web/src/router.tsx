@@ -7,6 +7,7 @@ import BatteryDashboard from './pages/battery/BatteryDashboard';
 import Settings from './pages/settings/Settings';
 import BackstageView from './pages/backstage/BackstageView';
 import ShowManagement from './pages/shows/ShowManagement';
+import PerformersPage from './pages/performers/PerformersPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Each route is wrapped so a render error takes down one page, not the whole
@@ -48,6 +49,10 @@ export const router = createHashRouter([
       {
         path: 'shows',
         element: guard('Show & Mic Check', <ShowManagement />)
+      },
+      {
+        path: 'performers',
+        element: guard('Performers', <PerformersPage />)
       }
     ]
   }

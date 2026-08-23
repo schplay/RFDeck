@@ -18,6 +18,11 @@ export interface Show {
 export interface Player {
   id: string;
   showId: string;
+  /** The roster entry this casting refers to. Null only for legacy rows that
+   *  predate the roster and could not be matched to a performer. */
+  performerId: string | null;
+  /** The performer's name, copied onto the casting. Kept in step by the
+   *  server when the performer is renamed. */
   realName: string;
   characterName: string;
   notes: string;

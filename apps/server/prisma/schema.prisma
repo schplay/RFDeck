@@ -87,19 +87,39 @@ model Show {
   micCheck        MicCheckEntry[]
 }
 
+// A person, independent of any show. The same performer is cast in many shows
+// over a season, so they are a roster in their own right rather than a field
+// on one show's cast list.
+model Performer {
+  id        String   @id @default(uuid())
+  name      String
+  notes     String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  castings  Player[]
+}
+
+// One performer's place in one show: their role, channel and notes for THAT
+// show. The name is the performer's, copied here so a casting still reads
+// correctly if the performer is later removed from the roster; the server
+// keeps the copy in step when a performer is renamed.
 model Player {
-  id                 String  @id @default(uuid())
+  id                 String     @id @default(uuid())
   showId             String
-  show               Show    @relation(fields: [showId], references: [id], onDelete: Cascade)
+  show               Show       @relation(fields: [showId], references: [id], onDelete: Cascade)
+  performerId        String?
+  performer          Performer? @relation(fields: [performerId], references: [id], onDelete: SetNull)
   realName           String
-  characterName      String  @default("")
-  notes              String  @default("")
+  characterName      String     @default("")
+  notes              String     @default("")
   // Channel NAME, not channel id — ids embed the device IP, which changes on
   // DHCP reassignment. A show must survive a power cycle that moves receivers.
   assignedChannelKey String?
-  sortIndex          Int     @default(0)
+  sortIndex          Int        @default(0)
 
   @@index([showId])
+  @@index([performerId])
 }
 
 // Timestamped history of what happened, persisted so it survives a restart and

@@ -841,3 +841,16 @@
   font-size: 12px;
   line-height: 1.45;
 }
+
+/* Link from a show's cast list to the shared roster. */
+.sm-roster-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 0.8em;
+  color: var(--color-on-surface-variant);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.sm-roster-link:hover { color: var(--color-primary); }

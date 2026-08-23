@@ -1,6 +1,7 @@
 import http from 'http';
 import { buildApp } from './app';
 import { log } from './logger';
+import { backfillPerformers } from './performers/roster';
 
 // A redirect listener on plain HTTP, so someone who types the bare address
 // still lands on the app instead of a connection error. Purely a convenience:
@@ -34,6 +35,14 @@ function startHttpRedirect(httpPort: number, httpsPort: number): void {
 async function start() {
   const app = await buildApp();
   const secure = (app as any).isSecure as boolean;
+
+  // Cast entries created before the performer roster existed are linked to it
+  // by name. Idempotent, and must not stop the server from coming up.
+  try {
+    await backfillPerformers();
+  } catch (err) {
+    log.warn('Performer roster backfill failed; existing cast entries stay unlinked:', err);
+  }
 
   // Default to the conventional port for whichever scheme is in use, so the
   // address is just the server's IP with nothing to remember.

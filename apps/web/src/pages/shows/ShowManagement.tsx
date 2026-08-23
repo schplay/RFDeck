@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Show, Player, MicCheckAct } from '@rfdeck/shared-types';
 import { useShowStore, migrateLegacyShows } from '../../stores/showStore';
 import { useChannelStore } from '../../stores/channelStore';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
+import { usePerformerStore } from '../../stores/performerStore';
 import { channelKey } from '../../lib/channelKey';
 import {
   Plus, Trash2, CheckCircle2, Circle, ChevronRight,
@@ -380,13 +382,31 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
   const { addPlayer, updatePlayer, deletePlayer } = useShowStore();
   const channels = useActiveChannels();
 
+  // The roster is shared across shows; this tab casts from it. A name typed
+  // here joins the roster too, so the next show can pick the same person.
+  const performers = usePerformerStore(s => s.performers);
+  const rosterLoaded = usePerformerStore(s => s.loaded);
+  const fetchPerformers = usePerformerStore(s => s.fetchPerformers);
+  useEffect(() => { if (!rosterLoaded) void fetchPerformers(); }, [rosterLoaded, fetchPerformers]);
+
+  const castIds = new Set(show.players.map(p => p.performerId).filter(Boolean));
+  const uncast = performers.filter(p => !castIds.has(p.id));
+
+  // Either pick someone from the roster or type a new name — not both.
+  const [newPerformerId, setNewPerformerId] = useState('');
   const [newRealName, setNewRealName] = useState('');
   const [newCharName, setNewCharName] = useState('');
+  const canAdd = !!newPerformerId || !!newRealName.trim();
 
   const handleAddPlayer = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRealName.trim()) return;
-    addPlayer(show.id, newRealName.trim(), newCharName.trim());
+    if (!canAdd) return;
+    addPlayer(
+      show.id,
+      newPerformerId ? { performerId: newPerformerId } : { realName: newRealName.trim() },
+      newCharName.trim(),
+    );
+    setNewPerformerId('');
     setNewRealName('');
     setNewCharName('');
   };
@@ -410,12 +430,19 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
           </div>
           {show.players.map(player => (
             <div key={player.id} className="sm-player-row">
-              <input
-                className="sm-input sm-player-field"
-                value={player.realName}
-                onChange={e => updatePlayer(show.id, player.id, { realName: e.target.value })}
-                placeholder={terms.realNameLabel}
-              />
+              {/* Who fills this slot. Names are edited on the Performers page,
+                  where a change reaches every show; here you only recast. */}
+              <select
+                className="sm-select sm-player-field"
+                value={player.performerId ?? ''}
+                onChange={e => { if (e.target.value) updatePlayer(show.id, player.id, { performerId: e.target.value }); }}
+                title={player.performerId ? 'Recast this slot' : `${player.realName} is not on the roster`}
+              >
+                {!player.performerId && <option value="">{player.realName} (not on roster)</option>}
+                {performers.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
               <input
                 className="sm-input sm-player-field"
                 value={player.characterName}
@@ -454,11 +481,24 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
       </div>
 
       <form className="sm-add-player-form" onSubmit={handleAddPlayer}>
+        {uncast.length > 0 && (
+          <select
+            className="sm-select"
+            value={newPerformerId}
+            onChange={e => { setNewPerformerId(e.target.value); if (e.target.value) setNewRealName(''); }}
+            title="Cast someone already on the roster"
+          >
+            <option value="">From roster…</option>
+            {uncast.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        )}
         <input
           className="sm-input"
-          placeholder={`${terms.realNameLabel} *`}
+          placeholder={uncast.length > 0 ? `or new ${terms.realNameLabel.toLowerCase()}` : `${terms.realNameLabel} *`}
           value={newRealName}
-          onChange={e => setNewRealName(e.target.value)}
+          onChange={e => { setNewRealName(e.target.value); if (e.target.value) setNewPerformerId(''); }}
         />
         <input
           className="sm-input"
@@ -466,9 +506,12 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
           value={newCharName}
           onChange={e => setNewCharName(e.target.value)}
         />
-        <button type="submit" className="btn-primary-sm" disabled={!newRealName.trim()}>
+        <button type="submit" className="btn-primary-sm" disabled={!canAdd}>
           <Plus size={14} /> {terms.addPersonLabel}
         </button>
+        <Link to="/performers" className="sm-roster-link" title="Names and notes live on the roster, shared across shows">
+          <Users size={13} /> Manage roster
+        </Link>
       </form>
     </div>
   );

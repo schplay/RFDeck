@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { ChannelStrip } from '../../components/channel/ChannelStrip';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
+import { useUiStore } from '../../stores/uiStore';
 import { DeviceDrawer } from '../inventory/components/DeviceDrawer';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
-import { Ban, LayoutGrid, List, Search, ArrowUpDown, WifiOff } from 'lucide-react';
+import { Ban, LayoutGrid, List, Search, ArrowUpDown, WifiOff, Lock, Unlock } from 'lucide-react';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import './MonitoringDashboard.css';
 
@@ -55,6 +56,8 @@ export default function MonitoringDashboard() {
   const { handlers: dragHandlers } = useDragReorder(filteredChannels);
   const setFlipRef = useFlipAnimation(filteredChannels.map(ch => ch.id).join('|'));
   const { isConnected, isChannelStale } = useConnectionHealth();
+  const mutesLocked = useUiStore(s => s.mutesLocked);
+  const setMutesLocked = useUiStore(s => s.setMutesLocked);
 
   // Double-clicking a channel opens the details drawer for its parent device.
   // Held by ID so the drawer reflects live store updates rather than a snapshot.
@@ -110,9 +113,24 @@ export default function MonitoringDashboard() {
               </select>
             </div>
 
+            {/* Global mute lock. Locked is the resting state during a show:
+                a Mute is one click from silencing a performer mid-line, and
+                the dashboard is touched constantly. Unlocking is deliberate. */}
+            <button
+              className={`mute-lock-toggle ${mutesLocked ? 'locked' : 'unlocked'}`}
+              onClick={() => setMutesLocked(!mutesLocked)}
+              aria-pressed={mutesLocked}
+              title={mutesLocked
+                ? 'Mute buttons are locked on every card. Click to unlock.'
+                : 'Mute buttons are live. Click to lock them for the show.'}
+            >
+              {mutesLocked ? <Lock size={14} /> : <Unlock size={14} />}
+              {mutesLocked ? 'Mutes locked' : 'Mutes unlocked'}
+            </button>
+
             <div className="view-toggle">
-              <button 
-                className={viewMode === 'grid' ? 'active' : ''} 
+              <button
+                className={viewMode === 'grid' ? 'active' : ''}
                 onClick={() => setViewMode('grid')}
                 title="Grid View"
               >
