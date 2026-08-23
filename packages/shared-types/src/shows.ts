@@ -29,6 +29,9 @@ export interface Player {
   /** Channel NAME, not channel id — see apps/web/src/lib/channelKey.ts.
    *  Channel ids embed the device IP and break on DHCP reassignment. */
   assignedChannelKey: string | null;
+  /** The performer's IEM channel, by name. Assigned here; never part of the
+   *  soundcheck, which is about mics only. */
+  iemChannelKey: string | null;
 }
 
 export type MicCheckAct = 1 | 2 | 3 | 4;

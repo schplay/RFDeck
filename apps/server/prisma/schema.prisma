@@ -116,6 +116,10 @@ model Player {
   // Channel NAME, not channel id — ids embed the device IP, which changes on
   // DHCP reassignment. A show must survive a power cycle that moves receivers.
   assignedChannelKey String?
+  // The performer's IEM, by channel name, on the same terms as the mic. Kept
+  // separate because the soundcheck is about mics only; IEMs are assigned
+  // but not checked there.
+  iemChannelKey      String?
   sortIndex          Int        @default(0)
 
   @@index([showId])

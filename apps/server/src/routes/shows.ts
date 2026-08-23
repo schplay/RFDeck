@@ -40,6 +40,7 @@ export function serializeShow(row: any) {
       characterName:      p.characterName,
       notes:              p.notes,
       assignedChannelKey: p.assignedChannelKey ?? null,
+      iemChannelKey:      p.iemChannelKey ?? null,
     })),
     micCheck: { currentAct: row.currentAct, acts },
     createdAt: row.createdAt.toISOString(),
@@ -192,6 +193,9 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
           notes:         d.notes         ?? undefined,
           assignedChannelKey: Object.prototype.hasOwnProperty.call(d, 'assignedChannelKey')
             ? (d.assignedChannelKey || null)
+            : undefined,
+          iemChannelKey: Object.prototype.hasOwnProperty.call(d, 'iemChannelKey')
+            ? (d.iemChannelKey || null)
             : undefined,
           sortIndex: typeof d.sortIndex === 'number' ? d.sortIndex : undefined,
         },
