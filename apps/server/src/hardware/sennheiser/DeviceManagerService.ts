@@ -33,6 +33,12 @@ export class DeviceManagerService extends EventEmitter {
   // Pending device:lost timers — cancelled if the device reconnects within the grace period.
   // This prevents brief SSE drops / network hiccups from causing visible offline flashes.
   private lostTimers = new Map<string, NodeJS.Timeout>();
+  // Devices whose loss was announced, so the return can be announced too.
+  private lostIps = new Set<string>();
+  // Low-battery readings awaiting a second consecutive sample. One reading is
+  // not evidence: transmitters report garbage during a re-sync, and a single
+  // bad sample used to raise a CRITICAL alert on a full pack.
+  private pendingLowBattery = new Map<string, number>();
 
   // Last moment each device was known to be in contact, keyed by device id.
   //
@@ -309,6 +315,18 @@ export class DeviceManagerService extends EventEmitter {
       this.genuinelyOnlineIps.add(ip);
       this.emit('device:online', { ip, port });
 
+      // A return after an announced loss goes in the event log too, so the
+      // record shows the outage's length rather than only its start.
+      if (this.lostIps.delete(ip)) {
+        this.emitAlert({
+          severity: 'INFO',
+          type: 'DEVICE_ONLINE',
+          message: `"${this.deviceNames.get(id) ?? ip}" is back online`,
+          deviceId: id,
+          deviceName: this.deviceNames.get(id),
+        });
+      }
+
       // Ask connected SSC devices for their own network config so we can
       // suppress their secondary (Dante) IPs from discovery.
       if (client instanceof SSCClient) {
@@ -344,6 +362,17 @@ export class DeviceManagerService extends EventEmitter {
         const timer = setTimeout(() => {
           this.lostTimers.delete(ip);
           this.emit('device:lost', { ip, port });
+          // Into the event log, not only the journal: an operator watching a
+          // card flap needs the cause where they are looking.
+          this.lostIps.add(ip);
+          this.emitAlert({
+            severity: 'WARNING',
+            type: 'DEVICE_LOST',
+            message: `"${this.deviceNames.get(id) ?? ip}" stopped responding`,
+            detail: String(err ?? 'no reply'),
+            deviceId: id,
+            deviceName: this.deviceNames.get(id),
+          });
           this.maybeAutoScan();
         }, this.LOST_DEBOUNCE_MS);
         this.lostTimers.set(ip, timer);
@@ -382,10 +411,52 @@ export class DeviceManagerService extends EventEmitter {
     if (!stale) return;
 
     const oldIp = stale.ip;
-    log.debug(
+    const staleId = `${stale.ip}:${stale.port}`;
+
+    // A "move" is only a move if the old address is dead. Two live devices
+    // sharing a MAC — an EW-DX's control and Dante ports, or a stale ARP entry
+    // handing one device's MAC to another — used to be treated as the same
+    // unit changing address: the live row was rewritten, its twin deleted,
+    // and every client told to drop the channel, which then came straight
+    // back. On a show display that read as a receiver flapping, and nothing
+    // explained it because the decision was logged below the production
+    // level. Refuse, and say so where the operator will see it.
+    const liveAtOld =
+      this.clients.get(staleId)?.isConnected ||
+      this.clients.get(`${staleId}-legacy`)?.isConnected ||
+      (Date.now() - (this.lastSeen.get(staleId) ?? 0)) < 15_000;
+    const secondary = this.secondaryIps.has(oldIp) || this.secondaryIps.has(currentIp);
+
+    if (liveAtOld || secondary) {
+      const why = secondary
+        ? `${oldIp} and ${currentIp} are two ports of one device`
+        : `the device at ${oldIp} is still in contact`;
+      log.warn(
+        `[DeviceManager] Not reconciling MAC ${mac} ${oldIp} → ${currentIp} ("${stale.name}"): ${why}`,
+      );
+      this.emitAlert({
+        severity: 'INFO',
+        type: 'DEVICE_SHARED_MAC',
+        message: `"${stale.name}" and the device at ${currentIp} report the same hardware address; left both as they are`,
+        detail: why,
+        deviceId: staleId,
+        deviceName: stale.name,
+      });
+      return;
+    }
+
+    log.warn(
       `[DeviceManager] MAC ${mac} moved: ${oldIp} → ${currentIp} ` +
       `(device: "${stale.name}"). Updating inventory.`,
     );
+    this.emitAlert({
+      severity: 'WARNING',
+      type: 'DEVICE_IP_CHANGED',
+      message: `"${stale.name}" moved from ${oldIp} to ${currentIp}`,
+      detail: 'Matched by hardware address after the old address stopped answering',
+      deviceId: `${currentIp}:${currentPort}`,
+      deviceName: stale.name,
+    });
 
     // Update the canonical record to the new IP
     await prisma.inventoryDevice.update({
@@ -754,24 +825,29 @@ export class DeviceManagerService extends EventEmitter {
             const oldBatt = oldChannel.batteryPercent;
             const newBatt = newChannel.batteryPercent;
             if (oldBatt !== undefined && newBatt !== undefined) {
-              if (oldBatt > 20 && newBatt <= 20 && newBatt > 5) {
+              // A threshold crossing must hold for two consecutive samples.
+              // Transmitters report garbage while re-syncing, and one bad
+              // sample raised a CRITICAL alert on a full pack in a live show.
+              const crossedLow      = oldBatt > 20 && newBatt <= 20 && newBatt > 5;
+              const crossedCritical = oldBatt > 5  && newBatt <= 5;
+              const pending = this.pendingLowBattery.get(channelId);
+
+              if (newBatt > 20) {
+                this.pendingLowBattery.delete(channelId);
+              } else if (pending !== undefined && newBatt <= pending) {
+                // Second consecutive low reading: now it is real.
+                this.pendingLowBattery.delete(channelId);
+                const critical = newBatt <= 5;
                 this.emitAlert({
-                  severity: 'WARNING',
-                  type: 'LOW_BATTERY',
-                  message: `Battery low (${newBatt}%)`,
+                  severity: critical ? 'CRITICAL' : 'WARNING',
+                  type: critical ? 'CRITICAL_BATTERY' : 'LOW_BATTERY',
+                  message: critical ? `Battery critical (${newBatt}%)` : `Battery low (${newBatt}%)`,
                   channelId,
                   channelName: newChannel.name,
                   deviceId
                 });
-              } else if (oldBatt > 5 && newBatt <= 5) {
-                this.emitAlert({
-                  severity: 'CRITICAL',
-                  type: 'CRITICAL_BATTERY',
-                  message: `Battery critical (${newBatt}%)`,
-                  channelId,
-                  channelName: newChannel.name,
-                  deviceId
-                });
+              } else if (crossedLow || crossedCritical) {
+                this.pendingLowBattery.set(channelId, newBatt);
               }
             }
 
