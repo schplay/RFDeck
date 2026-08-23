@@ -33,6 +33,13 @@ export class DeviceManagerService extends EventEmitter {
   // Pending device:lost timers — cancelled if the device reconnects within the grace period.
   // This prevents brief SSE drops / network hiccups from causing visible offline flashes.
   private lostTimers = new Map<string, NodeJS.Timeout>();
+
+  // Last moment each device was known to be in contact, keyed by device id.
+  //
+  // Distinct from "last telemetry": a receiver whose values have not changed
+  // sends nothing, and that silence must not read as a frozen feed. Clients use
+  // this, broadcast as a heartbeat, to decide what is stale.
+  private lastSeen = new Map<string, number>();
   private readonly LOST_DEBOUNCE_MS = 2000;
   // Debounce: avoid triggering multiple scans in quick succession when several
   // devices drop at once (e.g. network switch reboot).
@@ -253,10 +260,19 @@ export class DeviceManagerService extends EventEmitter {
 
   private setupClientListeners(client: ClientType, ip: string, port: number, id: string) {
     client.on('state', (stateTree: any) => {
+      this.lastSeen.set(id, Date.now());
       this.normalizeAndEmit(id, stateTree);
     });
 
+    // Contact without data — the SSC client reports this when the stream is
+    // quiet but the device answers a direct probe, or when bytes arrive that
+    // are not telemetry. G3/G4 polls at a fixed rate, so 'state' covers it.
+    client.on('alive', () => {
+      this.lastSeen.set(id, Date.now());
+    });
+
     client.on('connected', async () => {
+      this.lastSeen.set(id, Date.now());
       log.info(`[DeviceManager] Connected to ${ip} via ${client instanceof SSCClient ? 'SSCv2' : 'G3/G4'}`);
       // Cancel any pending lost timer — device reconnected within the grace period
       const pendingLost = this.lostTimers.get(ip);
@@ -1034,6 +1050,20 @@ export class DeviceManagerService extends EventEmitter {
 
   getChannelSnapshot(): Channel[] {
     return Array.from(this.channelCache.values());
+  }
+
+  // Liveness snapshot for clients: when each online device was last in contact.
+  //
+  // Sent with the server's own clock so a client can correct for skew by
+  // comparing `at` with its receipt time, rather than trusting that two
+  // machines on a show network agree on the time of day.
+  getHeartbeat(): { at: number; devices: Record<string, number> } {
+    const devices: Record<string, number> = {};
+    for (const [id, seen] of this.lastSeen) {
+      const ip = id.split(':')[0];
+      if (this.genuinelyOnlineIps.has(ip)) devices[id] = seen;
+    }
+    return { at: Date.now(), devices };
   }
 
   getOnlineDevices(): Array<{ ip: string; port: number }> {

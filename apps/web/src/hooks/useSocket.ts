@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { useChannelStore } from '../stores/channelStore';
+import { useChannelStore, type HeartbeatPayload } from '../stores/channelStore';
 import { useDeviceStore, DiscoveredDevice } from '../stores/deviceStore';
 import { useAlertStore } from '../stores/alertStore';
 import { useFrequencyHistoryStore } from '../stores/frequencyHistoryStore';
@@ -143,6 +143,13 @@ function getSocket(): Socket {
   // "Device Offline" overlay remains visible on the dashboard.
   _socket.on('device:lost', (device: { ip: string; port: number }) => {
     useDeviceStore.getState().markDeviceOffline(device.ip, device.port);
+  });
+
+  // Which devices the server is actually in contact with. Staleness keys on
+  // this rather than on telemetry arrival, because telemetry is sent only on
+  // change and a quiet channel is not a broken one.
+  _socket.on('device:heartbeat', (payload: HeartbeatPayload) => {
+    useChannelStore.getState().applyHeartbeat(payload);
   });
 
   // SSCv2 device metadata (firmware, serial, mac)

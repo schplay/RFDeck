@@ -39,6 +39,33 @@ export class SSCClient extends EventEmitter {
   private emptyPollCount = 0;             // consecutive SSCv2 polls with no rx data
   // SSCv2 SSE subscription state (per the Sennheiser 3rd-party API spec)
   private sseActive = false;              // SSE stream is open and delivering data
+
+  // Liveness, as distinct from data.
+  //
+  // SSE pushes a value only when it changes, so a receiver whose mic is on but
+  // nobody is speaking into produces no traffic at all — indistinguishable, from
+  // the outside, from a stream that has silently died. Contact is therefore
+  // tracked separately from telemetry: every byte on the SSE socket counts, and
+  // when it has been quiet for a while the device is asked directly.
+  private lastActivity = 0;
+  private lastAliveEmit = 0;
+  private lastLivenessProbe = 0;
+  private livenessStrikes = 0;
+  private static readonly LIVENESS_QUIET_MS = 3_000;  // quiet this long → probe
+  private static readonly LIVENESS_PROBE_MS = 3_000;  // at most one probe per interval
+  private static readonly LIVENESS_STRIKES  = 2;      // consecutive failures → drop SSE
+
+  // Note contact with the device. Emits 'alive' at most every 2s so a busy
+  // stream does not flood listeners.
+  private markAlive(): void {
+    const now = Date.now();
+    this.lastActivity = now;
+    this.livenessStrikes = 0;
+    if (now - this.lastAliveEmit >= 2_000) {
+      this.lastAliveEmit = now;
+      this.emit('alive');
+    }
+  }
   private sseStarting = false;            // SSE connection attempt in progress
   private sseSocket: any = null;          // raw TLS socket for SSE (no timeout)
   private sseSessionId: string | null = null;
@@ -318,6 +345,9 @@ export class SSCClient extends EventEmitter {
       };
 
       stream.on('data', (chunk: Buffer) => {
+        // Any traffic at all — a value, a keepalive comment, a blank line — is
+        // proof the device is there, whether or not it parses to telemetry.
+        this.markAlive();
         buf += chunk.toString('utf8');
         // SSE events are delimited by blank lines (\n\n or \r\n\r\n)
         let boundary: number;
@@ -730,6 +760,7 @@ export class SSCClient extends EventEmitter {
     }
     if (Object.keys(rxData).length === 0) return;
     this.udpDataActive = true;
+    this.markAlive();
     this.failCount = 0;
     if (!this.isConnected) {
       this.isConnected = true;
@@ -981,7 +1012,34 @@ export class SSCClient extends EventEmitter {
           // SSCv2: real-time data comes via SSE (config paths) and/or UDP SSCv1 (rx telemetry).
           this.startUdpReceiver();
           if (this.sseActive) {
-            // SSE is delivering data via events — nothing for poll() to do.
+            // SSE delivers data on change only, so silence here is ambiguous:
+            // a quiet receiver and a dead stream look identical. When nothing
+            // has arrived for a while, ask the device directly rather than
+            // assume either way.
+            const now = Date.now();
+            const quietFor = now - this.lastActivity;
+            if (quietFor > SSCClient.LIVENESS_QUIET_MS &&
+                now - this.lastLivenessProbe > SSCClient.LIVENESS_PROBE_MS) {
+              this.lastLivenessProbe = now;
+              try {
+                await this.httpsClient.get(`${this.baseUrl}/api/ssc/version`, { timeout: 2000 });
+                this.markAlive();
+              } catch (err: any) {
+                this.livenessStrikes++;
+                log.debug(
+                  `[SSCClient] ${this.ip} liveness probe failed ` +
+                  `(${this.livenessStrikes}/${SSCClient.LIVENESS_STRIKES}): ${err?.code ?? err?.message}`,
+                );
+                if (this.livenessStrikes >= SSCClient.LIVENESS_STRIKES) {
+                  // Tear the stream down through its own error path so the
+                  // existing reconnect and disconnect accounting take over.
+                  log.debug(`[SSCClient] ${this.ip} unreachable behind a silent SSE stream — dropping it`);
+                  this.livenessStrikes = 0;
+                  try { this.sseSocket?.destroy(new Error('liveness probe failed')); } catch { /* ignore */ }
+                }
+              }
+              return;
+            }
             this.failCount = 0;
             this.disconnectSignaled = false;
             return;

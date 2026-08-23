@@ -53,14 +53,25 @@ export default fp(async (fastify, opts) => {
   (deviceManager as any).discovery.on('scan:start',    () => io.emit('discovery:scan-start'));
   (deviceManager as any).discovery.on('scan:complete', () => io.emit('discovery:scan-complete'));
 
+  // Liveness broadcast. Telemetry is sent on change only, so a receiver with a
+  // mic that is on but silent produces nothing — and clients must not read that
+  // as a frozen feed. This says, every two seconds, which devices are actually
+  // in contact, independent of whether any value moved.
+  let heartbeat: NodeJS.Timeout | null = null;
+  const HEARTBEAT_MS = 2_000;
+
   fastify.addHook('onReady', async () => {
     await mcpBus.init(); // shared UDP :53212 must be ready before any G3G4Client or DiscoveryService
     deviceManager.start();
+    heartbeat = setInterval(() => {
+      io.emit('device:heartbeat', deviceManager.getHeartbeat());
+    }, HEARTBEAT_MS);
 
     fastify.log.info('Socket.io server listening and DeviceManager started');
   });
 
   fastify.addHook('onClose', async () => {
+    if (heartbeat) clearInterval(heartbeat);
     deviceManager.stop();
     mcpBus.close();
     audioManager.stop();
@@ -94,6 +105,9 @@ export default fp(async (fastify, opts) => {
     for (const device of deviceManager.getOnlineDevices()) {
       socket.emit('device:online', device);
     }
+    // Liveness too, so a fresh client is not left guessing until the next
+    // broadcast and does not flash every channel as stale on arrival.
+    socket.emit('device:heartbeat', deviceManager.getHeartbeat());
     for (const channel of deviceManager.getChannelSnapshot()) {
       socket.emit('channel:telemetry', channel);
     }
