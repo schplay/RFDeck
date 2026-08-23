@@ -25,9 +25,25 @@ describe('bodyIdentifiesSennheiser — genuine devices', () => {
     expect(bodyIdentifiesSennheiser({ name: 'SKM 6000' })).toBe(true);
   });
 
-  it('accepts the SSC version endpoint shape', () => {
-    // /api/ssc/version carries an `ssc` key nothing else serves.
+  it('accepts the SSC version endpoint as the specification documents it', () => {
+    // SSCv2 spec 2.3: /api/ssc/version returns {protocol, schema} and nothing
+    // else — no vendor, no `ssc` key. This body was being rejected as "not
+    // SSC", which is how a real EW-DX dropped out of discovery.
+    expect(bodyIdentifiesSennheiser({ protocol: '2.0', schema: '1.5' })).toBe(true);
+  });
+
+  it('still accepts firmware that reports an `ssc` key', () => {
     expect(bodyIdentifiesSennheiser({ ssc: '1.2', version: '2.0' })).toBe(true);
+  });
+
+  it('accepts the identity endpoint as the specification documents it', () => {
+    // Verbatim example from SSCv2 spec 2.3.
+    expect(bodyIdentifiesSennheiser({
+      product: 'TeamConnect Ceiling 2',
+      hardwareRevision: 'DVT',
+      serial: 'AB12DEF345',
+      vendor: 'Sennheiser electronic GmbH & Co. KG',
+    })).toBe(true);
   });
 
   it('looks inside nested device and identity objects', () => {
@@ -61,6 +77,13 @@ describe('bodyIdentifiesSennheiser — things that are not Sennheiser', () => {
     // "system" contains "sk"; "modem" contains "em" — neither is a device.
     expect(bodyIdentifiesSennheiser({ model: 'system controller' })).toBe(false);
     expect(bodyIdentifiesSennheiser({ product: 'cable modem' })).toBe(false);
+  });
+
+  it('does not mistake any protocol/schema pair for the SSC version shape', () => {
+    // The SSC version body holds version numbers; arbitrary strings under the
+    // same keys are some other product's API.
+    expect(bodyIdentifiesSennheiser({ protocol: 'http', schema: 'v1' })).toBe(false);
+    expect(bodyIdentifiesSennheiser({ protocol: 'mqtt', schema: 'sensor' })).toBe(false);
   });
 
   it('rejects a device whose name merely contains a digit', () => {

@@ -78,7 +78,12 @@ export function bodyIdentifiesSennheiser(d: any): boolean {
                          d.identity?.product, d.name, d.device?.name, d.deviceName];
   if (productFields.some(v => PRODUCT_RE.test(textOf(v)) || VENDOR_RE.test(textOf(v)))) return true;
 
-  // SSC-specific shape: the version endpoint returns an `ssc` version key.
+  // SSC-specific shapes. Per the SSCv2 specification, /api/ssc/version returns
+  // exactly {"protocol": "2.0", "schema": "1.5"} — there is no vendor field and
+  // no `ssc` key, so without this rule a genuine EW-DX answering that endpoint
+  // was rejected as "not SSC". Some firmware carries an `ssc` key instead.
+  const versionLike = (v: unknown) => typeof v === 'string' && /^\d+(\.\d+)*$/.test(v);
+  if (versionLike(d.protocol) && versionLike(d.schema)) return true;
   if (d.ssc !== undefined) return true;
 
   return false;
@@ -303,10 +308,17 @@ export class DiscoveryService extends EventEmitter {
     const key = `${ip}:${SSC_PORT}`;
     if (this.seenIps.has(key)) return;
 
-    // Probe both SSC paths concurrently — first success wins, halving worst-case time.
-    type Hit =
-      | { kind: 'body'; data: any; name: string; serial: string | null }
-      | { kind: 'auth' };
+    // Probe both SSC paths concurrently, but decide only once BOTH have answered.
+    //
+    // The two are not interchangeable, so the first to respond must not settle
+    // the question. Per the SSCv2 specification, /api/ssc/version is gated by
+    // auth and returns only {protocol, schema}, while /api/device/identity
+    // carries the vendor string and may answer without auth. Taking the first
+    // result — as this used to — let a quick 401 from the version endpoint win
+    // the race and discard a positive identification still in flight from the
+    // identity endpoint. A real EW-DX disappeared from discovery that way.
+    type BodyHit = { kind: 'body'; data: any; name: string; serial: string | null };
+    type Hit = BodyHit | { kind: 'auth' };
 
     const attempt = async (path: string): Promise<Hit> => {
       const url = `https://${ip}:${SSC_PORT}${path}`;
@@ -315,7 +327,9 @@ export class DiscoveryService extends EventEmitter {
         const d    = resp.data;
         if (!d || typeof d !== 'object') throw new Error('non-JSON');
         let name   = `Sennheiser EW-DX (${ip})`;
-        const raw  = d.device?.name || d.name || d.identity?.device_name || d.deviceName;
+        // The identity endpoint has no name field but does carry the product
+        // designation ("as on the label"), which is a better label than nothing.
+        const raw  = d.device?.name || d.name || d.identity?.device_name || d.deviceName || d.product;
         if (raw && typeof raw === 'string') name = raw;
         const serial = d.serial_number ?? d.serial ?? d.sn ?? null;
         return { kind: 'body', data: d, name, serial };
@@ -327,48 +341,47 @@ export class DiscoveryService extends EventEmitter {
       }
     };
 
-    let hit: Hit | null = null;
-    try {
-      hit = await Promise.any(SSC_PROBE_PATHS.map(p => attempt(p)));
-    } catch {
-      return; // nothing answered — not a Sennheiser device
-    }
+    const settled = await Promise.allSettled(SSC_PROBE_PATHS.map(p => attempt(p)));
+    const hits = settled
+      .filter((s): s is PromiseFulfilledResult<Hit> => s.status === 'fulfilled')
+      .map(s => s.value);
+    if (hits.length === 0) return; // nothing answered — not a Sennheiser device
 
-    if (hit.kind === 'auth') {
-      // Auth-protected. Only claim it if the certificate identifies the vendor;
-      // a bare 401 is something almost every appliance on the network returns.
-      if (await this.certificateIdentifiesSennheiser(ip)) {
-        log.debug(`[Discovery] ${ip}: auth-protected, TLS certificate identifies Sennheiser`);
-        this.emitDiscovered(ip, SSC_PORT, `Sennheiser EW-DX (${ip})`, 'ssc');
-      } else {
-        log.debug(`[Discovery] ${ip}: HTTPS 401 but nothing identifies it as Sennheiser — skipping`);
-      }
-      return;
-    }
+    const bodies = hits.filter((h): h is BodyHit => h.kind === 'body');
+    const identifying = bodies.filter(b => bodyIdentifiesSennheiser(b.data));
 
-    // Responded with JSON. Require it to actually look like SSC, or the
-    // certificate to vouch for it — any appliance can return a JSON error body.
-    if (!bodyIdentifiesSennheiser(hit.data)) {
+    // Prefer the body that carries a serial: it is what the secondary-interface
+    // dedupe below keys on, and only the identity endpoint provides one.
+    let hit: BodyHit | null = identifying.find(b => b.serial) ?? identifying[0] ?? null;
+
+    if (!hit) {
+      // Nothing in the bodies names the vendor — auth-only, or JSON that any
+      // appliance might return. The certificate is the remaining evidence.
       if (!(await this.certificateIdentifiesSennheiser(ip))) {
-        log.debug(
-          `[Discovery] ${ip}: answered but the response is not SSC ` +
-          `(${JSON.stringify(hit.data).slice(0, 120)}) — skipping`
-        );
+        const summary = bodies.length > 0
+          ? `response is not SSC (${JSON.stringify(bodies[0].data).slice(0, 120)})`
+          : 'HTTPS 401 on every path';
+        log.debug(`[Discovery] ${ip}: ${summary} and the certificate does not identify Sennheiser — skipping`);
         return;
       }
+      log.debug(`[Discovery] ${ip}: TLS certificate identifies Sennheiser`);
+      hit = bodies[0] ?? null;
     }
 
-    if (hit.serial) {
-      const owner = this.seenSerials.get(hit.serial);
+    const name   = hit?.name   ?? `Sennheiser EW-DX (${ip})`;
+    const serial = hit?.serial ?? null;
+
+    if (serial) {
+      const owner = this.seenSerials.get(serial);
       if (owner && owner !== ip) {
-        log.debug(`[Discovery] ${ip} shares serial ${hit.serial} with ${owner} — secondary interface, skipping`);
+        log.debug(`[Discovery] ${ip} shares serial ${serial} with ${owner} — secondary interface, skipping`);
         return;
       }
-      this.seenSerials.set(hit.serial, ip);
+      this.seenSerials.set(serial, ip);
     }
 
-    log.debug(`[Discovery] HTTP probe found EW-DX at ${ip}: ${hit.name}`);
-    this.emitDiscovered(ip, SSC_PORT, hit.name, 'ssc');
+    log.debug(`[Discovery] HTTP probe found EW-DX at ${ip}: ${name}`);
+    this.emitDiscovered(ip, SSC_PORT, name, 'ssc');
   }
 
   private async registerSerial(ip: string): Promise<void> {
