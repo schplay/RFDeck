@@ -9,12 +9,16 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | Stage | State |
 |---|---|
 | 1 — Durability & truth | ✅ Complete |
-| 2 — Shared state | ✅ 2.1–2.4 complete; 2.5 (control attribution) outstanding |
-| 3 — Access control & deployment | ✅ Complete — PIN gate, encryption at rest, deployment docs |
+| 2 — Shared state | ✅ 2.1–2.4 complete; 2.5 (control attribution) outstanding — see reconciliation note |
+| 3 — Access control & deployment | ✅ Complete — PIN gate, encryption at rest, installer + updater, HTTPS, AES67, shell CLI |
 | 4 — Show-day hardening | ✅ 4.1, 4.2, 4.4 complete; 4.3 (show report) outstanding |
+| A — Audio monitoring *(added)* | ✅ Server-side capture, any-interface patching, AES67 subscriptions from RFDeck |
 | 5 — Client reach | Not started |
-| 6 — Feature completion | Not started |
-| 7 — Breadth & operations | In progress — 52 tests, no CI yet |
+| 6 — Feature completion | 6.2 partially — performer roster exists; notebook/photos do not |
+| 7 — Breadth & operations | In progress — 94 tests, no CI yet |
+
+*Last reconciled 2026-08-23 against commit `c78aa86`. See "Work since the plan" below for
+what landed outside the original stages.*
 
 **Answered since first draft:** scale is 2–128 channels and 1–10 concurrent
 users; access control is an optional admin-set PIN rather than per-user login;
@@ -27,13 +31,16 @@ wrong one, issues tokens, and always exempts loopback.
 
 ### Next up
 
-1. **4.3 — Show report export.** The remaining piece of show-day tooling. Event
-   log and CSV plumbing already exist to build on.
-2. **2.5 — Control command attribution.** Broadcast who muted what, so operators
-   stop seeing unexplained state changes.
-3. **CI.** 52 tests exist but nothing runs them automatically.
+1. **4.3 — Show report export.** The remaining piece of show-day tooling. Every
+   model it draws on — show, roster, mic check, events, battery — is now persisted
+   server-side, so it is a generator over existing data.
+2. **CI.** 94 tests exist but nothing runs them automatically.
+3. **2.5 — Control command attribution.** Needs a decision first: there are no
+   named accounts (superseded by the PIN model), so "who" can only be a label each
+   client sets for itself. See the note under 2.5.
 4. **Stage 5 — mobile.** Mic check on a phone is the highest-value mobile flow
    and should drive the responsive work.
+5. **6.3 — Device maintenance log.** Small, and the device drawer is ready for it.
 
 ---
 
@@ -44,6 +51,40 @@ wrong one, issues tokens, and always exempts loopback.
 | Deployment | Headless server **and** desktop; multi-client in both cases |
 | Spectrum scanning | **Not a feature.** Display connected-device frequencies and reported signal strength only |
 | Identity | **Named user accounts.** Sharing credentials is the crew's choice, not a system design |
+
+---
+
+## Work since the plan
+
+Landed between the Stage 3 progress note and `c78aa86`, mostly driven by testing
+on a real server and real receivers rather than by the stage list. Recorded here
+so the plan describes the application that exists.
+
+| Area | What landed | Plan item it affects |
+|---|---|---|
+| **Deployment** | `install-ubuntu.sh` provisions a clean Ubuntu box end to end; `update-server.sh` is the fast code-only path with snapshot and rollback; HTTPS with a self-signed cert by default; `rfdeck` shell CLI for status, PIN recovery, and audio diagnostics | 3.3 — exceeded |
+| **Remote access** | PIN configurable from any client when no PIN is set, or by an authenticated one — the loopback-only rule was unusable on a headless server | 3.1 — superseded |
+| **Audio architecture** | Capture moved from each viewer's browser to the server; any ALSA interface, any width, probed not assumed; per-channel patch matrix; one capture per device demultiplexed to subscribers | new — "Stage A" |
+| **AES67** | Daemon installed and configured by the installer; stream subscriptions (sinks) created from RFDeck with contiguous channel allocation; NMOS enabled; firewall opened for SAP, RTSP, RTP | new — "Stage A" |
+| **Liveness** | Staleness keyed on device contact (heartbeat + quiet-stream probe), not telemetry churn — a silent mic is not a frozen feed | 4.4 — extended |
+| **Device auth** | A device that answers but refuses its password is shown as its own state with a reason, a Retry, and a way to remove a stored password | new |
+| **Discovery** | Hosts are claimed only on positive identification; both SSC probes are evaluated before deciding | 1.x hardening |
+| **Performer roster** | Performers are a global entity cast into shows by reference; castings keep a name copy; existing rows backfilled | 6.2 — partial |
+| **Mute lock** | Dashboard toggle that disables every Mute button; locked by default, per browser | new |
+| **Tests** | 94, including parsers for ALSA output, AES67 channel allocation, discovery identification, RF state, battery estimation | 7.1 |
+
+### Stage A — Audio monitoring *(added)*
+
+Not in the original plan because the original plan assumed browser-side capture.
+The correction — audio comes from the machine running RFDeck — reshaped the
+whole path, and it is now complete for the supported case: a server with any
+number of interfaces, each patched per channel, streamed to browsers over WebRTC.
+What remains here belongs to 6.1 (replay buffer), which builds on the same
+capture.
+
+Unverified on real hardware at the time of writing: the AES67 kernel module
+surviving a kernel upgrade, and the `ufw` rules on a host with pre-existing
+firewall policy.
 
 ---
 
@@ -313,7 +354,14 @@ Not needed now, but it is the natural request once several people use it.
 
 ---
 
-### 2.5 Control-command conflict handling — **M**
+### 2.5 Control-command conflict handling — **M** — *decision needed*
+
+> With named accounts superseded (3.1), there is no identity to attribute a
+> command to. The workable substitute is a **per-client operator label** — a
+> name each browser sets for itself ("FOH", "Dana", "Stage L") and sends with
+> every control command and mic-check tick. It is self-declared, so it is
+> context rather than audit, but it answers the actual question ("who just
+> muted CH 4?") without reintroducing accounts. Needs a yes before building.
 
 **Problem.** Mute, gain, and frequency commands arrive over the socket from any client with no
 arbitration. Two operators can fight over a channel, and neither sees the other's action except
@@ -331,7 +379,15 @@ overkill; visibility is what is actually missing.
 
 *This is the gate. Below this line the server must only run on a trusted, isolated show network.*
 
-### 3.1 Authentication and RBAC — **XL**
+### 3.1 Authentication and RBAC — **XL** — *superseded*
+
+> **Superseded by decision.** Access control is an optional admin-set PIN that
+> remote clients enter, with an admin-chosen re-authentication interval; the
+> network is trusted by default. There are no named accounts and no roles. The
+> design below is kept as the record of what was considered, and as the shape
+> to reach for if per-operator attribution is ever required. Consequences:
+> `checkedBy`, `acknowledgedBy`, and the operator on `control:applied` have no
+> identity to carry — see the note under 2.5.
 
 **Problem.** The Fastify server and Socket.io endpoint are entirely unauthenticated. Since the
 application is network-exposed by design, anyone who can reach the port can mute channels,
@@ -458,7 +514,13 @@ operator, all events in the show window, and battery summary. CSV first; PDF via
 stylesheet rather than a new dependency — Electron can print to PDF and the browser build can
 use the native print dialog from the same HTML.
 
-### 4.4 Connection-loss visibility — **S**
+### 4.4 Connection-loss visibility — **S** — ✅ *complete, then extended*
+
+> Shipped as written, then corrected in use: telemetry is sent only on change,
+> so "no update for six seconds" flagged every quiet mic as frozen. Staleness
+> now keys on **device contact** — any traffic, or a direct probe when the
+> stream has been quiet — broadcast every two seconds as a heartbeat. A quiet
+> channel and a dead stream are finally different things.
 
 When the socket drops, cards keep showing their last values with no indication the data is
 frozen. Track last-update time per channel, visibly mark stale cards past a threshold, and dim
@@ -501,7 +563,12 @@ Rolling per-device audio capture with click-to-scrub playback, over the existing
 path. Storage sizing, per-device enable, and disk-pressure handling are the substance. In a
 multi-client deployment, capture runs once on the server and streams to whoever requests it.
 
-### 6.2 Performer notebook and photos — **M**
+### 6.2 Performer notebook and photos — **M** — *roster done; notebook and photos outstanding*
+
+> The roster half exists: `Performer` is a global model, shows cast from it by
+> reference, and it has its own page with notes. What remains is the
+> per-performer notebook proper (rich notes, quick-change log) and headshot
+> upload, which should hang off `Performer` rather than the per-show casting.
 
 Extends the `Player` model from 1.1: rich notes, headshot upload, quick-change log. Store images
 on disk with a path reference, not as database blobs — and serve them through the same auth
@@ -522,7 +589,11 @@ The drag interaction from card reordering is a reasonable starting point.
 
 ### 7.1 Test suite — **L** *(start during Stage 1)*
 
-No test files exist despite the README specifying Vitest and Playwright. Listed last because it
+*Status: 94 Vitest tests across 7 files (RF state machine, battery estimation,
+PIN hashing, secret box, ALSA parsers, AES67 sink allocation, discovery
+identification). No Playwright. No CI — see 7.5.*
+
+No test files existed when this was written, despite the README specifying Vitest and Playwright. Listed last because it
 is not user-facing, but the highest-value tests should be written **during Stage 1**: the IP
 reconciliation logic in `DeviceManagerService`, control-vs-Dante discrimination, and dropout
 debounce. That logic is subtle, hardware-dependent, expensive to verify by hand, and has already
@@ -609,16 +680,66 @@ Stages 5–7 reorder freely against what the next production needs.
 
 ---
 
-## Open questions
+### 7.5 Continuous integration — **S**
 
-- **Show scale.** How many channels and concurrent clients in realistic use? Drives whether the
-  event log needs partitioning and whether the dashboard needs virtualized rendering.
-- **Venue network trust.** Is the show network isolated, or shared with house/guest traffic?
-  If shared, Stage 3 moves ahead of Stage 2.
-- **Show lifecycle.** Do shows archive, or stay live indefinitely? Affects retention, report
-  scoping, and whether mic-check state resets between performances of the same production.
-  This is now the most consequential unanswered question — a multi-night run repeating the same
-  mic check needs a per-performance reset, and that shapes the schema from 1.1 onward.
-- **README stance.** Correct it now to describe current state, or keep it as target
-  specification? It currently reads as a finished product description, which makes it unreliable
-  as either.
+94 tests and a full typecheck exist, and nothing runs them unless someone
+remembers to. A workflow that runs `tsc --noEmit` for every package, the Vitest
+suite, and the web build on every push closes the gap — the regex-escape bug
+that capped every audio device at two channels would have been caught by the
+parser tests the moment they existed, had anything been running them. Depends on
+where the repository is hosted; see the reconciliation note.
+
+---
+
+## Open questions — resolved
+
+All four original questions have been answered and the answers are in effect:
+
+- **Show scale** — 2–128 channels, 1–10 concurrent clients. No partitioning or
+  virtualised rendering needed at that size.
+- **Venue network trust** — trusted by default; an optional admin-set PIN for
+  remote clients when it is not. This is why 3.1's account model was superseded.
+- **Show lifecycle** — either: shows live indefinitely or are archived, the
+  operator's choice. Per-act reset exists for multi-night runs.
+- **README stance** — it is updated as features land, and incomplete features
+  are flagged rather than removed.
+
+Still open: **2.5 attribution without accounts** — see the note under 2.5.
+
+---
+
+## Dependency flag — Prisma 5 → 7
+
+The deploy script reports Prisma 5.22 → 7.x as available. Recorded here so the
+decision is deliberate rather than eventually forced. `^5.0.0` dates from the
+initial scaffold and was never revisited; 5.22 is simply the end of that line.
+
+**Prisma 6** is effectively free for this project: its breaking changes are
+PostgreSQL relation tables, full-text search, `Bytes`→`Uint8Array`, and the
+removal of `NotFoundError`, none of which this code touches. Node 24 and TS 5
+already satisfy its minimums.
+
+**Prisma 7** is a real migration, in five parts, verified against the upgrade
+guide rather than recalled:
+
+1. The Rust query engine is removed; a driver adapter is mandatory. For SQLite
+   that is `@prisma/adapter-better-sqlite3`, a native module. `db.ts`'s
+   `new PrismaClient({ datasources })` becomes `new PrismaClient({ adapter })`.
+2. `url = env("DATABASE_URL")` in the schema is deprecated for `prisma.config.ts`.
+   The environment variable survives; it is read from a different place.
+3. `prisma-client-js` is deprecated for `prisma-client`, which requires an
+   explicit `output` and changes the import path. It supports
+   `moduleFormat = "cjs"`, so the server's CommonJS build need not move to ESM.
+4. `prisma db push --skip-generate` no longer exists and `db push` no longer
+   runs `generate`. **Both deploy scripts pass that flag and would fail.**
+5. The desktop build stages the generated client *and the native query engine*
+   into the package. Under 7 the engine is gone and `better-sqlite3` must be
+   compiled against Electron's ABI (`@electron/rebuild`) and unpacked from the
+   asar. This is the costly part and the one most likely to need rounds on a
+   clean machine.
+
+**Recommendation:** not during testing. 5.22 is neither broken nor insecure, and
+the desktop packaging was the hardest part of this project to stabilise. Moving
+to `^6` first is near-zero risk and can be done any time; 7 is an afternoon on
+the server plus a separate budget for Electron. A useful side effect of 7: the
+engine DLL that causes `EPERM` on `prisma generate` under Windows goes away.
