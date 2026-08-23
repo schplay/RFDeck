@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
 import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff } from 'lucide-react';
@@ -24,6 +24,25 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   // Global safety switch from the dashboard toolbar; applies on every view
   // that renders a strip, Backstage included.
   const mutesLocked = useUiStore(s => s.mutesLocked);
+
+  // Outcome of the last control command for THIS channel. A refused command
+  // otherwise leaves the button looking inert, with the reason only in the
+  // server log.
+  const [controlError, setControlError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!socket) return;
+    const onResult = (r: { deviceId: string; rxIndex: number; ok: boolean; message: string | null }) => {
+      if (r.deviceId !== channel.deviceId || r.rxIndex !== channel.channelIndex) return;
+      setControlError(r.ok ? null : r.message);
+    };
+    socket.on('control:result', onResult);
+    return () => { socket.off('control:result', onResult); };
+  }, [socket, channel.deviceId, channel.channelIndex]);
+  useEffect(() => {
+    if (!controlError) return;
+    const t = setTimeout(() => setControlError(null), 8_000);
+    return () => clearTimeout(t);
+  }, [controlError]);
   const isOutput = deviceType === 'output';
 
   const statusBorder = !deviceOnline ? 'error'
@@ -192,6 +211,11 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
           <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
         </button>
       </div>
+      {(controlError || (isListening && audioError)) && (
+        <div className="cs-control-error" role="status">
+          {controlError ?? audioError}
+        </div>
+      )}
     </Card>
   );
 });

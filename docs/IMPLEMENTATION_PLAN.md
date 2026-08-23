@@ -31,15 +31,19 @@ wrong one, issues tokens, and always exempts loopback.
 
 ### Next up
 
-1. **2.5 — Control command attribution.** Needs a decision first: there are no
+1. **6.1 — Rolling capture, problem detection, flagged clips.** Critical, and
+   reframed from "replay buffer" — see the entry. Builds on the Stage A capture
+   path and the persisted event log.
+2. **2.5 — Control command attribution.** Needs a decision first: there are no
    named accounts (superseded by the PIN model), so "who" can only be a label each
    client sets for itself. See the note under 2.5.
-2. **6.3 — Device maintenance log.** Small, and the device drawer is ready for it.
-3. **Stage 5 — mobile.** Mic check on a phone is the highest-value mobile flow
-   and should drive the responsive work.
+3. **6.3 — Device maintenance log.** Small, and the device drawer is ready for it.
 4. **6.2 — Performer notebook and photos.** The roster exists; the notebook
    and headshot upload hang off it.
 5. **7.4 — Packaging.** Docker image for the headless target; desktop auto-update.
+
+Stage 5 (mobile) is deprioritised: operators running a soundcheck are at their
+console.
 
 ---
 
@@ -540,7 +544,12 @@ obvious from across a room.
 
 *Mobile and remote surfaces. Core to the product, not an add-on.*
 
-### 5.1 Responsive layouts — **L**
+### 5.1 Responsive layouts — **L** — *deprioritised*
+
+> Operators running a soundcheck are at their console, not on a phone, so the
+> mobile mic-check flow that was to drive this work is not important. Stage 5
+> moves behind Stage 6; revisit if a genuinely mobile use — a tech walking
+> the stage with a receiver rack out of sight — turns out to matter.
 
 The dashboard, inventory, and mic check are built for desktop widths. Mic check on a phone is
 the highest-value mobile flow — a tech walking the stage ticking channels — so it should drive
@@ -564,11 +573,56 @@ Camera-based device lookup in inventory. Small, and genuinely useful for a tech 
 
 ## Stage 6 — Feature completion
 
-### 6.1 Instant replay buffer — **XL**
+### 6.1 Rolling capture, problem detection, and flagged clips — **XL** — *critical; next*
 
-Rolling per-device audio capture with click-to-scrub playback, over the existing AES-67/WebRTC
-path. Storage sizing, per-device enable, and disk-pressure handling are the substance. In a
-multi-client deployment, capture runs once on the server and streams to whoever requests it.
+*Reframed 2026-08-23. The original entry described a replay buffer for manual
+scrubbing. The actual requirement is that RFDeck **notices wireless problems
+by itself and keeps the audio that proves them**: dropouts, hits, and
+interference that a busy operator did not hear at the time but needs to find
+afterwards — and, in a multi-night run, needs to correlate with a position on
+stage or a moment in the show.*
+
+**What it does.**
+
+1. **Rolling capture, per patched channel, on the server.** The capture path
+   already exists (Stage A): one `arecord` per interface, demultiplexed into
+   per-channel streams. This adds a ring buffer per channel — the last N
+   minutes of audio held in memory or on disk, continuously overwritten.
+2. **Detection.** A detector runs over telemetry and audio together and raises
+   a *detection* when something looks like a wireless fault: RF dropout or
+   squelch events (already computed server-side, 2.2), RF level collapsing
+   while AF stays hot, audio signatures of a hit or dropout (a sharp
+   discontinuity, a burst of noise, a gap) on a channel whose RF was marginal.
+   Telemetry-driven triggers are the first release; audio-signature triggers
+   are the second, because they need tuning against real recordings.
+3. **Clip retention.** On a detection, the seconds before and after it are
+   copied out of the ring into a stored clip and kept — the ring keeps
+   rolling. Each detection records the channel, the time, the trigger, the RF
+   readings around it, the active show and act, and the clip.
+4. **Detection log.** A server-authoritative list, shown in the app and in the
+   show report: every detection with its clip. Operators **flag** the ones
+   that matter (with a note), dismiss the ones that do not, and **listen to
+   the clip** from any client — the clip is served over the same path as live
+   monitoring.
+5. **Housekeeping.** A cap on stored clips per channel and overall, with
+   flagged clips exempt from automatic pruning; disk-pressure handling so a
+   long run cannot fill the server.
+
+**Approach.** Builds directly on `CaptureManager` (per-channel PCM already
+flows through it) and the persisted event log (4.1 — detections are a new
+event source with a clip attached). Clips are stored as files on disk with a
+path reference in the database, never as blobs. Playback is a WebRTC track fed
+from a file rather than a live source, so the client's listen path is reused
+unchanged.
+
+**Sizing guidance.** 48 kHz 16-bit mono is 5.8 MB per minute per channel; a
+five-minute ring for 32 channels is under a gigabyte in memory, and clips of
+twenty seconds are about 2 MB each.
+
+**Done when:** a deliberate dropout on a live receiver produces a detection
+with a playable clip within seconds, on every connected client, and survives a
+server restart; and a flagged detection is still there after the pruning that
+removes unflagged ones.
 
 ### 6.2 Performer notebook and photos — **M** — *roster done; notebook and photos outstanding*
 

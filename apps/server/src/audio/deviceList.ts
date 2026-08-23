@@ -188,7 +188,12 @@ export function probeChannelCount(deviceId: string): number | null {
     }
   }
 
-  channelCache.set(deviceId, channels);
+  // Cache only a real answer. A probe can fail for reasons that pass — most
+  // commonly the device being held open by an active capture, since hw: access
+  // is exclusive — and caching that failure for the life of the process meant
+  // every later patch beyond the fallback width was refused, and every Listen
+  // on such a channel died instantly with "could not open input N".
+  if (channels !== null) channelCache.set(deviceId, channels);
   return channels;
 }
 

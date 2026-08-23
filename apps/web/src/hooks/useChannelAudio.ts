@@ -15,6 +15,9 @@ export function useChannelAudio() {
   const [listeningTo, setListeningTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  // Mirrors listeningTo for use inside socket handlers, which would otherwise
+  // close over a stale value.
+  const listeningRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const teardown = useCallback(() => {
@@ -28,6 +31,7 @@ export function useChannelAudio() {
   const stop = useCallback(() => {
     teardown();
     socket?.emit('audio:unsubscribe');
+    listeningRef.current = null;
     setListeningTo(null);
   }, [socket, teardown]);
 
@@ -67,6 +71,7 @@ export function useChannelAudio() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     socket.emit('webrtc:offer', { ...offer, channelKey });
+    listeningRef.current = channelKey;
     setListeningTo(channelKey);
   }, [socket, teardown]);
 
@@ -85,9 +90,14 @@ export function useChannelAudio() {
       } catch { /* candidate arrived after teardown */ }
     };
 
-    const onError = ({ message }: { channelKey: string; message: string }) => {
+    const onError = ({ channelKey, message }: { channelKey: string; message: string }) => {
+      // Every strip on the page has one of these handlers and the server
+      // broadcasts the error to the socket, not to a strip. Acting on an
+      // error about some other channel tore down a perfectly good session.
+      if (channelKey && listeningRef.current && channelKey !== listeningRef.current) return;
       setError(message);
       teardown();
+      listeningRef.current = null;
       setListeningTo(null);
     };
 

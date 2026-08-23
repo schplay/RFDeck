@@ -1188,7 +1188,32 @@ export class SSCClient extends EventEmitter {
     return this.sendControl('device/identity/flash', true);
   }
 
+  // EW-DX OpenAPI 1.7 keeps channel state on /api/channel/{id}, 0-based — the
+  // same resource the SSE handler reads `mute` and `name` from. Per SSCv2, a
+  // write is a PUT of that resource carrying only the properties to change.
+  // The legacy rx{n}/mute path returns 404 on this firmware and the failure
+  // was silent: logged server-side, invisible to the operator.
+  private get isEwdxOpenApi(): boolean {
+    return this.sseSubscribePaths?.[0] === '/api/channel/0';
+  }
+
   async setMute(rxIndex: number, muted: boolean): Promise<boolean> {
+    if (this.isEwdxOpenApi && this.baseUrl) {
+      try {
+        await this.httpsClient.put(
+          `${this.baseUrl}/api/channel/${rxIndex - 1}`,
+          { mute: muted },
+          { timeout: 3000 },
+        );
+        return true;
+      } catch (err: any) {
+        log.error(
+          `[SSCClient] Failed to set mute on ${this.ip} channel ${rxIndex}: ` +
+          `${err.response?.status ?? err.code ?? err.message}`,
+        );
+        return false;
+      }
+    }
     return this.sendControl(`rx${rxIndex}/mute`, muted);
   }
 

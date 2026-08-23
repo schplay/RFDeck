@@ -155,16 +155,30 @@ export default fp(async (fastify, opts) => {
     });
 
     // Hardware Control Commands
+    // Every control command answers the sender. Hardware state echoes back
+    // as telemetry when a command works; when it does not, nothing changes and
+    // the operator is left pressing a button that appears to do nothing. The
+    // failure was only ever in the server log.
+    const report = (action: string, deviceId: string, rxIndex: number, ok: boolean) => {
+      socket.emit('control:result', {
+        action, deviceId, rxIndex, ok,
+        message: ok ? null : `${action} was refused by the device — see the server log for the reason`,
+      });
+    };
+
     socket.on('channel:mute', async ({ deviceId, rxIndex, muted }) => {
-      await deviceManager.muteChannel(deviceId, rxIndex, muted);
+      const ok = await deviceManager.muteChannel(deviceId, rxIndex, muted);
+      report(muted ? 'Mute' : 'Unmute', deviceId, rxIndex, !!ok);
     });
 
     socket.on('channel:gain', async ({ deviceId, rxIndex, gain }) => {
-      await deviceManager.setChannelGain(deviceId, rxIndex, gain);
+      const ok = await deviceManager.setChannelGain(deviceId, rxIndex, gain);
+      report('Gain change', deviceId, rxIndex, !!ok);
     });
 
     socket.on('channel:frequency', async ({ deviceId, rxIndex, frequencyHz }) => {
-      await deviceManager.setChannelFrequency(deviceId, rxIndex, frequencyHz);
+      const ok = await deviceManager.setChannelFrequency(deviceId, rxIndex, frequencyHz);
+      report('Frequency change', deviceId, rxIndex, !!ok);
     });
 
     socket.on('device:identify', async ({ deviceId }) => {
