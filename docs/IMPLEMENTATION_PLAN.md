@@ -11,11 +11,11 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | 1 — Durability & truth | ✅ Complete |
 | 2 — Shared state | ✅ 2.1–2.4 complete; 2.5 (control attribution) outstanding — see reconciliation note |
 | 3 — Access control & deployment | ✅ Complete — PIN gate, encryption at rest, installer + updater, HTTPS, AES67, shell CLI |
-| 4 — Show-day hardening | ✅ 4.1, 4.2, 4.4 complete; 4.3 (show report) outstanding |
+| 4 — Show-day hardening | ✅ Complete — 4.3 show report landed as JSON, CSV, and a printable page |
 | A — Audio monitoring *(added)* | ✅ Server-side capture, any-interface patching, AES67 subscriptions from RFDeck |
 | 5 — Client reach | Not started |
 | 6 — Feature completion | 6.2 partially — performer roster exists; notebook/photos do not |
-| 7 — Breadth & operations | In progress — 94 tests, no CI yet |
+| 7 — Breadth & operations | In progress — 109 tests; CI runs them on every push (7.5) |
 
 *Last reconciled 2026-08-23 against commit `c78aa86`. See "Work since the plan" below for
 what landed outside the original stages.*
@@ -31,16 +31,15 @@ wrong one, issues tokens, and always exempts loopback.
 
 ### Next up
 
-1. **4.3 — Show report export.** The remaining piece of show-day tooling. Every
-   model it draws on — show, roster, mic check, events, battery — is now persisted
-   server-side, so it is a generator over existing data.
-2. **CI.** 94 tests exist but nothing runs them automatically.
-3. **2.5 — Control command attribution.** Needs a decision first: there are no
+1. **2.5 — Control command attribution.** Needs a decision first: there are no
    named accounts (superseded by the PIN model), so "who" can only be a label each
    client sets for itself. See the note under 2.5.
-4. **Stage 5 — mobile.** Mic check on a phone is the highest-value mobile flow
+2. **6.3 — Device maintenance log.** Small, and the device drawer is ready for it.
+3. **Stage 5 — mobile.** Mic check on a phone is the highest-value mobile flow
    and should drive the responsive work.
-5. **6.3 — Device maintenance log.** Small, and the device drawer is ready for it.
+4. **6.2 — Performer notebook and photos.** The roster exists; the notebook
+   and headshot upload hang off it.
+5. **7.4 — Packaging.** Docker image for the headless target; desktop auto-update.
 
 ---
 
@@ -506,7 +505,15 @@ estimate means anything. Show "—" rather than a confidently wrong number.
 Then add show-duration projection — given the active show's expected length, flag packs that
 will not make it. That is the output an A2 actually acts on.
 
-### 4.3 Show report export — **M**
+### 4.3 Show report export — **M** — ✅ *complete*
+
+> `GET /api/shows/:id/report` (JSON), `report.csv` (sectioned spreadsheet), and
+> `report.html` (printable; the browser's print dialog is the PDF path, so no
+> PDF dependency). Covers show metadata, device list with serials and firmware,
+> roster with channels, mic check per act with who and when, events in the
+> show's window, and live battery at generation. Events are not tagged with a
+> show, so the window is the show's lifetime — creation to archive or now —
+> with `?from`/`?to` overrides. Report and CSV links sit in the show header.
 
 One generator over the now-persisted models: show metadata, device list with firmware and
 serials, roster with channel assignments, mic-check results per act with timestamps and
@@ -680,7 +687,13 @@ Stages 5–7 reorder freely against what the next production needs.
 
 ---
 
-### 7.5 Continuous integration — **S**
+### 7.5 Continuous integration — **S** — ✅ *complete*
+
+> `.github/workflows/ci.yml`: on every push to `main` and every pull request —
+> install, Prisma generate, shared-types build, typecheck of server and web,
+> the Vitest suite, the web build, and a syntax check of the deploy scripts.
+> The desktop build is deliberately excluded; Electron packaging is verified on
+> a clean machine.
 
 94 tests and a full typecheck exist, and nothing runs them unless someone
 remembers to. A workflow that runs `tsc --noEmit` for every package, the Vitest

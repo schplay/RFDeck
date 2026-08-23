@@ -38,7 +38,16 @@ export async function buildApp(): Promise<FastifyInstance> {
     const path = request.url.split('?')[0];
     if (OPEN_PATHS.has(path)) return;
 
-    const token = request.headers['x-rfdeck-token'] as string | undefined;
+    // The header is how the app authenticates. A plain navigation — opening
+    // the printable show report in a new tab — cannot set headers, so a GET
+    // may carry the same token as a query parameter instead. GET only: a
+    // token in a URL can end up in history, so it is not accepted for
+    // anything that changes state.
+    const query = request.query as Record<string, unknown> | undefined;
+    const queryToken = request.method === 'GET' && typeof query?.token === 'string'
+      ? query.token
+      : undefined;
+    const token = (request.headers['x-rfdeck-token'] as string | undefined) ?? queryToken;
     if (await isRequestAuthorized(request.ip, token)) return;
 
     return reply.code(401).send({ error: 'PIN required', code: 'PIN_REQUIRED' });

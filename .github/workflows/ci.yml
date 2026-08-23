@@ -1,0 +1,67 @@
+# Runs on every push and pull request: typecheck every package, run the test
+# suite, and build the web bundle.
+#
+# Nothing ran these automatically before. The regex-escape bug that capped
+# every audio device at two channels would have been caught by the parser
+# tests the moment they existed — had anything been running them.
+#
+# The desktop app is not built here: Electron packaging needs a native
+# toolchain per platform and is verified on a clean machine instead.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Prisma reads the datasource URL at generate time even though it does
+      # not connect. Any SQLite path will do.
+      DATABASE_URL: file:./ci.db
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the pnpm version from "packageManager" in package.json, so the
+      # pin lives in one place.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @rfdeck/server exec prisma generate
+
+      - name: Build shared types
+        run: pnpm --filter @rfdeck/shared-types build
+
+      - name: Typecheck server
+        run: pnpm --filter @rfdeck/server exec tsc --noEmit
+
+      - name: Typecheck web
+        run: pnpm --filter @rfdeck/web exec tsc --noEmit
+
+      - name: Test
+        run: pnpm --filter @rfdeck/server test
+
+      - name: Build web
+        run: pnpm --filter @rfdeck/web build
+
+      - name: Shell script syntax
+        run: bash -n scripts/install-ubuntu.sh && bash -n scripts/update-server.sh && bash -n scripts/rfdeck

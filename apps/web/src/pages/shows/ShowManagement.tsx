@@ -7,9 +7,11 @@ import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { usePerformerStore } from '../../stores/performerStore';
 import { channelKey } from '../../lib/channelKey';
+import { API_BASE, getToken } from '../../lib/api';
 import {
   Plus, Trash2, CheckCircle2, Circle, ChevronRight,
   ClipboardList, MessageSquare, RotateCcw, Users, Radio, Archive, ArchiveRestore,
+  FileText, Download,
 } from 'lucide-react';
 import './ShowManagement.css';
 
@@ -598,6 +600,34 @@ function ShowDetail({ show }: { show: Show }) {
           <span className="sm-detail-mode">{show.environmentMode.replace('_', ' ')}</span>
         </div>
         <div className="sm-detail-actions">
+          {/* The report opens as a plain page so the browser's print dialog
+              can make the PDF. A navigation cannot carry the auth header, so
+              the token rides along as a query parameter when one exists. */}
+          {(() => {
+            const token = getToken();
+            const suffix = token ? `?token=${encodeURIComponent(token)}` : '';
+            const base = `${API_BASE}/shows/${show.id}/report`;
+            return (
+              <>
+                <a
+                  className="btn-ghost"
+                  href={`${base}.html${suffix}`}
+                  target="_blank"
+                  rel="noopener"
+                  title="Printable show report — devices, roster, mic check, events, battery"
+                >
+                  <FileText size={14} /> Report
+                </a>
+                <a
+                  className="btn-ghost"
+                  href={`${base}.csv${suffix}`}
+                  title="Download the report as a spreadsheet"
+                >
+                  <Download size={14} /> CSV
+                </a>
+              </>
+            );
+          })()}
           {/* Archiving is reversible and keeps the record; deleting is not. */}
           <button
             className="btn-ghost"
