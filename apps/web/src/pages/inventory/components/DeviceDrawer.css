@@ -466,3 +466,26 @@
   color: var(--color-primary);
   border-color: rgba(0, 219, 233, 0.4);
 }
+
+/* Reachable but refusing the password — its own state, not "online". */
+.status-banner.auth-failed {
+  background: color-mix(in srgb, var(--color-warning, #d97706) 14%, transparent);
+  color: var(--color-warning, #d97706);
+  border-left: 3px solid var(--color-warning, #d97706);
+  align-items: flex-start;
+}
+.status-banner.auth-failed > span { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.status-banner .banner-reason { font-size: 0.8em; opacity: 0.85; font-weight: 400; }
+.status-banner .banner-action {
+  margin-left: auto;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-size: 0.8em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.status-banner .banner-action:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+.drawer-checkbox { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85em; cursor: pointer; }

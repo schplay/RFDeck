@@ -281,3 +281,17 @@
 .hardware-list-row.is-inactive:hover .list-row-channels {
   opacity: 0.75;
 }
+
+/* Connected but refusing the password — warning, not error: the device is
+   reachable, it just will not hand over channel data until fixed. */
+.auth-tag {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.7em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-warning, #d97706);
+  background: color-mix(in srgb, var(--color-warning, #d97706) 16%, transparent);
+  vertical-align: middle;
+}

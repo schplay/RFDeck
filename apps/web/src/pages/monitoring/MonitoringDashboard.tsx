@@ -5,13 +5,16 @@ import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { DeviceDrawer } from '../inventory/components/DeviceDrawer';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
-import { LayoutGrid, List, Search, ArrowUpDown, WifiOff } from 'lucide-react';
+import { Ban, LayoutGrid, List, Search, ArrowUpDown, WifiOff } from 'lucide-react';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import './MonitoringDashboard.css';
 
 export default function MonitoringDashboard() {
   const channels = useActiveChannels();
   const { inventory } = useDeviceStore();
+  // Connected but refusing the password — no cards, and the reason is not
+  // visible from here unless we say it.
+  const authFailedDevices = inventory.filter(d => d.active !== false && d.authFailed);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const orderMode = useLayoutStore(s => s.orderMode);
@@ -126,6 +129,19 @@ export default function MonitoringDashboard() {
           </div>
         </div>
       </header>
+
+      {/* A device that is connected but refusing its password has no cards
+          here, and this is where the operator goes looking for them. Say why. */}
+      {authFailedDevices.length > 0 && (
+        <div className="dashboard-notice auth-failed" role="status">
+          <Ban size={14} />
+          <span>
+            {authFailedDevices.length === 1
+              ? <><strong>{authFailedDevices[0].name}</strong> is connected but refused its password — no channels until it is fixed in Inventory.</>
+              : <>{authFailedDevices.length} devices are connected but refused their passwords — no channels until they are fixed in Inventory: {authFailedDevices.map(d => d.name).join(', ')}.</>}
+          </span>
+        </div>
+      )}
 
       <div className={`dashboard-content ${viewMode}`}>
         {filteredChannels.length === 0 ? (

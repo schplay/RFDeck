@@ -40,6 +40,12 @@ export class DeviceManagerService extends EventEmitter {
   // sends nothing, and that silence must not read as a frozen feed. Clients use
   // this, broadcast as a heartbeat, to decide what is stale.
   private lastSeen = new Map<string, number>();
+
+  // Devices that are reachable but refused the stored password, with the
+  // reason. Reachable-but-refused looks identical to healthy from the outside
+  // — the device is "online" — while no channel will ever appear. Tracked so
+  // it can be shown, and replayed to a client that connects later.
+  private authFailed = new Map<string, string>();
   private readonly LOST_DEBOUNCE_MS = 2000;
   // Debounce: avoid triggering multiple scans in quick succession when several
   // devices drop at once (e.g. network switch reboot).
@@ -245,6 +251,10 @@ export class DeviceManagerService extends EventEmitter {
       }
     }
     this.genuinelyOnlineIps.delete(ip);
+    // A fresh client will re-evaluate the password; do not carry the verdict.
+    if (this.authFailed.delete(id)) {
+      this.io.emit('device:auth', { ip, port, failed: false, reason: null });
+    }
     const pendingLost = this.lostTimers.get(ip);
     if (pendingLost) { clearTimeout(pendingLost); this.lostTimers.delete(ip); }
     // Allow the device to be re-discovered (clears seenIps in DiscoveryService)
@@ -269,6 +279,22 @@ export class DeviceManagerService extends EventEmitter {
     // are not telemetry. G3/G4 polls at a fixed rate, so 'state' covers it.
     client.on('alive', () => {
       this.lastSeen.set(id, Date.now());
+    });
+
+    // Reachable, but the subscription that carries channel data was refused.
+    // Broadcast it: this is the state an operator otherwise discovers only by
+    // noticing that a connected device has no cards, and then reading logs.
+    client.on('auth-failed', ({ reason }: { reason: string }) => {
+      if (this.authFailed.get(id) === reason) return;
+      this.authFailed.set(id, reason);
+      log.warn(`[DeviceManager] ${ip} connected but refused the subscription — ${reason}`);
+      this.io.emit('device:auth', { ip, port, failed: true, reason });
+    });
+
+    client.on('auth-ok', () => {
+      if (!this.authFailed.delete(id)) return;
+      log.info(`[DeviceManager] ${ip} accepted the password — subscription restored`);
+      this.io.emit('device:auth', { ip, port, failed: false, reason: null });
     });
 
     client.on('connected', async () => {
@@ -1050,6 +1076,17 @@ export class DeviceManagerService extends EventEmitter {
 
   getChannelSnapshot(): Channel[] {
     return Array.from(this.channelCache.values());
+  }
+
+  // Devices currently refusing the stored password, for replay to a client that
+  // connects after the failure was first seen.
+  getAuthFailures(): Array<{ ip: string; port: number; reason: string }> {
+    const out: Array<{ ip: string; port: number; reason: string }> = [];
+    for (const [id, reason] of this.authFailed) {
+      const [ip, portStr] = id.split(':');
+      out.push({ ip, port: Number(portStr), reason });
+    }
+    return out;
   }
 
   // Liveness snapshot for clients: when each online device was last in contact.

@@ -116,6 +116,24 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
     return publicDevice(device);
   });
 
+  // Reconnect now, rather than waiting for the next probe.
+  //
+  // The SSC client stops retrying a refused subscription on purpose — hammering
+  // a device with a wrong password is not useful — so after fixing the password
+  // the operator needs a way to say "try again". Re-tracking builds a fresh
+  // client with the stored credentials, which is exactly what a password save
+  // does; this just makes it available on its own.
+  fastify.post('/inventory/:id/reconnect', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const device = await prisma.inventoryDevice.findUnique({ where: { id } });
+    if (!device) return reply.code(404).send({ error: 'Device not found' });
+    if (device.active === false) {
+      return reply.code(409).send({ error: 'Device is inactive; activate it to connect.' });
+    }
+    (fastify as any).deviceManager.updateTrackedDevice(device);
+    return { success: true };
+  });
+
   // DELETE device
   fastify.delete('/inventory/:id', async (request, reply) => {
     const { id } = request.params as { id: string };

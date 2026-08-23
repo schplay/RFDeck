@@ -152,6 +152,12 @@ function getSocket(): Socket {
     useChannelStore.getState().applyHeartbeat(payload);
   });
 
+  // Reachable but refusing the stored password. Distinct from offline: the
+  // device answers, it just will not hand over channel data.
+  _socket.on('device:auth', (data: { ip: string; port: number; failed: boolean; reason: string | null }) => {
+    useDeviceStore.getState().setDeviceAuth(data.ip, data.port, data.failed ? (data.reason ?? 'Password refused') : null);
+  });
+
   // SSCv2 device metadata (firmware, serial, mac)
   _socket.on('device:metadata', (data: { ip: string; port: number; deviceName?: string; firmware?: string; serial?: string; mac?: string; model?: string }) => {
     useDeviceStore.getState().updateDeviceMetadata(data.ip, data.port, data);

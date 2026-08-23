@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Device } from '@rfdeck/shared-types';
-import { API_BASE } from '../lib/api';
+import { API_BASE, apiFetch } from '../lib/api';
 
 export type DeviceType = 'input' | 'output';
 
@@ -16,6 +16,10 @@ export interface InventoryDevice {
   // Whether a device password is stored. The password itself is never sent to
   // a client — it unlocks the wireless hardware and stays server-side.
   hasPassword?: boolean;
+  // Set when the device is reachable but refused the stored password. The
+  // device counts as online — it answers — yet no channel data will arrive
+  // until this is fixed, so it is shown as its own condition, not as healthy.
+  authFailed?: string | null;
   deviceType: DeviceType;
   // Operator-controlled. Inactive = intentionally powered off / not in this show.
   // Inactive devices are untracked server-side and hidden from the dashboard.
@@ -64,6 +68,10 @@ interface DeviceState {
   updateDevice: (id: string, partial: Partial<Device>) => void;
   markDeviceOnline: (ip: string, port: number, metadata?: Partial<InventoryDevice>) => void;
   markDeviceOffline: (ip: string, port: number) => void;
+  /** Reachable but refusing the password (reason), or null when resolved. */
+  setDeviceAuth: (ip: string, port: number, reason: string | null) => void;
+  /** Rebuild the server-side connection now, using the stored credentials. */
+  reconnectDevice: (id: string) => Promise<void>;
 
   discovered: DiscoveredDevice[];
   setDiscovered: (devices: DiscoveredDevice[]) => void;
@@ -207,6 +215,23 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
         ),
       };
     });
+  },
+
+  setDeviceAuth: (ip, port, reason) =>
+    set((state) => ({
+      inventory: state.inventory.map((d) =>
+        d.ip === ip && d.port === port ? { ...d, authFailed: reason } : d
+      ),
+    })),
+
+  reconnectDevice: async (id) => {
+    // The server re-tracks the device and clears the refusal itself; the
+    // outcome arrives over the socket as device:auth, so nothing to set here.
+    try {
+      await apiFetch(`/inventory/${id}/reconnect`, { method: 'POST' });
+    } catch (err) {
+      console.error('Failed to reconnect device:', err);
+    }
   },
 
   updateDeviceMetadata: (ip, port, meta) =>

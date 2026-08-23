@@ -108,6 +108,11 @@ export default fp(async (fastify, opts) => {
     // Liveness too, so a fresh client is not left guessing until the next
     // broadcast and does not flash every channel as stale on arrival.
     socket.emit('device:heartbeat', deviceManager.getHeartbeat());
+    // Devices refusing their password — a client arriving after the refusal
+    // would otherwise see them as simply online.
+    for (const f of deviceManager.getAuthFailures()) {
+      socket.emit('device:auth', { ...f, failed: true });
+    }
     for (const channel of deviceManager.getChannelSnapshot()) {
       socket.emit('channel:telemetry', channel);
     }

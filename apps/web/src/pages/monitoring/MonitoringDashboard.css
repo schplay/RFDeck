@@ -280,3 +280,19 @@
 /* One indicator is enough — suppress per-card badges during a full outage */
 .dashboard-page.is-disconnected .channel-stale::after { display: none; }
 .dashboard-page.is-disconnected .channel-stale { opacity: 1; filter: none; }
+
+/* Devices connected but refusing their password — explains missing cards. */
+.dashboard-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 0.9em;
+}
+.dashboard-notice.auth-failed {
+  background: color-mix(in srgb, var(--color-warning, #d97706) 14%, transparent);
+  color: var(--color-warning, #d97706);
+  border-left: 3px solid var(--color-warning, #d97706);
+}

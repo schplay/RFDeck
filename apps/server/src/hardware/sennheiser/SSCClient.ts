@@ -317,6 +317,8 @@ export class SSCClient extends EventEmitter {
 
       log.debug(`[SSCClient] ${this.ip} SSE stream opened`);
       this.sseActive   = true;
+      // The subscription was accepted, so whatever password is stored works.
+      this.emit('auth-ok');
       this.sseStarting = false;
       if (!this.isConnected) {
         this.isConnected = true;
@@ -470,6 +472,13 @@ export class SSCClient extends EventEmitter {
         // Do NOT reset activeUrl/baseUrl/isSSCv2 — the device IS SSCv2 and is reachable.
         // poll() will keep the device online and use pollSSCv2Direct() as a fallback.
         this.ssePermFailed = true;
+        // This is the one state an operator cannot diagnose from the UI without
+        // help: the device shows connected, yet no channel ever appears. Say so.
+        this.emit('auth-failed', {
+          reason: this.password
+            ? 'The device rejected the stored password.'
+            : 'The device requires a password and none is stored.',
+        });
       } else {
         log.debug(`[SSCClient] ${this.ip} SSE → ${status ?? err.code ?? err.message}`);
       }

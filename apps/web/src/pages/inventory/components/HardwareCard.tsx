@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle, XCircle, PowerOff } from 'lucide-react';
+import { CheckCircle, XCircle, PowerOff, Ban } from 'lucide-react';
 import { InventoryDevice } from '../../../stores/deviceStore';
 import './HardwareCard.css';
 
@@ -15,17 +15,27 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
   // Inactive devices are intentionally powered off — show them as dimmed/neutral
   // rather than as an error state, so real offline faults still stand out.
   const isInactive = device.active === false;
+  // Reachable but refusing the password: a third state between online and
+  // offline. Shown as a warning rather than green, because green sent the
+  // operator to the dashboard looking for cards that could never appear.
+  const authFailed = !isInactive && device.online && !!device.authFailed;
   const borderColor = isInactive
     ? 'rgba(132, 148, 149, 0.2)'
-    : device.online
-      ? 'rgba(107, 255, 143, 0.2)'
-      : 'rgba(255, 180, 171, 0.2)';
+    : authFailed
+      ? 'rgba(217, 119, 6, 0.3)'
+      : device.online
+        ? 'rgba(107, 255, 143, 0.2)'
+        : 'rgba(255, 180, 171, 0.2)';
   const topBarColor = isInactive
     ? 'var(--color-on-surface-variant)'
-    : device.online ? 'var(--color-success)' : 'var(--color-error)';
+    : authFailed
+      ? 'var(--color-warning, #d97706)'
+      : device.online ? 'var(--color-success)' : 'var(--color-error)';
 
   const StatusIcon = isInactive ? (
     <PowerOff size={16} color="var(--color-on-surface-variant)" />
+  ) : authFailed ? (
+    <Ban size={16} color="var(--color-warning, #d97706)" />
   ) : device.online ? (
     <CheckCircle size={16} color="var(--color-success)" />
   ) : (
@@ -59,6 +69,7 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
           <span className="card-name">
             {device.name}
             {isInactive && <span className="inactive-tag">Inactive</span>}
+            {authFailed && <span className="auth-tag" title={device.authFailed ?? undefined}>Password refused</span>}
           </span>
           <span className="card-model">{device.manufacturer} · {device.model}</span>
         </div>
@@ -95,6 +106,7 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
             <h3 className="card-name">
               {device.name}
               {isInactive && <span className="inactive-tag">Inactive</span>}
+            {authFailed && <span className="auth-tag" title={device.authFailed ?? undefined}>Password refused</span>}
             </h3>
             <p className="card-model">{device.manufacturer} · {device.model}</p>
           </div>

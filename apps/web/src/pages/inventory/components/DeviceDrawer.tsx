@@ -17,7 +17,7 @@ interface Props {
 }
 
 export function DeviceDrawer({ device, onClose }: Props) {
-  const { removeFromInventory, updateInventoryDevice, setDeviceActive } = useDeviceStore();
+  const { removeFromInventory, updateInventoryDevice, setDeviceActive, reconnectDevice } = useDeviceStore();
   const { socket, isConnected } = useSocket();
   // The patch lives on the server: the interface is in the rack, and every
   // client should see the same wiring.
@@ -35,6 +35,9 @@ export function DeviceDrawer({ device, onClose }: Props) {
   const [draftIp, setDraftIp] = useState('');
   const [draftPort, setDraftPort] = useState('');
   const [draftPassword, setDraftPassword] = useState('');
+  // Explicit, because a blank field means "keep" — there was otherwise no way
+  // to say "this device has no password any more".
+  const [clearPassword, setClearPassword] = useState(false);
   const [draftDeviceType, setDraftDeviceType] = useState<'input' | 'output'>('input');
   const [saving, setSaving] = useState(false);
 
@@ -45,6 +48,7 @@ export function DeviceDrawer({ device, onClose }: Props) {
       setDraftIp(device.ip);
       setDraftPort(String(device.port));
       setDraftPassword('');
+      setClearPassword(false);
       setDraftDeviceType(device.deviceType ?? 'input');
       setIsEditing(false);
     }
@@ -70,6 +74,7 @@ export function DeviceDrawer({ device, onClose }: Props) {
     setDraftIp(device.ip);
     setDraftPort(String(device.port));
     setDraftPassword('');
+    setClearPassword(false);
     setDraftDeviceType(device.deviceType ?? 'input');
     setIsEditing(false);
   };
@@ -86,8 +91,11 @@ export function DeviceDrawer({ device, onClose }: Props) {
       port: isNaN(portNum) ? device.port : portNum,
       deviceType: draftDeviceType,
     };
-    // Only include password if the user typed something; blank = keep existing
-    if (draftPassword.trim()) update.password = draftPassword.trim();
+    // Three distinct intents, and the server must be able to tell them apart:
+    // omit the key to keep the stored password, send null to remove it, send
+    // a value to replace it. A blank field alone cannot express "remove".
+    if (clearPassword) update.password = null;
+    else if (draftPassword.trim()) update.password = draftPassword.trim();
     await updateInventoryDevice(device.id, update);
     setSaving(false);
     setIsEditing(false);
@@ -168,6 +176,26 @@ export function DeviceDrawer({ device, onClose }: Props) {
                   <span>Device set inactive — monitoring paused</span>
                 </div>
               ) : (
+                device.online && device.authFailed ? (
+                  // Reachable but refusing the password. Its own state, not
+                  // "online": the device answers, yet no channel will ever
+                  // appear until the password is fixed — and a plain green
+                  // banner sent the operator to the dashboard looking for cards.
+                  <div className="status-banner auth-failed">
+                    <Ban size={14} />
+                    <span>
+                      Connected, but the device refused the password — no channel data.
+                      <span className="banner-reason">{device.authFailed}</span>
+                    </span>
+                    <button
+                      className="banner-action"
+                      onClick={() => reconnectDevice(device.id)}
+                      title="Reconnect now with the stored password"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                ) : (
                 <div className={`status-banner ${device.online ? 'online' : 'offline'}`}>
                   {device.online ? <Wifi size={14} /> : <WifiOff size={14} />}
                   <span>{device.online ? 'Device Online' : 'Device Offline / Unreachable'}</span>
@@ -177,6 +205,7 @@ export function DeviceDrawer({ device, onClose }: Props) {
                     </span>
                   )}
                 </div>
+                )
               )}
 
               {/* Scrollable body */}
@@ -261,6 +290,7 @@ export function DeviceDrawer({ device, onClose }: Props) {
                         />
                       </div>
                       {device.manufacturer === 'Sennheiser' && (
+                        <>
                         <div className="drawer-row">
                           <span className="drawer-row-label">Password</span>
                           <input
@@ -268,9 +298,28 @@ export function DeviceDrawer({ device, onClose }: Props) {
                             className="drawer-input drawer-edit-input"
                             value={draftPassword}
                             onChange={e => setDraftPassword(e.target.value)}
-                            placeholder={device.hasPassword ? '●●●● (set — leave blank to keep)' : 'No password'}
+                            disabled={clearPassword}
+                            placeholder={
+                              clearPassword ? 'Will be removed on save'
+                              : device.hasPassword ? '●●●● (set — leave blank to keep)'
+                              : 'No password'
+                            }
                           />
                         </div>
+                        {device.hasPassword && (
+                          <div className="drawer-row">
+                            <span className="drawer-row-label" />
+                            <label className="drawer-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={clearPassword}
+                                onChange={e => setClearPassword(e.target.checked)}
+                              />
+                              Remove the stored password
+                            </label>
+                          </div>
+                        )}
+                        </>
                       )}
                     </>
                   ) : (
