@@ -35,6 +35,8 @@ export class DeviceManagerService extends EventEmitter {
   private lostTimers = new Map<string, NodeJS.Timeout>();
   // Devices whose loss was announced, so the return can be announced too.
   private lostIps = new Set<string>();
+  // Scans on a cadence while any tracked device is unreachable. See start().
+  private recoveryTimer: NodeJS.Timeout | null = null;
   // Low-battery readings awaiting a second consecutive sample. One reading is
   // not evidence: transmitters report garbage during a re-sync, and a single
   // bad sample used to raise a CRITICAL alert on a full pack.
@@ -144,9 +146,29 @@ export class DeviceManagerService extends EventEmitter {
     setTimeout(startupScan, 2_000);
     setTimeout(startupScan, 30_000);
     setTimeout(startupScan, 75_000);
+
+    // Recovery is not an event, it is a state: as long as any active device is
+    // unreachable, keep scanning until it is found. A fixed burst of retries
+    // assumed the device would be back within a couple of minutes; a rack
+    // that comes up slowly, or a device re-enabled long after it moved,
+    // outlived the burst and then nothing ever looked for it again. RFDeck
+    // runs unattended — a tracked device must never need a human to find it.
+    this.recoveryTimer = setInterval(() => {
+      let unreachable = 0;
+      for (const [key, client] of this.clients) {
+        if (key.endsWith('-legacy')) continue; // counted via its base entry
+        const legacy = this.clients.get(`${key}-legacy`);
+        if (!client.isConnected && !(legacy?.isConnected)) unreachable++;
+      }
+      if (unreachable > 0) {
+        log.debug(`[DeviceManager] ${unreachable} tracked device(s) unreachable — periodic recovery scan`);
+        this.maybeAutoScan();
+      }
+    }, 60_000);
   }
 
   stop() {
+    if (this.recoveryTimer) clearInterval(this.recoveryTimer);
     this.discovery.stop();
     for (const client of this.clients.values()) {
       client.stopPolling();
@@ -385,14 +407,8 @@ export class DeviceManagerService extends EventEmitter {
         // disable → power off → power on → enable workflow left G3 units
         // unreachable indefinitely. Scan now, and again while the hardware
         // may still be booting.
-        log.info(`[DeviceManager] ${ip} unreachable at its recorded address — scanning for it`);
+        log.warn(`[DeviceManager] ${ip} unreachable at its recorded address — scanning until it is found`);
         this.maybeAutoScan();
-        for (const delay of [30_000, 90_000]) {
-          setTimeout(() => {
-            const c = this.clients.get(id) ?? this.clients.get(`${id}-legacy`);
-            if (c && !c.isConnected) this.maybeAutoScan();
-          }, delay);
-        }
       }
     });
 
