@@ -876,9 +876,11 @@ export class DeviceManagerService extends EventEmitter {
         const isMuted = rxData.mute === true;
         // squelch = transmitter below threshold (TX_Mute from device)
         const isSquelch = rxData.squelch === true;
+        // TX mute is the performer's own switch — deliberate, not a fault, so
+        // it no longer degrades status to WARNING. It travels as its own flag
+        // and the views render it as a mute.
         const status = isMuted ? 'WARNING'
                      : (rfKnown && rfA < 20) ? 'CRITICAL'
-                     : isSquelch ? 'WARNING'
                      : 'ACTIVE';
 
         // Battery may be absent (no transmitter paired) — distinguish that from
@@ -905,6 +907,7 @@ export class DeviceManagerService extends EventEmitter {
           afLevel: afLevel,
           batteryPercent,
           isMuted,
+          isTxMuted: isSquelch,
           gain: Number.isFinite(rawGain) ? rawGain : 0,
           status,
         };

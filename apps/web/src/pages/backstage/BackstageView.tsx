@@ -16,6 +16,7 @@ function batteryIcon(pct?: number): string {
 
 function statusLabel(ch: Channel): string {
   if (ch.isMuted) return 'MUTED';
+  if (ch.isTxMuted) return 'TX MUTED';
   if (ch.status === 'CRITICAL') return 'DROPOUT';
   if (ch.status === 'WARNING') return 'LOW SIGNAL';
   return 'ON AIR';
@@ -125,7 +126,7 @@ export default function BackstageView() {
       <div className="bs-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
         {displayChannels.map((ch) => {
           const st = statusLabel(ch);
-          const stClass = ch.isMuted ? 'muted' : ch.status === 'CRITICAL' ? 'critical' : ch.status === 'WARNING' ? 'warning' : 'active';
+          const stClass = (ch.isMuted || ch.isTxMuted) ? 'muted' : ch.status === 'CRITICAL' ? 'critical' : ch.status === 'WARNING' ? 'warning' : 'active';
           return (
             <div key={ch.id} ref={setFlipRef(ch.id)} className={`bs-card ${stClass}`} {...dragHandlers(ch)}>
               <div className="bs-card-header">

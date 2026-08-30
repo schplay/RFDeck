@@ -79,6 +79,9 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   const StatusIcon = () => {
     if (!deviceOnline) return <WifiOff size={18} className="text-muted" />;
     if (channel.status === 'CRITICAL') return <AlertCircle size={18} className="text-error" />;
+    // A performer's own mute switch is a state, not a problem — showing a
+    // warning triangle for it sent operators hunting for a fault.
+    if (channel.isTxMuted) return <VolumeX size={18} className="text-muted" aria-label="Muted at the transmitter" />;
     if (channel.status === 'WARNING') return <AlertTriangle size={18} className="text-warning" />;
     return isOutput
       ? <Headphones size={18} className="text-primary" />
@@ -137,7 +140,7 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   }
 
   return (
-    <Card statusBorder={statusBorder} className={`channel-strip ${channel.isMuted ? 'is-muted' : ''}`}>
+    <Card statusBorder={statusBorder} className={`channel-strip ${channel.isMuted || channel.isTxMuted ? 'is-muted' : ''}`}>
       <div className="cs-header">
         <div>
           <h3 className="cs-title">{channel.name || `CH ${channel.channelIndex}`}</h3>
