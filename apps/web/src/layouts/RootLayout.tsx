@@ -4,6 +4,8 @@ import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, Clipboard
 import { useSocket } from '../hooks/useSocket';
 import { AudioMonitor } from '../components/audio/AudioMonitor';
 import { AlertFeed } from '../components/alerts/AlertFeed';
+// Bundled import so the path survives base './' and the Electron file:// build.
+import logoMark from '../assets/logo-mark.png';
 import './RootLayout.css';
 
 export default function RootLayout() {
@@ -32,6 +34,7 @@ export default function RootLayout() {
           {navOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
         <div className="brand brand-mobile">
+          <img src={logoMark} alt="" className="brand-logo" />
           RFDeck
           {statusDot}
         </div>
@@ -41,6 +44,7 @@ export default function RootLayout() {
 
       <nav className={`sidebar ${navOpen ? 'open' : ''}`}>
         <div className="brand">
+          <img src={logoMark} alt="" className="brand-logo" />
           RFDeck
           {statusDot}
         </div>

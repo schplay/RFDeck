@@ -420,3 +420,19 @@
   .freq-table-wrapper { overflow-x: auto; }
   .freq-table { min-width: 560px; }
 }
+
+/* ── Mobile: the workspace's two columns stack. ─────────────────────────── */
+@media (max-width: 768px) {
+  .rf-page {
+    height: auto;
+    overflow: visible;
+  }
+  .rf-workspace {
+    flex-direction: column;
+    min-height: auto;
+  }
+  .rf-main-col { overflow-y: visible; }
+  .rf-sidebar { width: 100%; }
+  .spectrum-card { flex: 0 0 auto; }
+  .table-card { min-height: auto; }
+}
