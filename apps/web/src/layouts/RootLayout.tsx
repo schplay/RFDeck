@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users } from 'lucide-react';
+import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, Menu, X } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { AudioMonitor } from '../components/audio/AudioMonitor';
 import { AlertFeed } from '../components/alerts/AlertFeed';
@@ -8,15 +8,44 @@ import './RootLayout.css';
 
 export default function RootLayout() {
   const { isConnected } = useSocket();
+  // Mobile only: the sidebar becomes an off-canvas drawer behind a hamburger.
+  // Desktop ignores this state entirely — the sidebar is always visible there.
+  const [navOpen, setNavOpen] = useState(false);
+
+  const statusDot = (
+    <div
+      style={{ marginLeft: '8px', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isConnected ? 'var(--color-success)' : 'var(--color-error)' }}
+      title={isConnected ? 'Connected to Server' : 'Disconnected'}
+    />
+  );
 
   return (
     <div className="layout-container">
-      <nav className="sidebar">
+      {/* Mobile top bar — hidden on desktop via CSS */}
+      <div className="mobile-topbar">
+        <button
+          className="mobile-nav-toggle"
+          onClick={() => setNavOpen(o => !o)}
+          aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
+          aria-expanded={navOpen}
+        >
+          {navOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+        <div className="brand brand-mobile">
+          RFDeck
+          {statusDot}
+        </div>
+      </div>
+
+      {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
+
+      <nav className={`sidebar ${navOpen ? 'open' : ''}`}>
         <div className="brand">
           RFDeck
-          <div style={{ marginLeft: '8px', width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isConnected ? 'var(--color-success)' : 'var(--color-error)' }} title={isConnected ? "Connected to Server" : "Disconnected"} />
+          {statusDot}
         </div>
-        <div className="nav-links">
+        {/* Any link tap closes the drawer; harmless on desktop. */}
+        <div className="nav-links" onClick={() => setNavOpen(false)}>
           <NavLink to="/" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             <LayoutDashboard size={20} />
             Dashboard
@@ -55,9 +84,9 @@ export default function RootLayout() {
         </div>
       </nav>
       <main className="main-content">
-        <header style={{ padding: '16px 24px', display: 'flex', justifyContent: 'flex-end', gap: '16px', alignItems: 'center', borderBottom: '1px solid var(--color-surface-container-high)' }}>
+        <header className="topbar-tools">
           <AudioMonitor />
-          <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--color-surface-container-highest)' }} />
+          <div className="topbar-divider" />
           <AlertFeed />
         </header>
         <Outlet />

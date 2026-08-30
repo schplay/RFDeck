@@ -268,3 +268,16 @@
   color: var(--color-on-surface);
   overflow-x: auto;
 }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .settings-page { padding: 12px; gap: 16px; }
+  .tabs-list { overflow-x: auto; }
+  .settings-card { padding: 16px; }
+  .form-group-row { flex-wrap: wrap; }
+  .settings-actions-row { flex-wrap: wrap; gap: 8px; }
+  .audio-patch-devices { flex-wrap: wrap; }
+  /* Patch rows keep their columns and scroll sideways in their own box. */
+  .audio-patch-table { overflow-x: auto; }
+  .settings-table { display: block; overflow-x: auto; }
+}

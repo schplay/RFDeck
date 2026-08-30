@@ -854,3 +854,27 @@
   white-space: nowrap;
 }
 .sm-roster-link:hover { color: var(--color-primary); }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Two side-by-side panels stack: show list on top, detail below. */
+  .sm-root { flex-direction: column; }
+  .sm-list-panel {
+    width: 100%;
+    max-height: 35vh;
+    border-right: none;
+    border-bottom: 1px solid var(--color-surface-container-highest);
+  }
+  .sm-detail-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .sm-detail-actions { flex-wrap: wrap; }
+  .sm-tabs { overflow-x: auto; }
+  .sm-act-bar { flex-wrap: wrap; gap: 8px; }
+
+  /* Roster rows are a six-column grid — sideways scroll, not squashed. */
+  .sm-players-scroll { overflow-x: auto; }
+  .sm-player-list { min-width: 720px; }
+  .sm-add-player-form { flex-wrap: wrap; gap: 8px; }
+}

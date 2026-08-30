@@ -125,3 +125,12 @@
   margin: 0;
   max-width: 420px;
 }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .performers-page { padding: 12px; gap: 12px; }
+  .performers-header { flex-direction: column; gap: 6px; }
+  .performers-add { grid-template-columns: 1fr; }
+  .performers-list-header,
+  .performers-row { grid-template-columns: 1fr 1.4fr 44px 36px; gap: 6px; padding: 8px; }
+}

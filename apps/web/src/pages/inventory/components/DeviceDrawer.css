@@ -489,3 +489,8 @@
 }
 .status-banner .banner-action:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
 .drawer-checkbox { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85em; cursor: pointer; }
+
+/* ── Mobile: the drawer takes the whole screen. ─────────────────────────── */
+@media (max-width: 768px) {
+  .drawer-content { width: 100vw; }
+}

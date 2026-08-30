@@ -317,3 +317,36 @@
   background: color-mix(in srgb, var(--color-warning, #d97706) 14%, transparent);
   color: var(--color-warning, #d97706);
 }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .dashboard-page {
+    padding: 12px;
+    height: auto;
+    flex: 1;
+    min-height: 0;
+  }
+  .dashboard-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .dashboard-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .search-bar { width: 100%; }
+  .toolbar-group { flex-wrap: wrap; gap: 8px; }
+
+  /* One card per row; the card itself flexes instead of holding 280px. */
+  .dashboard-content.grid > div { width: 100%; }
+  .dashboard-content.grid .channel-strip { width: 100%; }
+
+  /* The list is a wide grid — let it scroll sideways inside its own box
+     rather than stretching the page. */
+  .dashboard-content.list { overflow-x: auto; }
+  .channel-list { min-width: 640px; }
+
+  .dashboard-notice { margin: 0 0 12px; }
+}

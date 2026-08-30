@@ -286,3 +286,27 @@
   align-items: center;
   gap: 10px;
 }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .inventory-page { padding: 12px; gap: 12px; }
+  .inventory-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .inventory-stats { flex-wrap: wrap; }
+  .inventory-header-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .inventory-header-actions .btn-primary,
+  .inventory-header-actions .btn-secondary { flex: 1; justify-content: center; }
+
+  .filters-toolbar { flex-wrap: wrap; gap: 8px; }
+  .search-wrapper { width: 100%; }
+  .hardware-grid { grid-template-columns: 1fr; }
+
+  /* The list rows are a wide grid — sideways scroll in their own container. */
+  .hardware-list { overflow-x: auto; }
+}

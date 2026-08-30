@@ -255,3 +255,8 @@
 }
 
 .bc-alert-warn { color: var(--color-warning, #f0a63a); }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .battery-page { padding: 12px; gap: 16px; }
+}
