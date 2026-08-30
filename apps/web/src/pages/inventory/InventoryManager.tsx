@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Search, Grid, List, Wifi, WifiOff, ChevronDown, PowerOff, ArrowUpDown } from 'lucide-react';
+import { Plus, Search, Grid, List, Wifi, WifiOff, ChevronDown, Power, PowerOff, ArrowUpDown } from 'lucide-react';
 import { useDeviceStore, InventoryDevice } from '../../stores/deviceStore';
 import { HardwareCard } from './components/HardwareCard';
 import { DeviceDrawer } from './components/DeviceDrawer';
@@ -38,7 +38,7 @@ const SORTERS: Record<SortKey, (a: InventoryDevice, b: InventoryDevice) => numbe
 };
 
 export default function InventoryManager() {
-  const { inventory, setDeviceActive } = useDeviceStore();
+  const { inventory, setDeviceActive, setAllDevicesActive } = useDeviceStore();
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
@@ -101,10 +101,42 @@ export default function InventoryManager() {
             <span className="stat-badge stat-total">{inventory.length} Total</span>
           </div>
         </div>
-        <button className="btn-primary" onClick={() => setAddDialogOpen(true)}>
-          <Plus size={16} />
-          Add Device
-        </button>
+        <div className="inventory-header-actions">
+          {/* Start/end-of-day switch. One press instead of a toggle per row:
+              disabling before powering the rack down is what keeps the log
+              clean, and it only happens if it is not a chore. */}
+          {inventory.length > 0 && (
+            activeDevices.length > 0 ? (
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  if (window.confirm(
+                    `Disable all ${activeDevices.length} active device(s)?\n\n` +
+                    'They stop being monitored — no cards, no alerts — until re-enabled. ' +
+                    'Do this before powering the rack down.'
+                  )) setAllDevicesActive(false);
+                }}
+                title="End of day: stop monitoring every device before powering the rack down"
+              >
+                <PowerOff size={16} />
+                Disable All
+              </button>
+            ) : (
+              <button
+                className="btn-secondary"
+                onClick={() => setAllDevicesActive(true)}
+                title="Start of day: resume monitoring every device"
+              >
+                <Power size={16} />
+                Enable All
+              </button>
+            )
+          )}
+          <button className="btn-primary" onClick={() => setAddDialogOpen(true)}>
+            <Plus size={16} />
+            Add Device
+          </button>
+        </div>
       </div>
 
       {/* Filters Toolbar */}

@@ -280,3 +280,9 @@
   margin: 0;
   line-height: 1.6;
 }
+
+.inventory-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}

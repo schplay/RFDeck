@@ -61,6 +61,8 @@ interface DeviceState {
   removeFromInventory: (id: string) => Promise<void>;
   updateInventoryDevice: (id: string, partial: Partial<InventoryDevice>) => Promise<void>;
   setDeviceActive: (id: string, active: boolean) => Promise<void>;
+  /** Start/end-of-day switch: every device at once. */
+  setAllDevicesActive: (active: boolean) => Promise<void>;
   updateDeviceMetadata: (ip: string, port: number, meta: { deviceName?: string; firmware?: string; serial?: string; mac?: string; model?: string }) => void;
 
   devices: Device[];
@@ -170,6 +172,24 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
       set((state) => ({
         inventory: state.inventory.map((d) => (d.id === id ? { ...d, active: prev } : d)),
       }));
+    }
+  },
+
+  setAllDevicesActive: async (active) => {
+    // Optimistic like the single toggle; a failure reloads the truth rather
+    // than trying to remember which of many rows to revert.
+    const before = get().inventory;
+    set((state) => ({
+      inventory: state.inventory.map((d) => ({ ...d, active })),
+    }));
+    try {
+      await apiFetch('/inventory/active', {
+        method: 'PATCH',
+        body: JSON.stringify({ active }),
+      });
+    } catch (err) {
+      console.error('Failed to set all devices active state:', err);
+      set({ inventory: before });
     }
   },
 

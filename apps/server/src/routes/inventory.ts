@@ -87,6 +87,28 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
     return publicDevice(device);
   });
 
+  // PATCH set every device active/inactive at once — the start-of-day /
+  // end-of-day switch. Powering a rack down without disabling first floods
+  // the log with dropouts; doing it one device at a time on a large rack is
+  // why nobody bothers. Only devices whose state actually changes are touched.
+  fastify.patch('/inventory/active', async (request) => {
+    const { active } = request.body as { active: boolean };
+
+    const toChange = await prisma.inventoryDevice.findMany({
+      where: { active: { not: active } },
+    });
+
+    for (const device of toChange) {
+      await prisma.inventoryDevice.update({ where: { id: device.id }, data: { active } });
+      (fastify as any).deviceManager.setDeviceActive(device, active);
+      (fastify as any).io.emit('device:active-changed', {
+        id: device.id, ip: device.ip, port: device.port, active,
+      });
+    }
+
+    return { changed: toChange.length, active };
+  });
+
   // PUT update device
   fastify.put('/inventory/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
