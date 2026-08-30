@@ -25,7 +25,23 @@ function getSocket(): Socket {
 
   // Pass the PIN token through the handshake — the socket is gated alongside
   // REST, since control commands travel over it.
-  _socket = io(SOCKET_URL, { auth: { token: getToken() } });
+  // Bounded waits: the defaults let a reconnect attempt sit for 20s and back
+  // off toward 5s between tries, which is most of the "blank for half a
+  // minute" a phone sees after waking. On a LAN, either the server answers
+  // in a couple of seconds or it is down.
+  _socket = io(SOCKET_URL, {
+    auth: { token: getToken() },
+    timeout: 5_000,
+    reconnectionDelayMax: 2_000,
+  });
+
+  // A tab coming back from the background should not wait out the reconnect
+  // backoff that accumulated while its timers were frozen — ask immediately.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && _socket && !_socket.connected) {
+      _socket.connect();
+    }
+  });
 
   _socket.on('connect', () => {
     console.log('[RFDeck] Connected to server');

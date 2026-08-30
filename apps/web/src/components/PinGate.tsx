@@ -19,18 +19,37 @@ export function PinGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setPinRequiredHandler(() => setNeedsPin(true));
+
+    // This check must never hold the app hostage. A phone waking from
+    // background often has a half-open connection, and a fetch with no
+    // deadline hangs for the browser's own TCP give-up — about thirty
+    // seconds of nothing on screen. Cap the wait: past the deadline the app
+    // mounts and shows its own connection state, and if a PIN really is
+    // required, the first 401 re-raises this gate through the handler above,
+    // so nothing is bypassed — only un-blanked.
+    let done = false;
+    const settle = (fn: () => void) => { if (!done) { done = true; fn(); } };
+    const deadline = setTimeout(() => settle(() => {
+      setOffline(true);
+      setChecking(false);
+    }), 3_500);
+
     fetchAuthStatus()
-      .then(status => {
+      .then(status => settle(() => {
         setNeedsPin(!status.authenticated);
         setChecking(false);
-      })
-      .catch(() => {
+      }))
+      .catch(() => settle(() => {
         // Can't reach the server. Let the app mount and show its own connection
         // state rather than trapping the user behind a PIN box it can't verify.
         setOffline(true);
         setChecking(false);
-      });
-    return () => setPinRequiredHandler(null);
+      }));
+
+    return () => {
+      clearTimeout(deadline);
+      setPinRequiredHandler(null);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {

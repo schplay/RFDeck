@@ -10,6 +10,24 @@
     <title>RFDeck</title>
   </head>
   <body>
+    <!-- Inline, so the page is dark and branded from the first byte: with the
+         app dark-themed, an unstyled document reads as a broken blank screen
+         whenever script or network is slow — exactly when reassurance matters. -->
+    <style>
+      html, body { margin: 0; background: #101014; }
+      #root:empty::after {
+        content: 'RFDeck';
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 700 28px/1 system-ui, sans-serif;
+        letter-spacing: 0.06em;
+        color: #00dbe9;
+        opacity: 0.75;
+      }
+    </style>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
