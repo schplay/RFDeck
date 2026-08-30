@@ -39,6 +39,11 @@ export class DeviceManagerService extends EventEmitter {
   private recoveryTimer: NodeJS.Timeout | null = null;
   // One hardware-label write per tracking session; cleared on untrack.
   private labelRecorded = new Set<string>();
+  // Recent disconnect timestamps per ip. A device that reconnects inside the
+  // loss debounce never reaches the event log, so rapid churn was invisible —
+  // exactly the failure an operator watching a flapping card needs named.
+  private disconnectTimes = new Map<string, number[]>();
+  private unstableAlertedAt = new Map<string, number>();
   // Unmatched-discovery alerts already raised, so one orphan does not repeat
   // into the event log on every scan.
   private orphanAlerted = new Set<string>();
@@ -396,6 +401,27 @@ export class DeviceManagerService extends EventEmitter {
 
     client.on('disconnected', (err: any) => {
       log.info(`[DeviceManager] Disconnected from ${ip} — ${err}`);
+
+      // Three losses in five minutes is churn, not an outage. Each one may
+      // reconnect inside the debounce and never reach the event log on its
+      // own, so the pattern is reported explicitly — with the reason, since
+      // that is what identifies the cause.
+      const now = Date.now();
+      const recent = (this.disconnectTimes.get(ip) ?? []).filter(t => now - t < 300_000);
+      recent.push(now);
+      this.disconnectTimes.set(ip, recent);
+      if (recent.length >= 3 && now - (this.unstableAlertedAt.get(ip) ?? 0) > 600_000) {
+        this.unstableAlertedAt.set(ip, now);
+        this.emitAlert({
+          severity: 'WARNING',
+          type: 'DEVICE_UNSTABLE',
+          message: `"${this.deviceNames.get(id) ?? ip}" has lost its connection ${recent.length} times in five minutes`,
+          detail: `Latest reason: ${String(err ?? 'no reply')}`,
+          deviceId: id,
+          deviceName: this.deviceNames.get(id),
+        });
+      }
+
       this.clearChannelsForDevice(id);
       // Only notify the frontend when a device that was genuinely connected goes offline.
       // Debounced: if the device reconnects within LOST_DEBOUNCE_MS the timer is cancelled
@@ -868,7 +894,13 @@ export class DeviceManagerService extends EventEmitter {
         // Channel name priority: device-reported name → inventory device name → generic label
         const channelCount = Object.keys(sscState).filter(k => /^rx\d+$/.test(k)).length;
         const deviceLabel = inventoryName ?? baseId;
-        const fallbackName = channelCount > 1
+        // EW-DX pushes each channel as its own event, so counting the rx keys
+        // in ONE emission always said "single channel" and named an unnamed
+        // rx2 identically to rx1. The rx index itself, and any cached
+        // siblings, are what actually establish a multi-channel device.
+        const hasSiblings = [...this.channelCache.keys()]
+          .some(k => k.startsWith(`${deviceId}-`) && k !== channelId);
+        const fallbackName = (channelCount > 1 || index > 0 || hasSiblings)
           ? `${deviceLabel} CH${index + 1}`
           : deviceLabel;
 

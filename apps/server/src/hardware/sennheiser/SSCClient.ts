@@ -263,8 +263,14 @@ export class SSCClient extends EventEmitter {
       if (v !== undefined && v !== null) merged[k] = v;
     }
     this.ewdxChannelCache.set(chId, merged);
-    // Only emit once we have at least one meaningful signal field
-    if (merged.rf_quality !== undefined || merged.name !== undefined || merged.mute !== undefined) {
+    // Hold every channel until its NAME is known, not merely a signal field.
+    // After an SSE reconnect the cache is empty and metrics arrive before the
+    // channel resource does; emitting a nameless channel put a card up under
+    // the fallback label and renamed it seconds later — which re-sorts the
+    // dashboard and reads as a channel flapping. The name arrives within a
+    // second (initial fetch requests it first), so the hold is invisible.
+    if (merged.name === undefined) return;
+    {
       const norm = this.normalizeRx(this.buildEwdxRxObj(merged));
       if (norm) {
         this.failCount = 0;
