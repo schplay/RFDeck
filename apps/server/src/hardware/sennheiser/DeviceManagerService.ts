@@ -376,6 +376,23 @@ export class DeviceManagerService extends EventEmitter {
           this.maybeAutoScan();
         }, this.LOST_DEBOUNCE_MS);
         this.lostTimers.set(ip, timer);
+      } else {
+        // Never connected since (re)tracking: a re-enabled or freshly added
+        // device whose recorded IP has gone stale over a power cycle. Nothing
+        // else will ever look for it — device:lost fires only for devices
+        // that were online first, and G3/G4 discovery is scan-driven, with no
+        // mDNS announcement to fall back on the way SSC devices have. So the
+        // disable → power off → power on → enable workflow left G3 units
+        // unreachable indefinitely. Scan now, and again while the hardware
+        // may still be booting.
+        log.info(`[DeviceManager] ${ip} unreachable at its recorded address — scanning for it`);
+        this.maybeAutoScan();
+        for (const delay of [30_000, 90_000]) {
+          setTimeout(() => {
+            const c = this.clients.get(id) ?? this.clients.get(`${id}-legacy`);
+            if (c && !c.isConnected) this.maybeAutoScan();
+          }, delay);
+        }
       }
     });
 
