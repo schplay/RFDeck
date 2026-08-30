@@ -37,6 +37,11 @@ export class DeviceManagerService extends EventEmitter {
   private lostIps = new Set<string>();
   // Scans on a cadence while any tracked device is unreachable. See start().
   private recoveryTimer: NodeJS.Timeout | null = null;
+  // One hardware-label write per tracking session; cleared on untrack.
+  private labelRecorded = new Set<string>();
+  // Unmatched-discovery alerts already raised, so one orphan does not repeat
+  // into the event log on every scan.
+  private orphanAlerted = new Set<string>();
   // Low-battery readings awaiting a second consecutive sample. One reading is
   // not evidence: transmitters report garbage during a re-sync, and a single
   // bad sample used to raise a CRITICAL alert on a full pack.
@@ -279,6 +284,9 @@ export class DeviceManagerService extends EventEmitter {
       }
     }
     this.genuinelyOnlineIps.delete(ip);
+    this.labelRecorded.delete(id);
+    this.labelRecorded.delete(`${id}-legacy`);
+    this.orphanAlerted.delete(ip);
     // A fresh client will re-evaluate the password; do not carry the verdict.
     if (this.authFailed.delete(id)) {
       this.io.emit('device:auth', { ip, port, failed: false, reason: null });
@@ -299,6 +307,22 @@ export class DeviceManagerService extends EventEmitter {
   private setupClientListeners(client: ClientType, ip: string, port: number, id: string) {
     client.on('state', (stateTree: any) => {
       this.lastSeen.set(id, Date.now());
+
+      // Record the device's own label once per tracking session. It is the
+      // durable identity for hardware with no readable serial or MAC — set on
+      // the unit, it survives IP changes and inventory renames, and it is what
+      // discovery reports, so reconciliation can match on it later.
+      if (!this.labelRecorded.has(id)) {
+        const label = stateTree?.rx1?.name;
+        if (typeof label === 'string' && label.trim()) {
+          this.labelRecorded.add(id);
+          prisma.inventoryDevice.updateMany({
+            where: { ip },
+            data:  { hardwareLabel: label.trim() },
+          }).catch(() => { this.labelRecorded.delete(id); });
+        }
+      }
+
       this.normalizeAndEmit(id, stateTree);
     });
 
@@ -707,22 +731,50 @@ export class DeviceManagerService extends EventEmitter {
       // survives any address change. Only trusted when it matches exactly one
       // G3 row, so two units sharing a label cannot be cross-migrated.
       if (!stale && discoveredName?.trim()) {
+        // Discovery reports the label stored ON the hardware. Match it against
+        // the recorded hardware label first — inventory renames do not touch
+        // that — and against the row name as well, for rows that predate label
+        // recording and were never renamed. Only a unique match is trusted.
+        const label = discoveredName.trim();
         const byName = await prisma.inventoryDevice.findMany({
-          where: { port: 53212, active: true, name: discoveredName.trim(), NOT: { ip } },
+          where: {
+            port: 53212, active: true, NOT: { ip },
+            OR: [{ hardwareLabel: label }, { name: label }],
+          },
         });
         if (byName.length === 1) {
           stale = byName[0];
-          log.info(`[DeviceManager] tryAutoReconcile: matched "${discoveredName}" by name (no MAC on record)`);
+          log.warn(`[DeviceManager] tryAutoReconcile: matched "${label}" by hardware label (no MAC on record)`);
         } else if (byName.length > 1) {
           log.warn(
-            `[DeviceManager] ${byName.length} G3 devices named "${discoveredName}" — ` +
+            `[DeviceManager] ${byName.length} G3 devices labelled "${label}" — ` +
             `cannot tell which one moved to ${ip}; not reconciling`,
           );
         }
       }
 
       if (!stale) {
-        log.debug(`[DeviceManager] tryAutoReconcile: nothing at another IP matches ${ip} (mac=${mac ?? 'none'})`);
+        // A discovered G3 that matches nothing, while G3 rows sit unreachable,
+        // is almost certainly one of them wearing a new address that cannot be
+        // proven. Silence here left the operator staring at offline devices
+        // with no explanation — say it once, where they look.
+        const unreachable = await prisma.inventoryDevice.findMany({
+          where: { port: 53212, active: true },
+        });
+        const anyDown = unreachable.some(d =>
+          !this.clients.get(`${d.ip}:${d.port}`)?.isConnected &&
+          !this.clients.get(`${d.ip}:${d.port}-legacy`)?.isConnected);
+        if (anyDown && !this.orphanAlerted.has(ip)) {
+          this.orphanAlerted.add(ip);
+          this.emitAlert({
+            severity: 'WARNING',
+            type: 'DEVICE_UNMATCHED',
+            message: `A G3/G4 named "${discoveredName ?? ip}" was found at ${ip} but could not be matched to any offline device`,
+            detail: 'If this is one of the offline devices, update that device\'s IP in Inventory (or re-add it from Discovery). Its identity will be recorded so this never needs doing again.',
+            deviceId: `${ip}:${port}`,
+          });
+        }
+        log.warn(`[DeviceManager] tryAutoReconcile: nothing at another IP matches ${ip} (label="${discoveredName ?? ''}", mac=${mac ?? 'none'})`);
         return;
       }
       if (this.clients.get(`${stale.ip}:${stale.port}`)?.isConnected) {

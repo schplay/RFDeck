@@ -25,6 +25,10 @@ model InventoryDevice {
   mac                String?
   serial             String?
   firmware           String?
+  // The name stored on the hardware itself (a G3's channel label). Recorded at
+  // first connect and used to re-identify the device after an IP change even
+  // when the operator has renamed the inventory row and no MAC is on record.
+  hardwareLabel      String?
   addedAt            DateTime @default(now())
 }
 
