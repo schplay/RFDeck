@@ -106,7 +106,7 @@ export class DeviceManagerService extends EventEmitter {
     for (const device of this.discoveredCache.values()) {
       const id = `${device.ip}:${device.port}`;
       if (this.clients.has(id) || this.clients.has(`${id}-legacy`)) continue;
-      await this.tryAutoReconcile(device.ip, device.port).catch(() => {});
+      await this.tryAutoReconcile(device.ip, device.port, device.name).catch(() => {});
     }
   }
 
@@ -577,7 +577,7 @@ export class DeviceManagerService extends EventEmitter {
 
   // Probe a newly-discovered IP against offline inventory devices to detect
   // IP changes without requiring the user to manually edit the inventory.
-  private async tryAutoReconcile(ip: string, port: number): Promise<void> {
+  private async tryAutoReconcile(ip: string, port: number, discoveredName?: string): Promise<void> {
     if (this.clients.has(`${ip}:${port}`)) return; // already tracked
 
     if (port === 443) {
@@ -669,20 +669,44 @@ export class DeviceManagerService extends EventEmitter {
         if (mac) break;
         await new Promise<void>(r => setTimeout(r, 400));
       }
-      if (!mac) {
-        log.debug(`[DeviceManager] tryAutoReconcile: ARP miss for ${ip} after retries — cannot reconcile`);
-        return;
+      if (mac) {
+        // Store MAC against any inventory record that already sits at this IP but
+        // hasn't had its MAC recorded yet (e.g. device added manually then reconnected).
+        await prisma.inventoryDevice.updateMany({ where: { ip, mac: null }, data: { mac } });
+      } else {
+        // Warn, not debug: this being invisible hid a lookup that failed on
+        // every headless server (`arp` is not installed on modern Ubuntu), and
+        // with it the whole G3 recovery path.
+        log.warn(`[DeviceManager] No MAC for ${ip} from the neighbour table — matching by name only`);
       }
 
-      // Store MAC against any inventory record that already sits at this IP but
-      // hasn't had its MAC recorded yet (e.g. device added manually then reconnected).
-      await prisma.inventoryDevice.updateMany({ where: { ip, mac: null }, data: { mac } });
+      let stale = mac
+        ? await prisma.inventoryDevice.findFirst({ where: { mac, active: true, NOT: { ip } } })
+        : null;
 
-      const stale = await prisma.inventoryDevice.findFirst({
-        where: { mac, active: true, NOT: { ip } },
-      });
+      // MAC match is the strong key, but many G3 rows have none recorded —
+      // the lookup was broken on headless servers for months, so their MACs
+      // were never learned. The device NAME is the fallback: MCP discovery
+      // reports the unit's own label, which is set on the hardware and
+      // survives any address change. Only trusted when it matches exactly one
+      // G3 row, so two units sharing a label cannot be cross-migrated.
+      if (!stale && discoveredName?.trim()) {
+        const byName = await prisma.inventoryDevice.findMany({
+          where: { port: 53212, active: true, name: discoveredName.trim(), NOT: { ip } },
+        });
+        if (byName.length === 1) {
+          stale = byName[0];
+          log.info(`[DeviceManager] tryAutoReconcile: matched "${discoveredName}" by name (no MAC on record)`);
+        } else if (byName.length > 1) {
+          log.warn(
+            `[DeviceManager] ${byName.length} G3 devices named "${discoveredName}" — ` +
+            `cannot tell which one moved to ${ip}; not reconciling`,
+          );
+        }
+      }
+
       if (!stale) {
-        log.debug(`[DeviceManager] tryAutoReconcile: no offline record with mac=${mac} at a different IP`);
+        log.debug(`[DeviceManager] tryAutoReconcile: nothing at another IP matches ${ip} (mac=${mac ?? 'none'})`);
         return;
       }
       if (this.clients.get(`${stale.ip}:${stale.port}`)?.isConnected) {
