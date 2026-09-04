@@ -18,6 +18,8 @@ import {
 import { decryptSecret } from '../../auth/secretBox';
 import { detectFirmwareChange } from '../firmwareChange';
 import { ShureClient } from '../shure/ShureClient';
+import { Digital6000Client } from './digital6000/Digital6000Client';
+import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
 import { log } from '../../logger';
 
 // The union is kept rather than replaced by HardwareClient because the
@@ -25,7 +27,7 @@ import { log } from '../../logger';
 // What matters for a third vendor is that everything those branches guard is
 // optional: a ShureClient falls through them and is driven entirely by the
 // shared `state` / `connected` / `disconnected` contract.
-type ClientType = SSCClient | G3G4Client | ShureClient;
+type ClientType = SSCClient | G3G4Client | ShureClient | Digital6000Client;
 
 export class DeviceManagerService extends EventEmitter {
   private discovery: DiscoveryService;
@@ -223,6 +225,21 @@ export class DeviceManagerService extends EventEmitter {
     // failure — because that fallback is how a G3 is recognised at all, and it
     // is a Sennheiser-internal detail rather than something a second vendor
     // should be dragged through.
+    // Digital 6000 is Sennheiser, but not the Sennheiser SSCClient speaks.
+    // "The SSC Server implemented for Digital 6000 devices supports only
+    // UDP/IP" — there is no HTTPS interface for the probe chain to find, so an
+    // EM 6000 added before this existed would probe, fail, fall through to the
+    // G3/G4 fallback, fail that too, and sit offline. Chosen by model because
+    // that is the only thing that distinguishes it from an EW-DX before either
+    // has answered.
+    if (isDigital6000(device.model ?? '')) {
+      const d6000 = new Digital6000Client(device.ip, D6000_PORT);
+      this.setupClientListeners(d6000, device.ip, device.port, id);
+      this.clients.set(id, d6000);
+      d6000.startPolling();
+      return;
+    }
+
     if (/shure/i.test(device.manufacturer ?? '')) {
       const shure = new ShureClient(device.ip, device.port, device.model ?? '');
       this.setupClientListeners(shure, device.ip, device.port, id);
