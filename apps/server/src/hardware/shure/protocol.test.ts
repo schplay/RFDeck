@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   splitMessages, parseMessage, parseSample, identifyModel,
-  parseBatteryBars, batteryBarsToPercent, parseBatteryMinutes,
-  rssiToDbm, rssiToPercent, audioToDbfs, parseFrequencyKhz,
+  parseBatteryBars, batteryBarsToPercent, parseBatteryPercent, parseBatteryMinutes,
+  rssiToDbm, rssiToPercent, dbmToPercent, audioToDbfs, parseFrequencyKhz,
   setMeterRate, setMute, setFrequency, getAll, getChannelParam,
   FAMILIES,
 } from './protocol';
@@ -162,10 +162,13 @@ describe('parseSample — ULX-D', () => {
   it('reads antenna, RF and audio', () => {
     const s = parseSample(parseMessage('< SAMPLE 1 ALL AX 075 040 >')!, 'ulxd')!;
     expect(s.channel).toBe(1);
+    // "AX - Antenna A on, Antenna B off" — positional, not Axient's X/R/B.
     expect(s.antennas).toEqual(['A', 'X']);
+    // One RF figure, not one per antenna: the ULX-D sample carries a single
+    // "aaa" field and "nn" is only which LEDs are lit.
     expect(s.rfPercent).toHaveLength(1);
-    // ULX-D audio is a 0–50ish meter, doubled to a percentage: 40 → 80% → -20 dBFS.
-    expect(s.audioDbfs).toBe(-20);
+    // Audio 000-050, converted with the -50 offset: 40 → -10 dBFS.
+    expect(s.audioDbfs).toBe(-10);
   });
 
   it('reports no link quality, because the family does not send one', () => {
@@ -175,25 +178,43 @@ describe('parseSample — ULX-D', () => {
 });
 
 describe('value conversions', () => {
-  it('converts RSSI to dBm by the documented offset', () => {
-    // "actualValue = reportedValue - 120"
-    expect(rssiToDbm('086')).toBe(-34);
-    expect(rssiToDbm('000')).toBe(-120);
+  it('converts RSSI to dBm by the offset each family documents', () => {
+    // These are NOT the same, and using one for both is the mistake this
+    // suite exists to prevent.
+    //   Axient: "actualValue = reportedValue - 120"
+    //   ULX-D:  "the RF level received and is 000-115. To convert this value
+    //            to dBm, subtract 128."
+    expect(rssiToDbm('086', 'axtd')).toBe(-34);
+    expect(rssiToDbm('086', 'ulxd')).toBe(-42);
+    expect(rssiToDbm('115', 'ulxd')).toBe(-13);
+    expect(rssiToDbm('000', 'axtd')).toBe(-120);
   });
 
-  it('maps RF onto 0-100 so the existing thresholds land sensibly', () => {
+  it('maps dBm onto 0-100 so the existing thresholds land sensibly', () => {
     // RFDeck calls a channel CRITICAL below 20 and marginal below 35. Those
     // must fall at RF levels that are actually bad, not at a healthy link.
-    expect(rssiToPercent('115')).toBe(100);
-    expect(rssiToPercent('000')).toBe(0);
-    const marginal = rssiToPercent('040')!;   // -80 dBm
-    expect(marginal).toBeGreaterThan(20);
-    expect(marginal).toBeLessThan(40);
+    // A receiver squelches around -95 dBm; a good link sits at -60 to -40.
+    expect(dbmToPercent(-95)).toBe(0);
+    expect(dbmToPercent(-35)).toBe(100);
+
+    // Both of RFDeck's thresholds land on round dBm figures with this window:
+    // CRITICAL (below 20) is exactly -83 dBm and marginal (below 35) exactly
+    // -74, so those are the boundaries and anything worse trips them. -83 is
+    // near squelch and -74 is worth watching, which is the point.
+    expect(dbmToPercent(-83)).toBe(20);
+    expect(dbmToPercent(-84)).toBeLessThan(20);
+    expect(dbmToPercent(-74)).toBe(35);
+    expect(dbmToPercent(-75)).toBeLessThan(35);
+
+    expect(dbmToPercent(-50)).toBeGreaterThan(60); // healthy, and looks it
+    expect(dbmToPercent(-40)).toBeGreaterThan(85);
   });
 
   it('never returns an out-of-range RF percentage', () => {
-    expect(rssiToPercent('255')).toBe(100);
-    expect(rssiToPercent('-10')).toBe(0);
+    expect(rssiToPercent('255', 'axtd')).toBe(100);
+    expect(rssiToPercent('-10', 'axtd')).toBe(0);
+    expect(dbmToPercent(0)).toBe(100);
+    expect(dbmToPercent(-200)).toBe(0);
   });
 
   it('converts Axient audio to dBFS, which is what the manager expects', () => {
@@ -204,16 +225,41 @@ describe('value conversions', () => {
     expect(audioToDbfs('020', 'axtd')).toBe(-100);
   });
 
-  it('converts ULX-D audio through its own scale', () => {
+  it('converts ULX-D audio through its own offset rather than the Axient one', () => {
+    // ULX-D audio is documented as "000-050". The -50 offset is inferred from
+    // that range and matches Bitfocus Companion; it is the one value here that
+    // Shure does not state outright.
     expect(audioToDbfs('050', 'ulxd')).toBe(0);
-    expect(audioToDbfs('000', 'ulxd')).toBe(-100);
+    expect(audioToDbfs('000', 'ulxd')).toBe(-50);
+    expect(audioToDbfs('040', 'qlxd')).toBe(-10);
+    // The same raw value means something quite different per family, which is
+    // the whole reason the offsets are separate.
+    expect(audioToDbfs('040', 'axtd')).toBe(-80);
   });
 
   it('rejects unparseable levels rather than reporting silence', () => {
     // Reporting 0 for a level that could not be read is indistinguishable
     // from a dead mic, which is exactly the alarm that must not be false.
-    expect(rssiToPercent('---')).toBeNull();
+    expect(rssiToPercent('---', 'axtd')).toBeNull();
     expect(audioToDbfs('', 'axtd')).toBeNull();
+  });
+
+  it('reads the real battery charge percentage both families report', () => {
+    // An earlier version of this file insisted Axient had no battery
+    // percentage and inferred one from the five-bar gauge. It does:
+    // TX_BATT_CHARGE_PERCENT, "000 - 100 : Percent, 255 : Unknown", and ULX-D
+    // has BATT_CHARGE. That claim came from grepping the specification for the
+    // wrong name and trusting the absence of a match.
+    expect(parseBatteryPercent('088')).toBe(88);
+    expect(parseBatteryPercent('000')).toBe(0);
+    expect(parseBatteryPercent('100')).toBe(100);
+    expect(parseBatteryPercent('255')).toBeNull();
+    expect(parseBatteryPercent('')).toBeNull();
+  });
+
+  it('names the charge parameter correctly per family', () => {
+    expect(FAMILIES.axtd.param.battPercent).toBe('TX_BATT_CHARGE_PERCENT');
+    expect(FAMILIES.ulxd.param.battPercent).toBe('BATT_CHARGE');
   });
 
   it('reads battery bars, and 255 as unknown', () => {
@@ -296,10 +342,28 @@ describe('family command names', () => {
     // receiver rather than a bug.
     expect(FAMILIES.axtd.param.battBars).toBe('TX_BATT_BARS');
     expect(FAMILIES.ulxd.param.battBars).toBe('BATT_BARS');
+    expect(FAMILIES.axtd.param.battPercent).toBe('TX_BATT_CHARGE_PERCENT');
+    expect(FAMILIES.ulxd.param.battPercent).toBe('BATT_CHARGE');
+  });
+
+  it('claims no ULX-D parameter name for values that only arrive in a sample', () => {
+    // Shure's ULX-D document defines RF, audio and antenna state only as
+    // fields of "< SAMPLE x ALL nn aaa eee >" — there is no GET-able name for
+    // them. Names do appear in one third-party implementation; they are in no
+    // Shure document and no implementation actually sends them.
+    //
+    // Undefined here means "this family has no such parameter", which is a
+    // claim worth being able to fail. Inventing a name produces a GET answered
+    // by silence, which looks exactly like a dead receiver.
+    expect(FAMILIES.ulxd.param.rfLevel).toBeUndefined();
+    expect(FAMILIES.ulxd.param.audioLevel).toBeUndefined();
+    expect(FAMILIES.ulxd.param.antenna).toBeUndefined();
+    expect(FAMILIES.qlxd.param.rfLevel).toBeUndefined();
+
+    // Axient does document all three.
     expect(FAMILIES.axtd.param.rfLevel).toBe('RSSI');
-    expect(FAMILIES.ulxd.param.rfLevel).toBe('RX_RF_LVL');
     expect(FAMILIES.axtd.param.audioLevel).toBe('AUDIO_LEVEL_RMS');
-    expect(FAMILIES.ulxd.param.audioLevel).toBe('AUDIO_LVL');
+    expect(FAMILIES.axtd.param.antenna).toBe('ANTENNA_STATUS');
   });
 
   it('only Axient claims to report link quality', () => {

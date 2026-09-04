@@ -44,6 +44,7 @@ export class FakeShureDevice {
   readonly values = new Map<number, {
     name: string; frequency: string; battBars: string; battMins: string;
     mute: 'ON' | 'OFF'; rssiA: string; rssiB: string; audio: string; antennas: string;
+    battPercent: string;
   }>();
 
   constructor(options: FakeDeviceOptions = {}) {
@@ -66,6 +67,7 @@ export class FakeShureDevice {
         rssiB: '065',
         audio: '102',
         antennas: 'BB',
+        battPercent: '073',
       });
     }
 
@@ -171,6 +173,7 @@ export class FakeShureDevice {
     this.send(socket, `< REP ${channel} CHAN_NAME {${v.name.padEnd(31)}} >`);
     this.send(socket, `< REP ${channel} FREQUENCY ${v.frequency} >`);
     this.send(socket, `< REP ${channel} TX_BATT_BARS ${v.battBars} >`);
+    this.send(socket, `< REP ${channel} TX_BATT_CHARGE_PERCENT ${v.battPercent} >`);
     this.send(socket, `< REP ${channel} TX_BATT_MINS ${v.battMins} >`);
     this.send(socket, `< REP ${channel} AUDIO_MUTE ${v.mute} >`);
     this.send(socket, `< REP ${channel} ANTENNA_STATUS ${v.antennas} >`);

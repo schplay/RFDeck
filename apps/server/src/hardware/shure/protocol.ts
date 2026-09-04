@@ -26,11 +26,26 @@ export interface FamilySpec {
     channelName: string;
     frequency: string;
     battBars: string;
+    /** A real 0-100 charge figure, preferred over the five-bar gauge. */
+    battPercent: string;
     battMins: string;
-    rfLevel: string;
-    audioLevel: string;
-    antenna: string;
     mute: string;
+    /**
+     * Parameters that some families expose as individually query-able and
+     * others deliver only inside a metering SAMPLE.
+     *
+     * Undefined means "this family has no such parameter name" — not "we have
+     * not looked it up". ULX-D and QLX-D genuinely have none: their
+     * specification documents RF, audio and antenna state only as fields of
+     * `< SAMPLE x ALL nn aaa eee >`. Names for them appear in one third-party
+     * implementation, are absent from Shure's document and from every other
+     * implementation checked, and are never actually sent by any of them.
+     * Carrying invented names here would produce GETs that are answered by
+     * silence, which is the least diagnosable failure this protocol has.
+     */
+    rfLevel?: string;
+    audioLevel?: string;
+    antenna?: string;
     /** Link quality, which only Axient reports. */
     quality?: string;
   };
@@ -46,11 +61,12 @@ export const FAMILIES: Record<ShureFamily, FamilySpec> = {
       channelName: 'CHAN_NAME',
       frequency:   'FREQUENCY',
       battBars:    'TX_BATT_BARS',
+      battPercent: 'TX_BATT_CHARGE_PERCENT',
       battMins:    'TX_BATT_MINS',
+      mute:        'AUDIO_MUTE',
       rfLevel:     'RSSI',
       audioLevel:  'AUDIO_LEVEL_RMS',
       antenna:     'ANTENNA_STATUS',
-      mute:        'AUDIO_MUTE',
       quality:     'CHAN_QUALITY',
     },
     maxChannels: 4,
@@ -62,11 +78,10 @@ export const FAMILIES: Record<ShureFamily, FamilySpec> = {
       channelName: 'CHAN_NAME',
       frequency:   'FREQUENCY',
       battBars:    'BATT_BARS',
+      battPercent: 'BATT_CHARGE',
       battMins:    'BATT_RUN_TIME',
-      rfLevel:     'RX_RF_LVL',
-      audioLevel:  'AUDIO_LVL',
-      antenna:     'RF_ANTENNA',
       mute:        'AUDIO_MUTE',
+      // rfLevel, audioLevel and antenna deliberately absent — see FamilySpec.
     },
     maxChannels: 4,
   },
@@ -77,11 +92,10 @@ export const FAMILIES: Record<ShureFamily, FamilySpec> = {
       channelName: 'CHAN_NAME',
       frequency:   'FREQUENCY',
       battBars:    'BATT_BARS',
+      battPercent: 'BATT_CHARGE',
       battMins:    'BATT_RUN_TIME',
-      rfLevel:     'RX_RF_LVL',
-      audioLevel:  'AUDIO_LVL',
-      antenna:     'RF_ANTENNA',
       mute:        'AUDIO_MUTE',
+      // rfLevel, audioLevel and antenna deliberately absent — see FamilySpec.
     },
     maxChannels: 1,
   },
@@ -214,10 +228,27 @@ export function parseMessage(raw: string): ShureMessage | null {
 // ── Values ──────────────────────────────────────────────────────────────────
 
 /**
- * Shure reports RF and audio as an offset integer: actual = reported - 120.
- * RSSI is then dBm and audio is dBFS.
+ * Per-family conversion offsets, from each family's own specification.
+ *
+ * These are NOT the same, and the first version of this file used Axient's for
+ * everything after taking micboard's display scaling for a unit conversion.
+ * micboard maps ULX-D audio to a percentage with `2 x raw` and RF with
+ * `raw / 115` — good numbers for its own meters, but not what the fields mean.
+ *
+ *   Axient    "actualValue = reportedValue - 120", for RSSI (dBm) and for
+ *             AUDIO_LEVEL_RMS / AUDIO_LEVEL_PEAK (dBFS).
+ *   ULX-D     "Where aaa is the value of the RF level received and is 000-115.
+ *             To convert this value to dBm, subtract 128." Audio is documented
+ *             only as "the audio level and is 000-050" -- no units given, so
+ *             the -50 below is inferred, matching what Bitfocus Companion's
+ *             Shure module does. It is the only value here not stated outright
+ *             by Shure.
  */
-export const SHURE_DB_OFFSET = 120;
+const FAMILY_OFFSETS: Record<ShureFamily, { rssi: number; audio: number }> = {
+  axtd: { rssi: 120, audio: 120 },
+  ulxd: { rssi: 128, audio: 50 },
+  qlxd: { rssi: 128, audio: 50 },
+};
 
 /** 255 means "unknown" for the 3-digit gauges, and is not a value. */
 const UNKNOWN_3 = 255;
@@ -252,10 +283,25 @@ export function parseBatteryBars(raw: string): number | null {
 }
 
 /**
- * Battery as a percentage, from a five-bar gauge.
+ * Battery charge as a real percentage.
  *
- * Coarse on purpose — 0, 20, 40, 60, 80, 100 — because that is genuinely all
- * the protocol carries. Axient reports no battery percentage.
+ * Both families report one — Axient as TX_BATT_CHARGE_PERCENT and ULX-D as
+ * BATT_CHARGE, both "000 - 100 : Percent, 255 : Unknown". An earlier version
+ * of this file claimed Axient had no such parameter and fell back to the
+ * five-bar gauge for everything; that came from grepping the specification for
+ * the wrong name and believing the absence of a match.
+ */
+export function parseBatteryPercent(raw: string): number | null {
+  const n = num(raw);
+  if (n === null || n === UNKNOWN_3) return null;
+  return n >= 0 && n <= 100 ? n : null;
+}
+
+/**
+ * Battery as a percentage, from the five-bar gauge.
+ *
+ * The fallback, for a transmitter that reports bars but not charge. Coarse —
+ * 0, 20, 40, 60, 80, 100 — so the real percentage is always preferred.
  */
 export function batteryBarsToPercent(bars: number | null): number | undefined {
   return bars === null ? undefined : bars * 20;
@@ -268,23 +314,39 @@ export function parseBatteryMinutes(raw: string): number | null {
   return n >= 0 && n <= BATT_MINS_MAX ? n : null;
 }
 
-/** dBm from a reported RSSI field. */
-export function rssiToDbm(raw: string | number): number | null {
+/** dBm from a reported RSSI field, by that family's documented offset. */
+export function rssiToDbm(raw: string | number, family: ShureFamily): number | null {
   const n = num(raw);
-  return n === null ? null : n - SHURE_DB_OFFSET;
+  return n === null ? null : n - FAMILY_OFFSETS[family].rssi;
 }
 
 /**
- * RF as the 0–100 RFDeck shows on a meter.
+ * The dBm window RFDeck maps onto its 0-100 RF meter.
  *
- * 115 is the span micboard uses, putting 0% at -120 dBm and 100% at -5 dBm.
- * What matters is where it leaves RFDeck's existing thresholds: CRITICAL below
- * 20 is -97 dBm and marginal below 35 is -80 dBm, both sensible for a mic link.
+ * Once each family's raw field is converted to real dBm, one window serves
+ * them all — which is the point of converting rather than rescaling.
+ *
+ * The numbers are chosen for where they leave the thresholds the rest of the
+ * application already uses, not for mathematical tidiness. A wireless mic
+ * receiver squelches somewhere around -95 dBm, a well-set-up link sits between
+ * -60 and -40, and anything above -35 is as good as it gets.
+ *
+ *   RFDeck calls a channel CRITICAL below 20%  ->  -83 dBm, genuinely near squelch
+ *   ...and marginal below 35%                  ->  -74 dBm, worth watching
+ *   A healthy -50 dBm link reads 75%, which looks healthy on a meter.
  */
-export function rssiToPercent(raw: string | number): number | null {
-  const n = num(raw);
-  if (n === null) return null;
-  return clamp(Math.round((100 * n) / 115), 0, 100);
+const RF_FLOOR_DBM = -95;
+const RF_CEILING_DBM = -35;
+
+export function dbmToPercent(dbm: number): number {
+  const span = RF_CEILING_DBM - RF_FLOOR_DBM;
+  return clamp(Math.round(((dbm - RF_FLOOR_DBM) / span) * 100), 0, 100);
+}
+
+/** RF as the 0-100 RFDeck shows on a meter, via real dBm. */
+export function rssiToPercent(raw: string | number, family: ShureFamily): number | null {
+  const dbm = rssiToDbm(raw, family);
+  return dbm === null ? null : dbmToPercent(dbm);
 }
 
 /**
@@ -294,13 +356,7 @@ export function rssiToPercent(raw: string | number): number | null {
 export function audioToDbfs(raw: string | number, family: ShureFamily): number | null {
   const n = num(raw);
   if (n === null) return null;
-
-  // ULX-D and QLX-D report a 0–50ish meter value rather than an offset dBFS
-  // one; micboard doubles it to get a percentage. Converted back to the dBFS
-  // this function promises, that is `2n - 100`.
-  if (family === 'ulxd' || family === 'qlxd') return clamp(2 * n, 0, 100) - 100;
-
-  return n - SHURE_DB_OFFSET;
+  return n - FAMILY_OFFSETS[family].audio;
 }
 
 /** Frequency in kHz. Shure reports kHz already, which is RFDeck's unit too. */
@@ -354,7 +410,10 @@ export function parseSample(msg: ShureMessage, family: ShureFamily): SampleReadi
       channel: msg.channel,
       quality: null,
       audioDbfs: audio !== undefined ? audioToDbfs(audio, family) : null,
-      rfPercent: rf !== undefined ? [rssiToPercent(rf) ?? 0] : [],
+      // One RF figure, not one per antenna: the ULX-D sample is
+      // "< SAMPLE x ALL nn aaa eee >", where nn is only which antenna LEDs are
+      // lit. There is no second RSSI to report.
+      rfPercent: rf !== undefined ? [rssiToPercent(rf, family) ?? 0] : [],
       antennas: splitAntennas(antenna),
     };
   }
@@ -371,7 +430,7 @@ export function parseSample(msg: ShureMessage, family: ShureFamily): SampleReadi
   for (let i = 0; i < antennas.length; i++) {
     const rssi = rfFields[i * 2 + 1];
     if (rssi === undefined) break;
-    rfPercent.push(rssiToPercent(rssi) ?? 0);
+    rfPercent.push(rssiToPercent(rssi, family) ?? 0);
   }
 
   const q = num(qual);
@@ -385,10 +444,15 @@ export function parseSample(msg: ShureMessage, family: ShureFamily): SampleReadi
 }
 
 /**
- * "BB" -> ['B','B'], "BRXB" -> ['B','R','X','B'].
+ * One character per antenna. The vocabularies differ between families:
  *
- * ULX-D reports an antenna letter rather than a per-antenna string, so a
- * single character is one antenna there and two characters are two.
+ *   Axient   X off, R red, B blue -- "BB", or "BRXB" on Quadversity
+ *   ULX-D    positional: "AX" is antenna A on and B off, "XB" the reverse,
+ *            "XX" both off
+ *
+ * Either way the length is the antenna count, which is what the Axient sample
+ * parser needs in order not to read a frequency-diversity section as extra
+ * antennas.
  */
 function splitAntennas(raw: string): string[] {
   return raw.split('').filter(c => /[XRBA-D]/i.test(c));

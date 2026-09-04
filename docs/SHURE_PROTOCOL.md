@@ -22,8 +22,17 @@ what remains to be verified on hardware is listed at the end.
   covering UHF-R, QLX-D, ULX-D, Axient Digital and PSM1000. Useful as
   corroboration and as the source for the ULX-D/QLX-D command names, which the
   Axient document does not cover.
+- **[ULX-D Command Strings](https://content-files.shure.com/Pubs/ulx/ulx-d-network-string-commands.pdf)**
+  (Shure Applications Engineering, 12 Jan 2018). The ULX-D/QLX-D equivalent,
+  found later than it should have been — the first version of this file said no
+  such document existed and leaned on a third-party implementation instead.
+- **[Bitfocus Companion — Shure Wireless module](https://github.com/bitfocus/companion-module-shure-wireless)**
+  — `src/index.js`, `src/internalAPI.js`, `src/setup.js`. Covers ULX-D, QLX-D,
+  Axient Digital and SLX-D, and is the second independent implementation used
+  to check every conversion below.
 - **[Shure device IP ports and protocols](https://content-files.shure.com/FileRepository/common-ip-ports-v2.pdf)**
-  — confirms 2202/TCP and 5353/UDP mDNS.
+  — confirms 2202/TCP ("AMX/Crestron Control Strings") and 8427/UDP
+  ("Shure SLP (discovery) (multicast)").
 
 ## Transport
 
@@ -109,10 +118,18 @@ difference is only that RFDeck will not misparse a Quadversity or FD-C rig.
 
 ## Values
 
+> **The conversion offsets are not the same between families.** Getting this
+> wrong is the single easiest mistake here, and the first version of this file
+> made it: it took micboard's display scaling (`2 × audio`, `rf / 115`) for a
+> unit conversion and applied Axient's offsets to everything.
+
 | Parameter | Format | Conversion |
 |---|---|---|
-| `RSSI` | 3 digits | dBm = reported − 120 |
-| `AUDIO_LEVEL_RMS`, `AUDIO_LEVEL_PEAK` | 3 digits | dBFS = reported − 120, range −120…0 |
+| `RSSI` (Axient) | 3 digits | dBm = reported − 120 |
+| RF level `aaa` (ULX-D) | 3 digits, 000–115 | **dBm = reported − 128** |
+| `AUDIO_LEVEL_RMS`, `AUDIO_LEVEL_PEAK` (Axient) | 3 digits | dBFS = reported − 120, range −120…0 |
+| audio level `eee` (ULX-D) | 3 digits, 000–050 | dBFS = reported − 50 *(units inferred — see below)* |
+| `TX_BATT_CHARGE_PERCENT` (Axient), `BATT_CHARGE` (ULX-D) | 3 digits | percent 0–100; **255 = unknown** |
 | `CHAN_QUALITY` | 3 digits | 0–5; **255 = unknown** |
 | `ANTENNA_STATUS` | 2 or 4 chars | per antenna: `X` off, `R` red, `B` blue |
 | `TX_BATT_BARS` | 3 digits | 0–5; **255 = unknown** |
@@ -131,65 +148,127 @@ RFDeck's `Channel` carries `rfLevelA`/`rfLevelB` and `afLevel` as **0–100**,
 and `frequency` in **kHz** — Sennheiser's `rf_quality` is already 0–100 and its
 AF is dBFS converted as `100 + dBFS`.
 
-- **Audio.** `afLevel = 100 + dBFS = 100 + (reported − 120) = reported − 20`.
-  This falls out of RFDeck's existing convention, and independently matches what
-  micboard does for Axient (`audio_level - 20`). Two derivations agreeing is
-  worth more than either alone.
-- **RF.** `rfLevel = 100 × reported / 115`, which is micboard's mapping. In dBm
-  that is 0% at −120 dBm and 100% at −5 dBm. It matters that the result lands
-  the existing thresholds somewhere sensible, and it does: RFDeck calls a
-  channel CRITICAL below 20 (−97 dBm) and marginal below 35 (−80 dBm), which are
-  reasonable numbers for a wireless mic link.
-- **Battery.** `TX_BATT_BARS` is 0–5, so `percent = bars × 20`. Coarse, and
-  honestly so — Axient does not report a battery percentage over this protocol.
-- **Runtime.** `TX_BATT_MINS` is the transmitter's own estimate. RFDeck
-  normally derives runtime by regression over observed drain; where the
-  hardware states it, the hardware wins.
+- **Audio.** Convert to real dBFS with the family's own offset and hand that
+  over; `DeviceManagerService` applies `100 + dBFS` itself, exactly as it does
+  for Sennheiser.
+- **RF.** Convert to real dBm with the family's own offset, then map dBm to
+  0–100 with **one** window shared by every family — which is the point of
+  converting rather than rescaling per family.
+
+  The window is −95 dBm to −35 dBm, chosen for where it leaves the thresholds
+  the rest of the application already uses rather than for tidiness. A receiver
+  squelches around −95, a well-set-up link sits between −60 and −40, and above
+  −35 is as good as it gets. That puts RFDeck's CRITICAL threshold (below 20)
+  at exactly −83 dBm and marginal (below 35) at exactly −74 — near squelch and
+  worth-watching respectively — while a healthy −50 dBm link reads 75%.
+- **Battery.** Prefer the reported charge percentage; fall back to
+  `bars × 20` only for a transmitter that reports bars and no percentage. Bars
+  must never overwrite a real percentage — 4 bars would drag a reported 71% to
+  80%.
+- **Runtime.** `TX_BATT_MINS` / `BATT_RUN_TIME` is the transmitter's own
+  estimate. RFDeck normally derives runtime by regression over observed drain;
+  where the hardware states it, the hardware wins.
 
 ## Command names differ between families
 
-The Axient document does not cover ULX-D or QLX-D, and the names are **not**
-the same. Using one set for both would fail silently — a `GET` for a parameter
-the device does not have simply never produces a `REP`.
+The names are **not** the same, and using one set for both fails silently — a
+`GET` for a parameter the device does not have simply never produces a `REP`,
+so the receiver looks dead rather than misconfigured.
 
 | Meaning | ULX-D / QLX-D | Axient Digital |
 |---|---|---|
 | Battery bars | `BATT_BARS` | `TX_BATT_BARS` |
+| Battery charge % | `BATT_CHARGE` | `TX_BATT_CHARGE_PERCENT` |
 | Battery runtime | `BATT_RUN_TIME` | `TX_BATT_MINS` |
-| RF level | `RX_RF_LVL` | `RSSI` |
-| Audio level | `AUDIO_LVL` | `AUDIO_LEVEL_RMS` |
-| Antenna | `RF_ANTENNA` | `ANTENNA_STATUS` |
-| Link quality | *not supported* | `CHAN_QUALITY` |
+| Battery health % | `BATT_HEALTH` | `TX_BATT_HEALTH_PERCENT` |
+| Battery cycles | `BATT_CYCLE` | `TX_BATT_CYCLE_COUNT` |
 | Channel name | `CHAN_NAME` | `CHAN_NAME` |
 | Frequency | `FREQUENCY` | `FREQUENCY` |
+| Mute | `AUDIO_MUTE` | `AUDIO_MUTE` |
+| Link quality | *not reported* | `CHAN_QUALITY` |
+| RF level | *sample only* | `RSSI` |
+| Audio level | *sample only* | `AUDIO_LEVEL_RMS` |
+| Antenna | *sample only* | `ANTENNA_STATUS` |
 
-Source: micboard `py/device_config.py`. The ULX-D scaling also differs —
-micboard doubles `AUDIO_LVL` and divides `RX_RF_LVL` by 115 — which is why the
-family's conversions live beside its command names rather than in one shared
-function.
+**"Sample only" is a real distinction, not a gap in the research.** Shure's
+ULX-D document defines RF, audio and antenna state solely as fields of
+`< SAMPLE x ALL nn aaa eee >`; there is no name to GET them by. Names for them
+(`RX_RF_LVL`, `AUDIO_LVL`, `RF_ANTENNA`) appear in micboard's configuration
+table, are in no Shure document, and are never actually sent by micboard or by
+Companion. RFDeck therefore leaves those entries undefined rather than
+inheriting invented names that would produce GETs answered by silence.
+
+### The ULX-D sample
+
+```
+< SAMPLE x ALL nn aaa eee >
+```
+
+- `nn` — which antenna LEDs are lit, positionally: `AX` is antenna A on and B
+  off, `XB` the reverse, `XX` both off. Note this is a *different vocabulary*
+  from Axient's per-antenna `X`/`R`/`B`.
+- `aaa` — RF level, 000–115. "To convert this value to dBm, subtract 128."
+- `eee` — audio level, 000–050. **The document gives the range but no units.**
+  The −50 offset RFDeck uses is inferred from that range and matches Bitfocus
+  Companion; it is the only conversion here not stated outright by Shure.
+
+There is one RF figure, not one per antenna.
 
 ## Channel counts by model
 
-From micboard's `DCID_MODEL` tables, corroborated by Shure's product pages:
+Shure's product pages, micboard's `DCID_MODEL` table and Companion's model
+table all agree:
 
 | Model | Channels |
 |---|---|
 | AD4D | 2 |
 | AD4Q | 4 |
-| ULX-D single / dual / quad | 1 / 2 / 4 |
-| QLX-D | 1 |
+| ULXD4 / ULXD4D / ULXD4Q | 1 / 2 / 4 |
+| QLXD4 | 1 |
 
-## Not yet verified on hardware
+## Discovery
 
-Everything below is written from the specification and cannot be confirmed
-without a receiver on the bench:
+Shure devices announce themselves over **SLP on multicast group
+239.255.254.253, UDP port 8427** — not mDNS. Shure's own ports document lists
+8427 as "Shure SLP (discovery) (multicast)", and micboard's `py/discover.py`
+joins exactly that group and listens.
 
-- That a real AD4D accepts `< GET 0 ALL >` and answers with the full set,
-  rather than needing per-parameter GETs.
-- The actual RSSI range a working link produces, and therefore whether the
-  0–100 mapping puts the CRITICAL threshold in a useful place in a real room.
-- Whether ULX-D's `SAMPLE` has the layout micboard's indices imply — that
-  family has no equivalent public document, so its parser rests on one source.
-- mDNS discovery. Shure devices announce over 5353/UDP, but the service type
-  string is not in any document found; discovery will need a capture from a
-  real device, so RFDeck adds Shure receivers by IP until then.
+The payload is comma-separated parenthesised fields, one of which is
+`cd:<DCID>` — a device class id that maps to a model through `DCIDMap.xml`,
+a proprietary file shipping with Wireless Workbench and the Shure Update
+Utility. micboard ships a converted copy of that map.
+
+RFDeck does not need it. The announcement's *source address* is the useful
+part; the model can be had by asking the device directly on 2202
+(`< GET DEVICE_ID >`, and `< GET MODEL >` on Axient), which is also what
+confirms the host really is a Shure receiver rather than something else that
+happened to be multicasting. That mirrors how RFDeck already handles Sennheiser
+G3/G4: a passive listener produces candidates, and a probe confirms them.
+
+**An earlier version of this document said the service type "is not in any
+document found" and that discovery "will need a capture from a real device".
+That was wrong — it was in Shure's own ports PDF and in micboard, neither of
+which had been checked at the time.**
+
+## What has and has not been verified
+
+Every format above now has at least two independent sources, and the ones that
+matter most have three (Shure's document, micboard, Companion). The cross-check
+was worth doing: it found a wrong RF offset for ULX-D, a wrong audio offset for
+ULX-D, a battery percentage wrongly believed not to exist, three invented
+parameter names, and the discovery error above.
+
+What still cannot be confirmed without a receiver on the bench:
+
+- **Nothing has run against real hardware.** The simulated device believes the
+  same specification the client does, so a shared misreading of the spec passes
+  both. That is the honest limit of this approach.
+- Whether a real AD4D answers `< GET n ALL >` with the full set, rather than
+  needing per-parameter GETs.
+- The actual RSSI range a working link produces in a room, and therefore
+  whether the −95/−35 dBm window puts the CRITICAL threshold where an operator
+  would want it.
+- Whether the ULX-D audio field really is dBFS (see above — the range is
+  documented, the units are not).
+- The SLP announcement payload beyond the `cd:` field, and whether every
+  supported model announces.
