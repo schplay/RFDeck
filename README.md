@@ -51,7 +51,12 @@ Real-time telemetry for all active wireless channels:
 
 - Route any channel to local audio output for real-time headphone monitoring
 - AES-67 network audio support (native Node.js WebRTC bridge — no external dependencies)
-- OS audio device support on desktop (USB interfaces, WASAPI, CoreAudio)
+- OS audio device support on desktop — any interface the operating system
+  exposes, at whatever width it reports, via DirectShow on Windows and
+  AVFoundation on macOS. The desktop build ships its own ffmpeg for this; the
+  Ubuntu server captures through ALSA directly and needs nothing extra.
+  *(Windows verified end to end; macOS built from the same code path but not
+  yet tested on hardware 📋)*
 - Mobile audio monitoring via WebRTC stream over Wi-Fi (same path as browser)
 
 ### Instant Audio Replay 📋
