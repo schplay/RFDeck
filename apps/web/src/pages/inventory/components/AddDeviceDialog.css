@@ -362,6 +362,12 @@
   color: var(--color-primary);
 }
 
+/* A hint that is a prerequisite rather than an aside — the operator has to act
+   on it before the device will work at all. */
+.form-hint-warn {
+  color: var(--color-warning);
+}
+
 .form-input,
 .form-select,
 .form-textarea {

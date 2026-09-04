@@ -31,7 +31,7 @@ actually verified and what is inference.
 
 | Target | Protocol | Port | Spec | Open source | Effort | Verdict |
 |---|---|---|---|---|---|---|
-| **Shure SLX-D** | Command strings | 2202/TCP | ✅ Shure | ✅ Companion, Q-SYS | **S** | **Do first** |
+| **Shure SLX-D** | Command strings | 2202/TCP | ✅ Shure | ✅ Companion, Q-SYS | **S** | ✅ **Done** |
 | **Shure PSM1000** (IEM) | Command strings | 2202/TCP | ✅ Shure | ✅ Companion, micboard | **S–M** | **Do second** |
 | **Sennheiser Digital 6000** | SSC over UDP | 6970 | ✅ Developer's Guide | ✅ Companion | **L** | **Do third** — corrects a false claim |
 | **Wisycom MRK / MCR** | Ember+ | ~9000 *(unconfirmed)* | ⚠️ partial | ❌ none for receivers | **XL** | Research first |
@@ -78,7 +78,7 @@ That entry should be marked as blocked rather than planned.
 
 ---
 
-## Shure SLX-D — do first
+## Shure SLX-D — done
 
 **Why first.** It is the same protocol on the same port as receivers RFDeck
 already supports, so it is a new entry in an existing table rather than a new
@@ -116,13 +116,24 @@ fallback `model ? 'axtd' : 'ulxd'` is the part that is wrong.
 That fallback is wrong *today*, before any SLX-D work, for any Axient model
 this build does not recognise. Worth fixing regardless.
 
-**Still to do before building.** Fetch Shure's SLX-D command-strings document
-the same way the Axient and ULX-D ones were fetched (their CDN serves them to a
-browser user-agent). Everything above is from two implementations, not from
-Shure.
+**Built.** Shure's SLX-D document was fetched and read, and it confirmed the
+two implementations while adding three things neither had made obvious:
 
-**Effort: S.** A family entry, a sample-parser branch, a model table addition,
-a probe fix, and tests. No new transport, no new client.
+- **The document contradicts itself.** Its introduction shows the Axient sample
+  layout; the SLX-D section a few pages later defines
+  `< SAMPLE chNum ALL audPeak audRms rfRssi >`. The specific section wins, and
+  both implementations agree with it. Recorded in `SHURE_PROTOCOL.md` so the
+  next reader does not have to rediscover the contradiction.
+- **SLX-D has no mute command at all** — "mute" does not appear anywhere in its
+  specification. `setMute` returns false for an SLX-D rather than sending
+  nothing and reporting success, which would leave an operator pressing Mute
+  during a show while the channel stayed open.
+- **SLX-D blocks command strings by default.** Until network control is
+  enabled on the receiver, it accepts the connection and answers nothing —
+  indistinguishable from picking the wrong model. The add-device form says so.
+
+Also no battery charge percentage (bars only), no antenna status, no channel
+quality, and 1–2 channels rather than up to 4.
 
 ---
 

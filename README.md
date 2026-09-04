@@ -272,7 +272,7 @@ network access gate, not per-user identity.
 |---|---|---|
 | **Sennheiser** (EW-DX — firmware ≥ 4.0) | SSCv2 (HTTPS/JSON REST) | Full: RF, AF, battery, mute, gain, frequency, identify, network config, spectrum scan |
 | **Sennheiser Legacy** (G3, G4, EM 3732, etc.) | SSCv1 (TCP/UDP) | Monitoring: RF, battery, status |
-| **Shure** (Axient Digital AD4D/AD4Q, ULX-D, QLX-D) | Command strings (TCP 2202) | Monitoring: RF per antenna, audio, battery bars and runtime, name, frequency. Control: mute, frequency 🚧 *— see below* |
+| **Shure** (Axient Digital AD4D/AD4Q, ULX-D, QLX-D, SLX-D) | Command strings (TCP 2202) | Monitoring: RF per antenna, audio, battery bars and runtime, name, frequency. Control: mute, frequency 🚧 *— see below* |
 
 > **Shure support has not been run against real hardware.** It is written
 > against Shure's published command-strings specifications for Axient Digital
@@ -310,7 +310,6 @@ behind each, including which have a usable specification and which do not.
 
 | Target | Route | State |
 |---|---|---|
-| Shure SLX-D | Same command strings, third dialect | Next up — small |
 | Shure PSM1000 (IEM) | Same command strings, port 2202 | Blocked on making RFDeck's channel model honest about IEMs |
 | Sennheiser Digital 6000 | SSC over UDP 6970 | Planned — needs Sennheiser's Developer's Guide |
 | Wisycom (MRK / MCR) | Ember+ | Needs the Ember+ tree documented; the only Wisycom Companion module is for antenna matrices, not receivers |

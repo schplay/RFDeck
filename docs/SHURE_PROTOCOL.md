@@ -22,6 +22,11 @@ what remains to be verified on hardware is listed at the end.
   covering UHF-R, QLX-D, ULX-D, Axient Digital and PSM1000. Useful as
   corroboration and as the source for the ULX-D/QLX-D command names, which the
   Axient document does not cover.
+- **[SLX-D Command Strings](https://www.shure.com/en-US/docs/commandstrings/SLXD)**
+  (Shure, 13 pp). Definitive for SLX-D, and it settles a disagreement: its own
+  *introduction* shows the Axient sample layout, which is a copy-paste — the
+  SLX-D section a few pages later defines a three-field sample, and every
+  implementation agrees with the section rather than the intro.
 - **[ULX-D Command Strings](https://content-files.shure.com/Pubs/ulx/ulx-d-network-string-commands.pdf)**
   (Shure Applications Engineering, 12 Jan 2018). The ULX-D/QLX-D equivalent,
   found later than it should have been — the first version of this file said no
@@ -175,20 +180,25 @@ The names are **not** the same, and using one set for both fails silently — a
 `GET` for a parameter the device does not have simply never produces a `REP`,
 so the receiver looks dead rather than misconfigured.
 
-| Meaning | ULX-D / QLX-D | Axient Digital |
-|---|---|---|
-| Battery bars | `BATT_BARS` | `TX_BATT_BARS` |
-| Battery charge % | `BATT_CHARGE` | `TX_BATT_CHARGE_PERCENT` |
-| Battery runtime | `BATT_RUN_TIME` | `TX_BATT_MINS` |
-| Battery health % | `BATT_HEALTH` | `TX_BATT_HEALTH_PERCENT` |
-| Battery cycles | `BATT_CYCLE` | `TX_BATT_CYCLE_COUNT` |
-| Channel name | `CHAN_NAME` | `CHAN_NAME` |
-| Frequency | `FREQUENCY` | `FREQUENCY` |
-| Mute | `AUDIO_MUTE` | `AUDIO_MUTE` |
-| Link quality | *not reported* | `CHAN_QUALITY` |
-| RF level | *sample only* | `RSSI` |
-| Audio level | *sample only* | `AUDIO_LEVEL_RMS` |
-| Antenna | *sample only* | `ANTENNA_STATUS` |
+| Meaning | ULX-D / QLX-D | Axient Digital | SLX-D |
+|---|---|---|---|
+| Battery bars | `BATT_BARS` | `TX_BATT_BARS` | `TX_BATT_BARS` |
+| Battery charge % | `BATT_CHARGE` | `TX_BATT_CHARGE_PERCENT` | **none** |
+| Battery runtime | `BATT_RUN_TIME` | `TX_BATT_MINS` | `TX_BATT_MINS` |
+| Battery health % | `BATT_HEALTH` | `TX_BATT_HEALTH_PERCENT` | none |
+| Battery cycles | `BATT_CYCLE` | `TX_BATT_CYCLE_COUNT` | none |
+| Channel name | `CHAN_NAME` | `CHAN_NAME` | `CHAN_NAME` |
+| Frequency | `FREQUENCY` | `FREQUENCY` | `FREQUENCY` |
+| Mute | `AUDIO_MUTE` | `AUDIO_MUTE` | **none at all** |
+| Link quality | *not reported* | `CHAN_QUALITY` | none |
+| RF level | *sample only* | `RSSI` | `RSSI` |
+| Audio level | *sample only* | `AUDIO_LEVEL_RMS` | `AUDIO_LEVEL_RMS` |
+| Antenna | *sample only* | `ANTENNA_STATUS` | none |
+
+**SLX-D has no mute command of any kind.** Searching its specification for
+"mute" returns nothing. RFDeck's `setMute` returns false for an SLX-D rather
+than sending a command the device would ignore — otherwise an operator presses
+Mute during a show, sees the button respond, and the channel stays open.
 
 **"Sample only" is a real distinction, not a gap in the research.** Shure's
 ULX-D document defines RF, audio and antenna state solely as fields of
@@ -197,6 +207,30 @@ ULX-D document defines RF, audio and antenna state solely as fields of
 table, are in no Shure document, and are never actually sent by micboard or by
 Companion. RFDeck therefore leaves those entries undefined rather than
 inheriting invented names that would produce GETs answered by silence.
+
+### The SLX-D sample
+
+```
+< SAMPLE chNum ALL audPeak audRms rfRssi >
+< SAMPLE 1 ALL 102 102 086 >
+```
+
+Three fields, and Axient's **−120 offset** for both — SLX-D's document states
+it outright for `RSSI` (dBm) and `AUDIO_LEVEL_RMS`/`PEAK` (dBFS). So SLX-D
+borrows Axient's units and its transmitter-side vocabulary while sending a
+sample shaped like nothing else.
+
+No antenna status and no channel quality. RFDeck reports no antenna state for
+SLX-D rather than a default: an antenna indicator permanently showing "off"
+reads as a fault on a receiver that simply has no such indicator.
+
+Channels are 1 or 2 only — the document's index table lists 0 (all channels),
+1 and 2.
+
+**SLX-D blocks command strings by default.** Network control has to be enabled
+on the receiver before any of this works; until it is, the device accepts the
+TCP connection and answers nothing, which looks exactly like a wrong model
+selection. The add-device form says so when an SLX-D model is picked.
 
 ### The ULX-D sample
 
@@ -225,6 +259,7 @@ table all agree:
 | AD4Q | 4 |
 | ULXD4 / ULXD4D / ULXD4Q | 1 / 2 / 4 |
 | QLXD4 | 1 |
+| SLXD4 / SLXD4D (and the "+" variants) | 1 / 2 |
 
 ## Discovery
 

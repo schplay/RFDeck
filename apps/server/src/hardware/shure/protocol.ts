@@ -16,7 +16,7 @@
  * the device does not have simply never produces a REP — so a single merged
  * command set would look like a dead device rather than a bug.
  */
-export type ShureFamily = 'axtd' | 'ulxd' | 'qlxd';
+export type ShureFamily = 'axtd' | 'ulxd' | 'qlxd' | 'slxd';
 
 export interface FamilySpec {
   family: ShureFamily;
@@ -26,10 +26,23 @@ export interface FamilySpec {
     channelName: string;
     frequency: string;
     battBars: string;
-    /** A real 0-100 charge figure, preferred over the five-bar gauge. */
-    battPercent: string;
+    /**
+     * A real 0-100 charge figure, preferred over the five-bar gauge.
+     *
+     * Absent on SLX-D, which reports bars only. Optional rather than an empty
+     * string, so "this family has no such parameter" is expressed the same way
+     * everywhere and cannot accidentally match a REP.
+     */
+    battPercent?: string;
     battMins: string;
-    mute: string;
+    /**
+     * Muting a channel at the receiver. **Absent on SLX-D**, whose command set
+     * has no mute of any kind — searching Shure's SLX-D document for "mute"
+     * returns nothing. A client must report that honestly rather than sending
+     * a command the device silently ignores, or an operator hits Mute during a
+     * show and watches nothing happen.
+     */
+    mute?: string;
     /**
      * Parameters that some families expose as individually query-able and
      * others deliver only inside a metering SAMPLE.
@@ -85,6 +98,24 @@ export const FAMILIES: Record<ShureFamily, FamilySpec> = {
     },
     maxChannels: 4,
   },
+  slxd: {
+    family: 'slxd',
+    label: 'SLX-D',
+    param: {
+      channelName: 'CHAN_NAME',
+      frequency:   'FREQUENCY',
+      // Axient's transmitter-side names, not ULX-D's.
+      battBars:    'TX_BATT_BARS',
+      battMins:    'TX_BATT_MINS',
+      // No TX_BATT_CHARGE_PERCENT: SLX-D reports bars only.
+      // No mute, no antenna status, no channel quality.
+      audioLevel:  'AUDIO_LEVEL_RMS',
+      rfLevel:     'RSSI',
+    },
+    // "The character x ... can be ASCII numbers 0 through 4", but the table
+    // that follows lists only 0 (all channels) and 1, 2 (individual).
+    maxChannels: 2,
+  },
   qlxd: {
     family: 'qlxd',
     label: 'QLX-D',
@@ -109,22 +140,26 @@ const MODEL_CHANNELS: Array<{ match: RegExp; family: ShureFamily; channels: numb
   { match: /ULX-?D.*Dual|ULXD4D/i,       family: 'ulxd', channels: 2 },
   { match: /ULX-?D.*Single|ULXD4(?!\w)/i, family: 'ulxd', channels: 1 },
   { match: /QLX-?D/i,                    family: 'qlxd', channels: 1 },
+  // SLXD4D and SLXD4D+ are two-channel; SLXD4 and SLXD4+ single. Ordered
+  // longest-first so SLXD4D is not matched by the SLXD4 pattern.
+  { match: /SLXD4D/i,                    family: 'slxd', channels: 2 },
+  { match: /SLXD4/i,                     family: 'slxd', channels: 1 },
 ];
 
 /**
  * Shure receivers that speak this protocol but that RFDeck cannot yet drive.
  *
- * Named explicitly so they can be refused rather than misidentified. SLX-D is
- * the case that matters: it answers `MODEL` exactly as Axient does, but its
- * metering sample is a different shape — three fields with no antenna status
- * and no channel quality. Treated as Axient, its audio peak would be read as
- * channel quality and its RF level as an antenna string, and every value on
- * the dashboard would be wrong while looking entirely plausible.
+ * Named explicitly so they can be refused rather than misidentified. SLX-D
+ * used to be the example here: it answers `MODEL` exactly as Axient does, but
+ * its metering sample is three fields with no antenna status and no channel
+ * quality. Read as Axient, its audio peak became channel quality and its RF
+ * level became an antenna string — every value on the dashboard wrong, and
+ * every one of them plausible. It is supported properly now; the ones below
+ * are not, and are refused by name for the same reason.
  *
  * See docs/MANUFACTURER_ROADMAP.md for what each of these needs.
  */
 const KNOWN_UNSUPPORTED: Array<{ match: RegExp; what: string }> = [
-  { match: /\bSLX-?D/i,                what: 'SLX-D' },
   { match: /\bP10T\b|\bPSM\s?1000\b/i, what: 'PSM1000 (IEM transmitter)' },
   { match: /\bUR4|\bUHF-?R\b/i,        what: 'UHF-R' },
 ];
@@ -282,6 +317,10 @@ const FAMILY_OFFSETS: Record<ShureFamily, { rssi: number; audio: number }> = {
   axtd: { rssi: 120, audio: 120 },
   ulxd: { rssi: 128, audio: 50 },
   qlxd: { rssi: 128, audio: 50 },
+  // SLX-D's document states the Axient offset outright, for both RSSI (dBm)
+  // and AUDIO_LEVEL_RMS/PEAK (dBFS): "The actual value = the reported value
+  // - 120". It shares Axient's units despite a quite different sample.
+  slxd: { rssi: 120, audio: 120 },
 };
 
 /** 255 means "unknown" for the 3-digit gauges, and is not a value. */
@@ -436,6 +475,27 @@ export function parseSample(msg: ShureMessage, family: ShureFamily): SampleReadi
 
   const f = msg.args;
 
+  if (family === 'slxd') {
+    // "< SAMPLE chNum ALL audPeak audRms rfRssi >", from Shure's SLX-D
+    // document — three metered fields, and none of the antenna status,
+    // channel quality or per-antenna RSSI that Axient sends.
+    //
+    // Note the document's own introduction shows the Axient sample layout
+    // instead; that is a copy-paste, contradicted by the SLX-D section a few
+    // pages later and by every implementation. The specific section wins.
+    const [, audRms, rfRssi] = f;
+    return {
+      channel: msg.channel,
+      quality: null,
+      audioDbfs: audRms !== undefined ? audioToDbfs(audRms, family) : null,
+      rfPercent: rfRssi !== undefined ? [rssiToPercent(rfRssi, family) ?? 0] : [],
+      // SLX-D reports RSSI per antenna to a GET, but its sample carries one
+      // figure and no antenna status at all. Claiming an antenna state here
+      // would be inventing one.
+      antennas: [],
+    };
+  }
+
   if (family === 'ulxd' || family === 'qlxd') {
     // < SAMPLE 1 ALL antenna rf audio >  — args after ALL.
     const [antenna, rf, audio] = f;
@@ -518,8 +578,14 @@ export function setMeterRate(channel: number, intervalMs: number): string {
   return `< SET ${channel} METER_RATE ${String(ms).padStart(5, '0')} >`;
 }
 
-export function setMute(channel: number, muted: boolean, family: ShureFamily): string {
-  return `< SET ${channel} ${FAMILIES[family].param.mute} ${muted ? 'ON' : 'OFF'} >`;
+/**
+ * Null for a family with no mute command, so a caller must decide what to tell
+ * the operator rather than sending "< SET 1 undefined ON >" at a receiver.
+ */
+export function setMute(channel: number, muted: boolean, family: ShureFamily): string | null {
+  const param = FAMILIES[family].param.mute;
+  if (!param) return null;
+  return `< SET ${channel} ${param} ${muted ? 'ON' : 'OFF'} >`;
 }
 
 /** Frequency is set in kHz, without the leading-zero padding a REP carries. */
