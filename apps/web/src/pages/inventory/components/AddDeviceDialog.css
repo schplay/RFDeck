@@ -355,6 +355,13 @@
   opacity: 0.6;
 }
 
+/* Marks a field that is only mandatory for some manufacturers — the Shure
+   model, which selects the protocol dialect rather than merely labelling the
+   box. */
+.label-required {
+  color: var(--color-primary);
+}
+
 .form-input,
 .form-select,
 .form-textarea {

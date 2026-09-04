@@ -15,6 +15,22 @@ interface Props {
 const MANUFACTURERS = ['Sennheiser', 'Shure', 'Wisycom', 'Lectrosonics', 'Sony', 'Other'];
 const LOCATIONS = ['Stage Left', 'Stage Right', 'FOH', 'Backstage', 'Monitors', 'Rack Room'];
 
+// Shure receivers RFDeck can talk to, and what each one implies.
+//
+// The model is load-bearing here in a way it is not for other manufacturers:
+// it selects the command vocabulary — Axient's TX_BATT_BARS against ULX-D's
+// BATT_BARS — and the number of channels to poll. A wrong choice produces a
+// receiver that connects and then reports nothing, which is the least
+// diagnosable failure there is, so this is a list rather than a text field.
+const SHURE_MODELS = [
+  { value: 'AD4D',   label: 'Axient Digital AD4D — 2 channel' },
+  { value: 'AD4Q',   label: 'Axient Digital AD4Q — 4 channel' },
+  { value: 'ULXD4',  label: 'ULX-D ULXD4 — 1 channel' },
+  { value: 'ULXD4D', label: 'ULX-D ULXD4D — 2 channel' },
+  { value: 'ULXD4Q', label: 'ULX-D ULXD4Q — 4 channel' },
+  { value: 'QLXD4',  label: 'QLX-D QLXD4 — 1 channel' },
+];
+
 const MANUFACTURER_PORT_HINTS: Record<string, { port: number; hint: string }> = {
   Sennheiser:   { port: 443,  hint: 'EW-DX / EM 6000 / EM 9046 (firmware ≥ 4.0) — port 443 (HTTPS SSCv2)' },
   Shure:        { port: 2202, hint: 'Axient Digital / ULX-D / SLX-D — port 2202' },
@@ -424,13 +440,40 @@ export function AddDeviceDialog({ open, onClose }: Props) {
                 </div>
 
                 <div className="form-field">
-                  <label className="form-label">Model</label>
-                  <input
-                    className="form-input"
-                    placeholder="e.g. EW-DX EM 2"
-                    value={form.model}
-                    onChange={(e) => updateForm('model', e.target.value)}
-                  />
+                  <label className="form-label">
+                    Model
+                    {form.manufacturer === 'Shure' && <span className="label-required"> *</span>}
+                  </label>
+                  {/* For Shure the model is not decoration: it decides which
+                      command vocabulary the receiver speaks (Axient and ULX-D
+                      use different parameter names) and how many channels to
+                      ask about. Getting it wrong looks like a dead device or a
+                      half-missing one, so it is a list rather than free text. */}
+                  {form.manufacturer === 'Shure' ? (
+                    <>
+                      <select
+                        className="form-input"
+                        value={form.model}
+                        onChange={(e) => updateForm('model', e.target.value)}
+                      >
+                        <option value="">Select a model…</option>
+                        {SHURE_MODELS.map(m => (
+                          <option key={m.value} value={m.value}>{m.label}</option>
+                        ))}
+                      </select>
+                      <p className="form-hint">
+                        Shure receivers do not announce their model over this protocol,
+                        so RFDeck cannot work it out for you.
+                      </p>
+                    </>
+                  ) : (
+                    <input
+                      className="form-input"
+                      placeholder="e.g. EW-DX EM 2"
+                      value={form.model}
+                      onChange={(e) => updateForm('model', e.target.value)}
+                    />
+                  )}
                 </div>
 
                 <div className="form-field">
