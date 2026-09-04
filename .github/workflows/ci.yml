@@ -63,5 +63,23 @@ jobs:
       - name: Build web
         run: pnpm --filter @rfdeck/web build
 
+      # The unit suite cannot fail the way this application has actually
+      # broken: a button posting to a path the firmware does not serve, a
+      # blank page after a tab woke up, a phone layout that scrolled sideways.
+      # These drive the real server, database and socket through a browser.
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: pnpm exec playwright test
+
+      - name: Upload the report when they fail
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
       - name: Shell script syntax
         run: bash -n scripts/install-ubuntu.sh && bash -n scripts/update-server.sh && bash -n scripts/rfdeck
