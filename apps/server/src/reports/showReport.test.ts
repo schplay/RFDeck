@@ -18,8 +18,8 @@ const show = {
   archived: false, archivedAt: null, currentAct: 2,
   createdAt: T0, updatedAt: T1,
   players: [
-    { realName: 'Dana', characterName: 'Emily', notes: '', assignedChannelKey: 'HH 3' },
-    { realName: 'Lee',  characterName: 'George', notes: 'quick change act 2', assignedChannelKey: null },
+    { realName: 'Dana', characterName: 'Emily', notes: '', assignedChannelKey: 'HH 3', iemChannelKey: 'IEM 1' },
+    { realName: 'Lee',  characterName: 'George', notes: 'quick change act 2', assignedChannelKey: null, iemChannelKey: null },
   ],
   micCheck: [
     { act: 2, channelKey: 'HH 3', checked: true,  checkedAt: T1, checkedBy: null, notes: null },
@@ -56,6 +56,22 @@ describe('assembleReport', () => {
     const r = assembleReport(inputs());
     expect(r.micCheck[0]).toMatchObject({ checked: 1, total: 2 });
     expect(r.micCheck[1]).toMatchObject({ checked: 1, total: 1 });
+  });
+
+  it('carries a performer\'s mic and IEM separately', () => {
+    const r = assembleReport(inputs());
+    expect(r.roster[0]).toMatchObject({ name: 'Dana', channel: 'HH 3', iem: 'IEM 1' });
+    // Someone with neither must read as unassigned, not as an empty string
+    // that could be mistaken for a channel named "".
+    expect(r.roster[1]).toMatchObject({ name: 'Lee', channel: null, iem: null });
+  });
+
+  it('shows both assignments in the CSV and the printable page', () => {
+    const r = assembleReport(inputs());
+    const csv = reportToCsv(r);
+    expect(csv).toContain('Name,Role,Mic,IEM,Notes');
+    expect(csv).toContain('Dana,Emily,HH 3,IEM 1');
+    expect(reportToHtml(r)).toContain('IEM 1');
   });
 
   it('carries who checked and when, as ISO strings', () => {

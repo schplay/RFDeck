@@ -533,7 +533,7 @@
 
 .sm-player-list-header {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 28px;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 28px;
   gap: 8px;
   padding: 0 4px 6px;
   font-size: 10px;
@@ -546,7 +546,7 @@
 
 .sm-player-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 28px;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 28px;
   gap: 8px;
   align-items: center;
   padding: 4px;
@@ -875,6 +875,6 @@
 
   /* Roster rows are a six-column grid — sideways scroll, not squashed. */
   .sm-players-scroll { overflow-x: auto; }
-  .sm-player-list { min-width: 720px; }
+  .sm-player-list { min-width: 860px; }
   .sm-add-player-form { flex-wrap: wrap; gap: 8px; }
 }

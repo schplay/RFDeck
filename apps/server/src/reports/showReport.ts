@@ -14,7 +14,7 @@ export interface ReportDevice {
 }
 
 export interface ReportCasting {
-  name: string; role: string; channel: string | null; notes: string;
+  name: string; role: string; channel: string | null; iem: string | null; notes: string;
 }
 
 export interface ReportCheckEntry {
@@ -106,7 +106,8 @@ export function assembleReport(input: ReportInputs): ShowReport {
     })),
     roster: (show.players ?? []).map((p: any) => ({
       name: p.realName, role: p.characterName ?? '',
-      channel: p.assignedChannelKey ?? null, notes: p.notes ?? '',
+      channel: p.assignedChannelKey ?? null,
+      iem: p.iemChannelKey ?? null, notes: p.notes ?? '',
     })),
     micCheck,
     events: events.map(e => ({
@@ -196,8 +197,8 @@ export function reportToCsv(r: ShowReport): string {
     r.devices.map(d => [d.name, d.manufacturer, d.model, d.ip, d.location ?? '', d.serial ?? '',
                         d.firmware ?? '', d.mac ?? '', d.active ? 'yes' : 'no']));
 
-  section('Roster', ['Name', 'Role', 'Channel', 'Notes'],
-    r.roster.map(c => [c.name, c.role, c.channel ?? '', c.notes]));
+  section('Roster', ['Name', 'Role', 'Mic', 'IEM', 'Notes'],
+    r.roster.map(c => [c.name, c.role, c.channel ?? '', c.iem ?? '', c.notes]));
 
   section('Mic check', ['Act', 'Channel', 'Checked', 'Checked at', 'Checked by', 'Notes'],
     r.micCheck.flatMap(a => a.entries.map(e =>
@@ -269,7 +270,8 @@ ${table(['Name', 'Model', 'IP', 'Location', 'Serial', 'Firmware', 'Active'],
   'No devices in inventory.')}
 
 <h2>Roster</h2>
-${table(['Name', 'Role', 'Channel', 'Notes'], r.roster.map(c => [c.name, c.role, c.channel ?? '—', c.notes]), 'No one cast.')}
+${table(['Name', 'Role', 'Mic', 'IEM', 'Notes'],
+  r.roster.map(c => [c.name, c.role, c.channel ?? '—', c.iem ?? '—', c.notes]), 'No one cast.')}
 
 <h2>Mic check</h2>
 ${acts}
