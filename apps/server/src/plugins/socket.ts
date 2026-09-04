@@ -23,7 +23,18 @@ export default fp(async (fastify, opts) => {
   const deviceManager = new DeviceManagerService(io);
   const audioManager = new AES67Manager();
   const captureManager = new CaptureManager();
-  const recordingManager = new RecordingManager(captureManager, io);
+  // The audio detectors ask the RF side what it knows before reporting
+  // anything ambiguous — see docs/AUDIO_DETECTION.md.
+  const recordingManager = new RecordingManager(captureManager, io, (channelKey) => {
+    const ch = deviceManager.getChannelSnapshot().find(c => c.name === channelKey);
+    if (!ch) return { marginal: false, muted: false };
+    return {
+      // Below the healthy band, or already in dropout.
+      marginal: ch.rfLevelA < 35 || ch.status === 'CRITICAL',
+      // Silence on a muted channel is deliberate, not a fault.
+      muted: ch.isMuted === true || ch.isTxMuted === true,
+    };
+  });
   const webrtcSignaling = new WebRTCSignaling(io, audioManager, captureManager);
 
   fastify.decorate('io', io);
