@@ -28,6 +28,14 @@ export interface FakeDeviceOptions {
    * fall, so a message straddling two reads is normal rather than exotic.
    */
   splitWrites?: boolean;
+  /**
+   * Which family to imitate.
+   *
+   * ULX-D has no MODEL parameter at all, which is exactly what the probe uses
+   * to tell the families apart — so a fake that answers MODEL regardless would
+   * make that logic untestable.
+   */
+  family?: 'axtd' | 'ulxd';
 }
 
 export class FakeShureDevice {
@@ -54,6 +62,7 @@ export class FakeShureDevice {
       firmware: options.firmware ?? '1.2.3',
       model: options.model ?? 'AD4D',
       splitWrites: options.splitWrites ?? false,
+      family: options.family ?? 'axtd',
     };
 
     for (let ch = 1; ch <= this.opts.channels; ch++) {
@@ -159,6 +168,26 @@ export class FakeShureDevice {
     if (t[0] === 'GET' && t[1] === 'DEVICE_ID') {
       return this.send(socket, `< REP DEVICE_ID {${this.opts.deviceId.padEnd(31)}} >`);
     }
+
+    if (t[0] === 'GET' && t[1] === 'FW_VER') {
+      return this.send(socket, `< REP FW_VER {${this.opts.firmware.padEnd(18)}} >`);
+    }
+
+    if (t[0] === 'GET' && t[1] === 'MODEL') {
+      // ULX-D has no MODEL parameter. A real one answers nothing at all, and
+      // that silence is what identifies the family.
+      if (this.opts.family !== 'axtd') return;
+      return this.send(socket, `< REP MODEL {${this.opts.model.padEnd(32)}} >`);
+    }
+
+    // A per-channel query for a channel this receiver does not have gets no
+    // reply — which is how the probe counts channels.
+    if (t[0] === 'GET' && t[2] === 'CHAN_NAME') {
+      const ch = Number(t[1]);
+      const v = this.values.get(ch);
+      if (!v) return;
+      return this.send(socket, `< REP ${ch} CHAN_NAME {${v.name.padEnd(31)}} >`);
+    }
   }
 
   private sendAll(socket: net.Socket, channel: number): void {
@@ -172,11 +201,16 @@ export class FakeShureDevice {
 
     this.send(socket, `< REP ${channel} CHAN_NAME {${v.name.padEnd(31)}} >`);
     this.send(socket, `< REP ${channel} FREQUENCY ${v.frequency} >`);
-    this.send(socket, `< REP ${channel} TX_BATT_BARS ${v.battBars} >`);
-    this.send(socket, `< REP ${channel} TX_BATT_CHARGE_PERCENT ${v.battPercent} >`);
-    this.send(socket, `< REP ${channel} TX_BATT_MINS ${v.battMins} >`);
+
+    // The battery vocabulary differs between families, which is half the point
+    // of having a family at all.
+    const ax = this.opts.family === 'axtd';
+    this.send(socket, `< REP ${channel} ${ax ? 'TX_BATT_BARS' : 'BATT_BARS'} ${v.battBars} >`);
+    this.send(socket, `< REP ${channel} ${ax ? 'TX_BATT_CHARGE_PERCENT' : 'BATT_CHARGE'} ${v.battPercent} >`);
+    this.send(socket, `< REP ${channel} ${ax ? 'TX_BATT_MINS' : 'BATT_RUN_TIME'} ${v.battMins} >`);
+
     this.send(socket, `< REP ${channel} AUDIO_MUTE ${v.mute} >`);
-    this.send(socket, `< REP ${channel} ANTENNA_STATUS ${v.antennas} >`);
+    if (ax) this.send(socket, `< REP ${channel} ANTENNA_STATUS ${v.antennas} >`);
   }
 
   private setMetering(socket: net.Socket, channel: number, intervalMs: number): void {

@@ -691,6 +691,7 @@ if [[ "$SKIP_FIREWALL" == "0" ]] && command -v ufw >/dev/null 2>&1; then
     fi
     ufw allow 53212/udp    >/dev/null && ok "UDP 53212 — Sennheiser G3/G4"
     ufw allow 5353/udp     >/dev/null && ok "UDP 5353 — mDNS discovery"
+    ufw allow 8427/udp     >/dev/null && ok "UDP 8427 — Shure device discovery"
     if [[ "${AES67_OK:-0}" == "1" ]]; then
       ufw allow 8080/tcp >/dev/null && ok "TCP 8080 — AES67 daemon web UI"
       ufw allow 319/udp  >/dev/null && ok "UDP 319 — PTP event"
@@ -710,7 +711,7 @@ if [[ "$SKIP_FIREWALL" == "0" ]] && command -v ufw >/dev/null 2>&1; then
     fi
   else
     warn "ufw is installed but inactive; no rules added."
-    warn "If you enable it later, allow: ${PORT}/tcp, 53212/udp, 5353/udp"
+    warn "If you enable it later, allow: ${PORT}/tcp, 53212/udp, 5353/udp, 8427/udp"
   fi
 fi
 

@@ -55,8 +55,8 @@ export default fp(async (fastify, opts) => {
       name: device.name,
       ip: device.ip,
       port: device.port,
-      manufacturer: inferManufacturer(device.name, device.protocol),
-      model: inferModel(device.name, device.protocol),
+      manufacturer: inferManufacturer(device.name, device.protocol, device.manufacturer),
+      model: inferModel(device.name, device.protocol, device.model),
     });
   });
 
@@ -171,8 +171,8 @@ export default fp(async (fastify, opts) => {
         name: device.name,
         ip: device.ip,
         port: device.port,
-        manufacturer: inferManufacturer(device.name, device.protocol),
-        model: inferModel(device.name, device.protocol),
+        manufacturer: inferManufacturer(device.name, device.protocol, device.manufacturer),
+        model: inferModel(device.name, device.protocol, device.model),
       });
     }
 
@@ -245,7 +245,11 @@ export default fp(async (fastify, opts) => {
 });
 
 
-function inferManufacturer(name: string, protocol: string): string {
+// Discovery sometimes knows outright, having probed the device — in which case
+// nothing here should second-guess it. These heuristics exist for the paths
+// that only ever learn a name.
+function inferManufacturer(name: string, protocol: string, known?: string): string {
+  if (known) return known;
   // MCP is exclusively used by Sennheiser G3/G4 EW-series hardware
   if (protocol === 'mcp') return 'Sennheiser';
   const n = name.toLowerCase();
@@ -258,10 +262,16 @@ function inferManufacturer(name: string, protocol: string): string {
   return 'Unknown';
 }
 
-function inferModel(name: string, protocol: string): string {
+function inferModel(name: string, protocol: string, known?: string): string {
+  if (known) return known;
   // For MCP devices the device-reported `name` is the channel label ("Vocal 1"),
   // not the hardware model. Return a generic model string instead.
   if (protocol === 'mcp') return 'EW G3/G4';
+  // A Shure device's name is its DEVICE_ID — "Rack1", "FOH" — which is not a
+  // model and must never be filed as one, because the model chooses the
+  // protocol dialect. If the probe could not read a MODEL (ULX-D has no such
+  // parameter), say so rather than inventing one.
+  if (protocol === 'shure') return 'Unknown Shure model';
   // Strip common suffixes like hostname appended via Bonjour (_ssc._tcp.local etc.)
   return name.replace(/\s*\(.*?\)\s*/g, '').trim() || 'Unknown Model';
 }

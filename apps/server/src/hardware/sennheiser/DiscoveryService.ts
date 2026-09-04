@@ -5,17 +5,32 @@ import tls from 'tls';
 import axios from 'axios';
 import { EventEmitter } from 'events';
 import { mcpBus } from './McpBus';
+import { ShureSlpListener } from '../shure/slp';
+import { probeShure, describeIdentity, logIdentity } from '../shure/probe';
 import { log } from '../../logger';
 
 export interface DiscoveredDevice {
   ip: string;
   port: number;
   name: string;
-  protocol: 'ssc' | 'sennheiser-ssc' | 'mcp' | string;
+  protocol: 'ssc' | 'sennheiser-ssc' | 'mcp' | 'shure' | string;
+  /**
+   * Set when discovery already knows, rather than inferring from the name.
+   *
+   * The Sennheiser paths leave these undefined and let the name heuristics in
+   * plugins/socket.ts do the work. The Shure path probes the device before
+   * announcing it, so guessing would be throwing away a real answer — and for
+   * Shure the model is not cosmetic: it selects the command vocabulary and the
+   * channel count. A device called "Rack1" would otherwise be filed as a
+   * receiver of model "Rack1".
+   */
+  manufacturer?: string;
+  model?: string;
 }
 
 const MCP_PORT = 53212;
 const SSC_PORT  = 443;
+const SHURE_PORT = 2202;
 
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
@@ -94,6 +109,10 @@ const MCP_PUSH = 'Push 5 500 3';
 
 export class DiscoveryService extends EventEmitter {
   private browsers:    Bonjour[] = [];
+  private shureSlp:    ShureSlpListener | null = null;
+  // Announcements repeat every few seconds. Probing on each one would mean a
+  // TCP connection per device per announcement, forever.
+  private shureProbed  = new Set<string>();
   private seenIps      = new Set<string>();        // IPs that have already been emitted
   private deviceNames  = new Map<string, string>(); // ip → real name from MCP Name response
   private anyHandler:  ((raw: string, fromIp: string) => void) | null = null;
@@ -118,9 +137,10 @@ export class DiscoveryService extends EventEmitter {
       log.warn('[Discovery] Disabled by RFDECK_DISABLE_DISCOVERY — no devices will be found');
       return;
     }
-    log.debug('[Discovery] Starting passive listeners (mDNS + MCP)...');
+    log.debug('[Discovery] Starting passive listeners (mDNS + MCP + Shure SLP)...');
     this.startMdns();
     this.startMcpListener();
+    this.startShureListener();
     // Active scanning (UDP probes + HTTP host sweep) is triggered on-demand via scan().
   }
 
@@ -179,6 +199,52 @@ export class DiscoveryService extends EventEmitter {
         }
       });
     }
+  }
+
+  // ── Shure SLP passive listener ────────────────────────────────────────
+  //
+  // Shure receivers announce themselves on a multicast group. The announcement
+  // says where a device is but not usefully what it is — the model hides
+  // behind a device class id that maps through a proprietary file RFDeck does
+  // not have — so the address is treated as a candidate and confirmed by
+  // asking the device directly on 2202.
+  //
+  // Exactly the shape of the G3/G4 path above: listen passively, then probe.
+  // An open port is not identification, and neither is a multicast packet.
+
+  private startShureListener() {
+    const listener = new ShureSlpListener();
+    this.shureSlp = listener;
+
+    listener.on('announce', ({ ip }: { ip: string }) => {
+      if (this.shureProbed.has(ip)) return;
+      if (this.seenIps.has(`${ip}:${SHURE_PORT}`)) return;
+      // Claim the address before the probe, not after: announcements repeat
+      // every few seconds and an in-flight probe would otherwise be started
+      // again on each one.
+      this.shureProbed.add(ip);
+
+      probeShure(ip, SHURE_PORT)
+        .then(identity => {
+          if (!identity) {
+            // Announced on Shure's group but does not speak command strings —
+            // an older model, or something else entirely. Allowed to be
+            // retried later, since this may be a device still booting.
+            this.shureProbed.delete(ip);
+            log.debug(`[Discovery] ${ip} announced on the Shure group but did not answer on ${SHURE_PORT}`);
+            return;
+          }
+          logIdentity(ip, identity);
+          this.emitDiscovered(
+            ip, SHURE_PORT, describeIdentity(identity, ip), 'shure',
+            // The probe asked the device; nothing downstream should guess.
+            { manufacturer: 'Shure', model: identity.model ?? undefined },
+          );
+        })
+        .catch(() => { this.shureProbed.delete(ip); });
+    });
+
+    listener.start(this.getLocalIpv4Addresses());
   }
 
   // ── MCP passive listener (G3/G4 via shared McpBus) ────────────────────
@@ -413,12 +479,15 @@ export class DiscoveryService extends EventEmitter {
 
   // ── Helpers ───────────────────────────────────────────────────────────
 
-  private emitDiscovered(ip: string, port: number, name: string, protocol: string) {
+  private emitDiscovered(
+    ip: string, port: number, name: string, protocol: string,
+    known: { manufacturer?: string; model?: string } = {},
+  ) {
     const key = `${ip}:${port}`;
     if (this.seenIps.has(key)) return;
     this.seenIps.add(key);
     log.debug(`[Discovery] Found: ${name} at ${ip}:${port} (${protocol})`);
-    this.emit('discovered', { ip, port, name, protocol } as DiscoveredDevice);
+    this.emit('discovered', { ip, port, name, protocol, ...known } as DiscoveredDevice);
   }
 
   private getLocalIpv4Addresses(): string[] {
@@ -446,6 +515,9 @@ export class DiscoveryService extends EventEmitter {
   // removed from inventory.  Call for both the inventory port AND port 53212 (MCP).
   forgetDevice(ip: string, port: number) {
     this.seenIps.delete(`${ip}:${port}`);
+    // Also clear the probe record, or a removed Shure device would announce
+    // itself forever without ever being offered again.
+    this.shureProbed.delete(ip);
     this.deviceNames.delete(ip);
     // Clear serial registrations for this IP so an EW-DX coming back at a new IP
     // won't be blocked by the dual-NIC dedup guard.
@@ -458,5 +530,8 @@ export class DiscoveryService extends EventEmitter {
     for (const b of this.browsers) { try { b.destroy(); } catch { /* ignore */ } }
     this.browsers = [];
     if (this.anyHandler) { mcpBus.removeAnyHandler(this.anyHandler); this.anyHandler = null; }
+    this.shureSlp?.stop();
+    this.shureSlp = null;
+    this.shureProbed.clear();
   }
 }
