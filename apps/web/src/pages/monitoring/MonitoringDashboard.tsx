@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ChannelStrip } from '../../components/channel/ChannelStrip';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useUiStore } from '../../stores/uiStore';
+import { useLiveStore } from '../../stores/liveStore';
+import { GoLivePanel } from '../../components/live/GoLivePanel';
 import { DeviceDrawer } from '../inventory/components/DeviceDrawer';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
@@ -56,6 +58,8 @@ export default function MonitoringDashboard() {
   const { handlers: dragHandlers } = useDragReorder(filteredChannels);
   const setFlipRef = useFlipAnimation(filteredChannels.map(ch => ch.id).join('|'));
   const { isConnected, isChannelStale } = useConnectionHealth();
+  const { live, loaded: liveLoaded, fetchLive } = useLiveStore();
+  useEffect(() => { void fetchLive(); }, [fetchLive]);
   const mutesLocked = useUiStore(s => s.mutesLocked);
   const setMutesLocked = useUiStore(s => s.setMutesLocked);
 
@@ -70,6 +74,17 @@ export default function MonitoringDashboard() {
     const dev = deviceByIp.get(ch.deviceId.split(':')[0]);
     if (dev) setDrawerDeviceId(dev.id);
   };
+
+  // Nothing is tracked until the operator goes live, so the dashboard would
+  // otherwise be empty with no explanation. This is the answer to "why is
+  // nothing here", and the one action worth offering at that moment.
+  if (liveLoaded && !live) {
+    return (
+      <div className="dashboard-page">
+        <GoLivePanel />
+      </div>
+    );
+  }
 
   return (
     <div className={`dashboard-page ${!isConnected ? 'is-disconnected' : ''}`}>

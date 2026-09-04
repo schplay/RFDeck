@@ -26,6 +26,7 @@ interface Assignment {
 }
 
 interface MicboardData {
+  live: boolean;
   show: { id: string; name: string; currentAct: number } | null;
   assignments: Record<string, Assignment>;
 }
@@ -60,7 +61,7 @@ export default function MicboardView() {
   const inventory = useDeviceStore(s => s.inventory);
   const { isConnected, isChannelStale } = useConnectionHealth();
 
-  const [data, setData] = useState<MicboardData>({ show: null, assignments: {} });
+  const [data, setData] = useState<MicboardData>({ live: false, show: null, assignments: {} });
   const [showPhotos, setShowPhotos] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
 
@@ -121,6 +122,7 @@ export default function MicboardView() {
       <header className="mb-header">
         <div className="mb-title">
           {data.show ? data.show.name : 'RFDeck'}
+          {!data.live && <span className="mb-standby">Standing by</span>}
           {data.show && <span className="mb-act">Act {data.show.currentAct}</span>}
         </div>
         <div className="mb-header-right">
@@ -133,8 +135,9 @@ export default function MicboardView() {
         <div className="mb-empty">
           <p>No active channels.</p>
           <p className="mb-empty-hint">
-            Channels appear here as receivers come online. Photos come from the
-            cast list of the running show.
+            {data.live
+              ? 'Channels appear here as receivers come online. Photos come from the cast list of the running show.'
+              : 'RFDeck is standing by. An operator starts the rig with Go Live.'}
           </p>
         </div>
       ) : (

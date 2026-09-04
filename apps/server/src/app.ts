@@ -20,11 +20,18 @@ const OPEN_PATHS = new Set([
   '/api/micboard',
 ]);
 
-// Performer headshots, for the Micboard. Same reasoning as above, and a
-// prefix rather than a fixed path because the id is in the URL. GET only —
-// the POST and DELETE that change a photo stay gated.
-function isOpenPhotoRead(method: string, path: string): boolean {
-  return method === 'GET' && /^\/api\/performers\/[\w-]+\/photo$/.test(path);
+// Further reads the Micboard needs, matched by METHOD as well as path.
+//
+// The set above cannot express that: it matches a path whatever the verb, and
+// /api/live answers POST and DELETE as well as GET. Listing it there would
+// have let anyone on the network go live — or stand the whole rig down —
+// without the PIN. Reading is exempt; changing never is.
+function isOpenRead(method: string, path: string): boolean {
+  if (method !== 'GET') return false;
+  // Whether anything is running, and whose cast is on the wall.
+  if (path === '/api/live') return true;
+  // Headshots. A prefix rather than a fixed path because the id is in the URL.
+  return /^\/api\/performers\/[\w-]+\/photo$/.test(path);
 }
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -52,7 +59,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0];
     if (OPEN_PATHS.has(path)) return;
-    if (isOpenPhotoRead(request.method, path)) return;
+    if (isOpenRead(request.method, path)) return;
 
     // The header is how the app authenticates. A plain navigation — opening
     // the printable show report in a new tab — cannot set headers, so a GET

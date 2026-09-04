@@ -106,7 +106,9 @@ export class RecordingManager {
   async reload(): Promise<void> {
     const settings = await prisma.settings.findFirst();
     this.config = {
-      enabled: settings?.recordingEnabled ?? true,
+      // Gated on live: standing down must actually stop capture, not just
+      // disable the devices feeding it.
+      enabled: (settings?.recordingEnabled ?? true) && settings?.liveStartedAt != null,
       maxMb:   settings?.recordingMaxMb ?? 2048,
       preSec:  Math.max(1, settings?.recordingPreSec ?? 15),
       postSec: Math.max(0, settings?.recordingPostSec ?? 10),
@@ -215,11 +217,13 @@ export class RecordingManager {
     let showId: string | null = null;
     let act: number | null = null;
     try {
-      const show = await prisma.show.findFirst({
-        where: { archived: false },
-        orderBy: { updatedAt: 'desc' },
-      });
-      if (show) { showId = show.id; act = show.currentAct; }
+      // The show the operator declared when going live. Never inferred: a
+      // detection filed against the wrong show corrupts that show's report.
+      const settings = await prisma.settings.findFirst();
+      if (settings?.liveShowId) {
+        const show = await prisma.show.findUnique({ where: { id: settings.liveShowId } });
+        if (show) { showId = show.id; act = show.currentAct; }
+      }
     } catch { /* scoping is a nicety; never block the detection */ }
 
     let detection;

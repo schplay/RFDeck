@@ -11,6 +11,7 @@ import { getToken, serverOrigin } from '../lib/api';
 import { Channel, Alert, Show, Performer } from '@rfdeck/shared-types';
 import { usePerformerStore } from '../stores/performerStore';
 import { useDetectionStore, Detection } from '../stores/detectionStore';
+import { useLiveStore, LiveState } from '../stores/liveStore';
 
 // Same origin resolution as the REST client — a hardcoded localhost here would
 // leave every remote client permanently disconnected. See lib/api.ts.
@@ -179,6 +180,12 @@ function getSocket(): Socket {
   // device answers, it just will not hand over channel data.
   _socket.on('device:auth', (data: { ip: string; port: number; failed: boolean; reason: string | null }) => {
     useDeviceStore.getState().setDeviceAuth(data.ip, data.port, data.failed ? (data.reason ?? 'Password refused') : null);
+  });
+
+  // Whether RFDeck is working the rig. Server-owned: FOH and a wall display
+  // must never disagree about whether anything is running.
+  _socket.on('live:changed', (next: LiveState) => {
+    useLiveStore.getState().applyServer(next);
   });
 
   // Detections — an incident with audio attached. The clip arrives a moment
