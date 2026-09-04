@@ -115,8 +115,8 @@ describe('ShureClient', () => {
     expect(rx1.frequency).toBe(578350);
     expect(rx1.rf_quality).toBeGreaterThan(0);
     expect(rx1.rf_quality).toBeLessThanOrEqual(100);
-    // Battery bars 004 → 80%.
-    expect(rx1.battery?.percent).toBe(80);
+    // The real charge figure the device reports, not 4 bars rounded to 80%.
+    expect(rx1.battery?.percent).toBe(73);
     // The hardware states its own runtime, which beats estimating it.
     expect(rx1.battery?.minutesRemaining).toBe(125);
   });
@@ -163,13 +163,38 @@ describe('ShureClient', () => {
   it('applies an unprompted report, which is how a real device signals a change', async () => {
     const { client, device } = await connect();
     client.startPolling();
-    await nextState(client, t => t.rx1?.battery?.percent === 80);
+    await nextState(client, t => t.rx1?.battery?.percent === 73);
 
     // No GET was sent for this. Shure reports changes on its own, which is why
     // the client does not poll everything on a timer.
-    device.report(1, 'TX_BATT_BARS', '002');
-    const tree = await nextState(client, t => t.rx1?.battery?.percent === 40);
-    expect(tree.rx1!.battery!.percent).toBe(40);
+    device.report(1, 'TX_BATT_CHARGE_PERCENT', '041');
+    const tree = await nextState(client, t => t.rx1?.battery?.percent === 41);
+    expect(tree.rx1!.battery!.percent).toBe(41);
+  });
+
+  it('prefers the reported charge percentage over the five-bar gauge', async () => {
+    // The fake reports 4 bars (which would round to 80%) and 73% charge. Bars
+    // arriving after the percentage must not drag it to a rounder number.
+    const { client } = await connect();
+    client.startPolling();
+
+    const tree = await nextState(client, t => t.rx1?.battery?.percent !== undefined);
+    expect(tree.rx1!.battery!.percent).toBe(73);
+
+    // And it stays put through a refresh, which re-sends both.
+    await new Promise(r => setTimeout(r, 150));
+    const after = await nextState(client, t => t.rx1?.battery?.percent !== undefined);
+    expect(after.rx1!.battery!.percent).toBe(73);
+  });
+
+  it('falls back to bars for a transmitter that reports no percentage', async () => {
+    const { client, device } = await connect();
+    device.values.get(1)!.battPercent = '255';   // unknown
+    device.values.get(1)!.battBars = '003';
+    client.startPolling();
+
+    const tree = await nextState(client, t => t.rx1?.battery?.percent !== undefined);
+    expect(tree.rx1!.battery!.percent).toBe(60);
   });
 
   it('leaves battery absent when the device says it does not know', async () => {
@@ -177,6 +202,7 @@ describe('ShureClient', () => {
     // that is a critical alert for a pack sitting in a case.
     const { client, device } = await connect();
     device.values.get(1)!.battBars = '255';
+    device.values.get(1)!.battPercent = '255';
     device.values.get(1)!.battMins = '65535';
     client.startPolling();
 

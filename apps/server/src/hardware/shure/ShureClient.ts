@@ -7,7 +7,7 @@ import {
 import {
   ShureFamily, FAMILIES, identifyModel,
   splitMessages, parseMessage, parseSample,
-  parseBatteryBars, batteryBarsToPercent, parseBatteryMinutes,
+  parseBatteryBars, batteryBarsToPercent, parseBatteryPercent, parseBatteryMinutes,
   parseFrequencyKhz, audioToDbfs, rssiToPercent,
   getAll, setMeterRate, setMute as buildSetMute, setFrequency as buildSetFrequency,
 } from './protocol';
@@ -67,6 +67,11 @@ export class ShureClient extends EventEmitter implements HardwareClient {
 
   /** Accumulated per-channel state, since telemetry arrives a field at a time. */
   private channels = new Map<number, ReceiverState>();
+  /**
+   * Channels that have reported a real charge percentage, so the coarse
+   * five-bar fallback never overwrites it afterwards.
+   */
+  private hasChargePercent = new Set<number>();
   /** Emitting on every field would be a storm; coalesce into one tick. */
   private emitScheduled = false;
 
@@ -286,7 +291,22 @@ export class ShureClient extends EventEmitter implements HardwareClient {
         ch.frequency = parseFrequencyKhz(msg.value);
         break;
 
+      case p.battPercent: {
+        // The real 0-100 charge figure. Both families report one, and it is
+        // strictly better than inferring a percentage from five bars.
+        const percent = parseBatteryPercent(msg.value);
+        if (percent !== null) {
+          ch.battery = { ...ch.battery, percent };
+          this.hasChargePercent.add(msg.channel);
+        }
+        break;
+      }
+
       case p.battBars: {
+        // The fallback, for a transmitter that reports bars but no charge.
+        // Never allowed to overwrite a real percentage with a rounder one:
+        // 4 bars would drag a reported 71% to 80%.
+        if (this.hasChargePercent.has(msg.channel)) break;
         const percent = batteryBarsToPercent(parseBatteryBars(msg.value));
         // Leave battery absent when unknown rather than writing 0 — no paired
         // transmitter is not a flat one, and the difference is an alert.
@@ -304,23 +324,27 @@ export class ShureClient extends EventEmitter implements HardwareClient {
         ch.mute = msg.value === 'ON';
         break;
 
-      case p.audioLevel: {
-        const db = audioToDbfs(msg.value, this.family);
-        if (db !== null) ch.af_level = db;
-        break;
-      }
-
-      case p.rfLevel: {
-        // RSSI is indexed by antenna as well as channel: "< REP 1 RSSI 1 083 >".
-        const [antenna, level] = msg.args.length >= 2 ? msg.args : [null, msg.args[0]];
-        const percent = rssiToPercent(level ?? '');
-        if (percent === null) break;
-        if (antenna === '2') ch.rf_quality_b = percent;
-        else ch.rf_quality = percent;
-        break;
-      }
-
       default:
+        // The rest are optional per family, so they cannot be `case` labels —
+        // an undefined label would match any REP whose parameter name we do
+        // not recognise, and quietly write garbage into the channel.
+        if (p.audioLevel && msg.param === p.audioLevel) {
+          const db = audioToDbfs(msg.value, this.family);
+          if (db !== null) ch.af_level = db;
+          break;
+        }
+
+        if (p.rfLevel && msg.param === p.rfLevel) {
+          // RSSI is indexed by antenna as well as channel:
+          // "< REP 1 RSSI 1 083 >".
+          const [antenna, level] = msg.args.length >= 2 ? msg.args : [null, msg.args[0]];
+          const percent = rssiToPercent(level ?? '', this.family);
+          if (percent === null) break;
+          if (antenna === '2') ch.rf_quality_b = percent;
+          else ch.rf_quality = percent;
+          break;
+        }
+
         return; // Nothing above cares; do not schedule an emit for it.
     }
 

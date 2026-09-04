@@ -749,19 +749,46 @@ only for `SSCClient`, so a Shure receiver's firmware would never have been
 recorded and never reached its maintenance log — silently, because the client
 emits the event perfectly well and nobody was listening.
 
-**What is not done.** No Shure hardware exists on the development machine, so:
+**The cross-check against open source.** The first pass leaned too heavily on
+one implementation (micboard) and on a failed grep. Re-validating against
+Shure's ULX-D document and the Bitfocus Companion module found five errors, all
+of which would have shipped looking plausible:
 
-- Nothing has been run against a real receiver. The protocol layer is tested
-  against strings copied out of Shure's own document, and the client against a
-  simulated device that speaks the same wire format — which proves the framing,
-  the metering subscription and the unit conversions, but cannot prove the
-  specification was read correctly. A shared misreading passes both.
-- Discovery is not implemented. Shure devices announce over mDNS, but the
-  service type string is in no document found, so it needs a capture from a
-  real device. Receivers are added by IP until then.
-- ULX-D and QLX-D rest on a single source. Shure publishes a command-strings
-  document for Axient Digital; the ULX-D parameter names come from a working
-  third-party implementation, with no primary document to corroborate them.
+  - **ULX-D RF used the wrong offset.** micboard's `rf / 115` is display
+    scaling for its own meters, not a unit conversion. ULX-D's own document:
+    "the RF level received and is 000-115. To convert this value to dBm,
+    subtract 128." Axient's offset is 120. Applying one to the other is an
+    8 dB error that never looks wrong.
+  - **ULX-D audio used the wrong offset** for the same reason — `2 x raw`
+    rather than the documented 000-050 range.
+  - **A battery percentage was believed not to exist.** `TX_BATT_CHARGE_PERCENT`
+    (and ULX-D's `BATT_CHARGE`) is in the specification, and the code was
+    inferring a percentage from a five-bar gauge instead. The claim came from
+    grepping the document for the wrong name and trusting the absence of a
+    match — the same failure mode as guessing, one step removed.
+  - **Three ULX-D parameter names were fabrications-by-inheritance.**
+    `RX_RF_LVL`, `AUDIO_LVL` and `RF_ANTENNA` appear in micboard's config
+    table, in no Shure document, and are never sent by micboard or Companion.
+    ULX-D delivers those values only inside a metering SAMPLE. They are now
+    explicitly undefined, with a test asserting so.
+  - **The discovery claim was simply wrong.** "Announces over mDNS, service
+    type in no document found, needs a hardware capture" — it is SLP on
+    multicast 239.255.254.253:8427, named in Shure's own ports PDF and
+    implemented in micboard's `py/discover.py`.
+
+Axient's sample field layout, the model/channel table and the metering
+subscription were confirmed unchanged by all three sources.
+
+**What is still not done.** No Shure hardware exists on the development
+machine, so:
+
+- Nothing has been run against a real receiver. The simulated device believes
+  the same specification the client does, so a shared misreading of the spec
+  passes both. That is the honest limit of the approach.
+- Discovery is understood but not implemented — the SLP listener plus a probe
+  on 2202 to confirm identity, mirroring how G3/G4 discovery already works.
+- The ULX-D audio field's *units* remain inferred: the document gives the range
+  (000-050) but never says dBFS. Companion reads it the same way.
 
 Sources, formats and the full list of assumptions: `docs/SHURE_PROTOCOL.md`.
 

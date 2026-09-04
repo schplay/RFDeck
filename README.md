@@ -275,15 +275,20 @@ network access gate, not per-user identity.
 | **Shure** (Axient Digital AD4D/AD4Q, ULX-D, QLX-D) | Command strings (TCP 2202) | Monitoring: RF per antenna, audio, battery bars and runtime, name, frequency. Control: mute, frequency 🚧 *— see below* |
 
 > **Shure support has not been run against real hardware.** It is written
-> against Shure's published command-strings specification and tested against a
-> simulated receiver that speaks the same wire format, which proves the framing,
-> metering and unit conversions but cannot prove the specification was read
-> correctly. Receivers are added by IP — auto-discovery needs a packet capture
-> from a real device to learn the mDNS service type. The model must be chosen
-> when adding one, because it selects the command vocabulary (Axient and ULX-D
-> use different parameter names) and the channel count. What was verified, what
-> was assumed, and every source is written up in
-> [`docs/SHURE_PROTOCOL.md`](docs/SHURE_PROTOCOL.md).
+> against Shure's published command-strings specifications for Axient Digital
+> and ULX-D, cross-checked line by line against two independent open-source
+> implementations ([micboard](https://github.com/karlcswanson/micboard) and the
+> [Bitfocus Companion](https://github.com/bitfocus/companion-module-shure-wireless)
+> module), and tested against a simulated receiver speaking the same wire
+> format. That proves the framing, metering and unit conversions — it cannot
+> prove the specification was read correctly, since the simulator believes the
+> same specification the client does.
+>
+> Receivers are added by IP; auto-discovery is not implemented yet. The model
+> must be chosen when adding one, because it selects the command vocabulary
+> (Axient and ULX-D genuinely use different parameter names) and the channel
+> count. What was verified, against how many sources, and what remains assumed
+> is written up in [`docs/SHURE_PROTOCOL.md`](docs/SHURE_PROTOCOL.md).
 
 ### Phase 2+ (Planned)
 - Wisycom (MRK series) — Ember+ open protocol
