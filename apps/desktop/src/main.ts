@@ -118,7 +118,29 @@ function startServer() {
       PORT: '3000',
       DATABASE_URL: databaseUrl(),
       PRISMA_SCHEMA_PATH: paths.schema,
-      NODE_OPTIONS: (process.env.NODE_OPTIONS ?? '') + ' --openssl-legacy-provider',
+      // Where the built UI is, so the sidecar can serve it over HTTP.
+      //
+      // The window itself loads these files straight off disk, so the app
+      // looks fine without this — but RFDeck is a multi-client service in both
+      // deployment shapes, and anyone else on the network browsing to this
+      // machine was getting "API only" and a 404. The server cannot infer the
+      // location: packaged, the UI sits at resources/web while the server sits
+      // at resources/app/server, and no relative walk between them is the same
+      // as in a checkout.
+      WEB_ROOT: path.dirname(paths.webIndex),
+      // NODE_OPTIONS is passed through untouched.
+      //
+      // It used to append --openssl-legacy-provider, which killed the sidecar
+      // outright on every launch: Electron's Node rejects that flag in
+      // NODE_OPTIONS, so the process exited with code 9 before running a line
+      // of RFDeck. The app opened its window and looked alive while nothing
+      // behind it was running.
+      //
+      // The flag cannot be moved to the argument list either — Electron builds
+      // Node against BoringSSL, which has no OpenSSL provider concept, and
+      // rejects it as a bad option. Old TLS is handled by --tls-min-v1.0 above
+      // and by the per-request agents in the SSC client.
+      NODE_OPTIONS: process.env.NODE_OPTIONS ?? '',
     },
   });
 
@@ -243,10 +265,26 @@ async function ensureWindowsFirewall(): Promise<void> {
   }
 }
 
-app.on('ready', async () => {
-  await ensureWindowsFirewall();
+app.on('ready', () => {
+  // Server and window first, firewall afterwards and unawaited.
+  //
+  // Firewall setup shells out to netsh three times and, when a rule is missing
+  // and RFDeck is not elevated, falls back to an elevated Start-Process that
+  // raises a UAC dialog and waits up to thirty seconds for an answer. Awaiting
+  // that before doing anything else meant the app showed no window and started
+  // no server until it finished — up to two minutes of apparently dead
+  // application on a first launch, and fifteen seconds of it on every launch
+  // after, just to re-check rules that already existed.
+  //
+  // Nothing about opening a window or starting the sidecar depends on the
+  // rules being in place: they matter when a receiver first tries to reach us,
+  // which is later than this.
   startServer();
   createWindow();
+
+  ensureWindowsFirewall().catch(err => {
+    console.warn('[Firewall] Setup did not complete:', err?.message ?? err);
+  });
 });
 
 app.on('window-all-closed', () => {
