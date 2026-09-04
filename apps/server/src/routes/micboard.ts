@@ -11,18 +11,22 @@ import { prisma } from '../db';
 
 export const micboardRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/micboard', async () => {
-    // The show being run now. Same rule the detection recorder uses: most
-    // recently touched show that has not been archived.
-    const show = await prisma.show.findFirst({
-      where: { archived: false },
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        players: {
-          orderBy: { sortIndex: 'asc' },
-          include: { performer: true },
-        },
-      },
-    });
+    // Whose cast is on the wall is whatever the operator selected when they
+    // went live — never inferred. Nothing running means no cast, rather than
+    // silently showing a previous production's.
+    const settings = await prisma.settings.findFirst();
+    const live = settings?.liveStartedAt != null;
+    const show = live && settings?.liveShowId
+      ? await prisma.show.findUnique({
+          where: { id: settings.liveShowId },
+          include: {
+            players: {
+              orderBy: { sortIndex: 'asc' },
+              include: { performer: true },
+            },
+          },
+        })
+      : null;
 
     // channelKey -> who is on it. Keyed by channel NAME, as everywhere else,
     // so it survives a receiver changing address.
@@ -53,6 +57,7 @@ export const micboardRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     return {
+      live,
       show: show ? { id: show.id, name: show.name, currentAct: show.currentAct } : null,
       assignments,
     };

@@ -242,3 +242,15 @@
     overflow-y: auto;
   }
 }
+
+/* Nothing running — said plainly, rather than showing a board that looks live. */
+.mb-standby {
+  font-size: 0.55em;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 2px 8px;
+  border-radius: 999px;
+}

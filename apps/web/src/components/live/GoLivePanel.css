@@ -1,0 +1,149 @@
+/* ── Go Live ─────────────────────────────────────────────────────────────── */
+
+.gl-root {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  min-height: 60vh;
+}
+
+.gl-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+  max-width: 46ch;
+}
+
+.gl-title {
+  margin: 0;
+  font-family: var(--font-headline, inherit);
+  font-size: clamp(22px, 3vw, 34px);
+  font-weight: 700;
+  color: var(--color-on-surface);
+}
+
+.gl-sub {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.gl-show { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 34ch; }
+.gl-show-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-on-surface-variant);
+  text-align: left;
+}
+.gl-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-surface-container-highest);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+  font: inherit;
+  font-size: 14px;
+}
+.gl-select:focus { outline: none; border-color: var(--color-primary); }
+.gl-show-hint { font-size: 11px; color: var(--color-on-surface-variant); text-align: left; }
+
+/* The one action on the screen, sized to say so. */
+.gl-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 46px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-on-primary, #00272b);
+  font-family: var(--font-display, inherit);
+  font-size: clamp(17px, 2vw, 22px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 6px 28px rgba(0, 219, 233, 0.25);
+  transition: transform 0.1s, box-shadow 0.2s;
+}
+.gl-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 34px rgba(0, 219, 233, 0.35);
+}
+.gl-button:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
+
+.gl-error { margin: 0; color: var(--color-error); font-size: 13px; }
+.gl-foot { margin: 0; font-size: 12px; color: var(--color-on-surface-variant); opacity: 0.8; }
+
+/* ── Live indicator ──────────────────────────────────────────────────────── */
+
+.live-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 16px 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-success, #6bff8f) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-success, #6bff8f) 35%, transparent);
+}
+
+.live-state { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+
+.live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-success, #6bff8f);
+  flex-shrink: 0;
+  animation: live-pulse 2s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+/* Someone watching a display for hours should not have something blinking at
+   them; the dot holds steady where motion is unwelcome. */
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+}
+
+.live-text { display: flex; flex-direction: column; min-width: 0; }
+.live-word {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--color-success, #6bff8f);
+  line-height: 1.1;
+}
+.live-meta {
+  font-size: 10px;
+  color: var(--color-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-stand-down {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-surface-container-highest);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.live-stand-down:hover:not(:disabled) {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+.live-stand-down:disabled { opacity: 0.6; cursor: default; }

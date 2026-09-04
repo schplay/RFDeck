@@ -54,6 +54,19 @@ model Settings {
   // Hours before a remote client must re-enter the PIN. 0 = never re-prompt.
   authReauthHours    Int      @default(0)
 
+  // ── Live ──
+  //
+  // The operator declaring that RFDeck is working the rig: every device
+  // tracked, capture and fault detection running, the Micboard showing the
+  // cast. Null means standing down — devices disabled, nothing recording.
+  //
+  // A single nullable pointer rather than a flag per show, so "two shows are
+  // live at once" cannot be represented at all.
+  liveStartedAt      DateTime?
+  // Whose cast the Micboard shows. Optional: a rehearsal or a one-off goes
+  // live with no show, and tiles fall back to channel names.
+  liveShowId         String?
+
   // ── Rolling capture ──
   // On by default: a problem worth reviewing is one nobody predicted, so
   // recording that must be switched on first would be off when it mattered.

@@ -4,6 +4,7 @@ import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, Clipboard
 import { useSocket } from '../hooks/useSocket';
 import { AudioMonitor } from '../components/audio/AudioMonitor';
 import { AlertFeed } from '../components/alerts/AlertFeed';
+import { LiveIndicator } from '../components/live/LiveIndicator';
 // Bundled import so the path survives base './' and the Electron file:// build.
 import logoMark from '../assets/logo-mark.png';
 import './RootLayout.css';
@@ -49,6 +50,7 @@ export default function RootLayout() {
           {statusDot}
         </div>
         {/* Any link tap closes the drawer; harmless on desktop. */}
+        <LiveIndicator />
         <div className="nav-links" onClick={() => setNavOpen(false)}>
           <NavLink to="/" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             <LayoutDashboard size={20} />
