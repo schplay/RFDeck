@@ -45,9 +45,12 @@ wrong one, issues tokens, and always exempts loopback.
    2.5 for why a self-declared label would read as audit while being
    decoration.
 5. ~~**6.3 — Device maintenance log.**~~ ✅ *complete*.
-6. **7.3 — Shure support.** 🚧 Protocol layer, client and inventory wiring
-   landed; **unverified against real hardware**, and discovery still needs a
-   capture from a device. See 7.3 for what that leaves.
+6. **7.3 — Additional manufacturers.** Shure (Axient/ULX-D/QLX-D) landed
+   including discovery, though unverified against real hardware. Every
+   remaining brand is now researched rather than assumed — see
+   `docs/MANUFACTURER_ROADMAP.md`. Next: Shure SLX-D (small), then RFDeck's
+   IEM channel model followed by PSM1000, then Sennheiser Digital 6000. Two
+   brands the README promised turn out to have no public protocol at all.
 
 Stage 5 mobile is partly done: the responsive pass landed, so the Micboard and
 dashboard work on a phone. PWA, push and QR remain unstarted and unurgent.
