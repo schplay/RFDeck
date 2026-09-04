@@ -10,6 +10,7 @@ import { useBatteryStore, BatteryEstimate } from '../stores/batteryStore';
 import { getToken, serverOrigin } from '../lib/api';
 import { Channel, Alert, Show, Performer } from '@rfdeck/shared-types';
 import { usePerformerStore } from '../stores/performerStore';
+import { useDetectionStore, Detection } from '../stores/detectionStore';
 
 // Same origin resolution as the REST client — a hardcoded localhost here would
 // leave every remote client permanently disconnected. See lib/api.ts.
@@ -173,6 +174,22 @@ function getSocket(): Socket {
   // device answers, it just will not hand over channel data.
   _socket.on('device:auth', (data: { ip: string; port: number; failed: boolean; reason: string | null }) => {
     useDeviceStore.getState().setDeviceAuth(data.ip, data.port, data.failed ? (data.reason ?? 'Password refused') : null);
+  });
+
+  // Detections — an incident with audio attached. The clip arrives a moment
+  // after the detection itself, as a detection:updated once the post-roll is
+  // written, so a card appears immediately and gains its player shortly after.
+  _socket.on('detection:new', (d: Detection) => {
+    useDetectionStore.getState().applyNew(d);
+  });
+  _socket.on('detection:updated', (d: Detection) => {
+    useDetectionStore.getState().applyUpdated(d);
+  });
+  _socket.on('detection:deleted', ({ id }: { id: string }) => {
+    useDetectionStore.getState().applyDeleted(id);
+  });
+  _socket.on('detection:pruned', ({ ids }: { ids: string[] }) => {
+    useDetectionStore.getState().applyPruned(ids);
   });
 
   // Performer roster — the whole list on every change, so clients never drift.

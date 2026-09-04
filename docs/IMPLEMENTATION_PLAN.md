@@ -604,9 +604,13 @@ stage or a moment in the show.*
    that matter (with a note), dismiss the ones that do not, and **listen to
    the clip** from any client — the clip is served over the same path as live
    monitoring.
-5. **Housekeeping.** A cap on stored clips per channel and overall, with
-   flagged clips exempt from automatic pruning; disk-pressure handling so a
-   long run cannot fill the server.
+5. **Always on, within a disk budget the operator sets.** Recording is not a
+   mode to remember to switch on: every channel with an audio patch is
+   captured continuously, from the moment it is patched. The settings page
+   reports the server's free disk space and takes a maximum the application
+   may use; clips fill that budget **FIFO**, oldest discarded first, so the
+   operator gets as much history as the space they allotted. Flagged clips are
+   exempt from automatic pruning — flagging is what says "keep this".
 
 **Approach.** Builds directly on `CaptureManager` (per-channel PCM already
 flows through it) and the persisted event log (4.1 — detections are a new

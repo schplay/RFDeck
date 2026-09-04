@@ -29,12 +29,55 @@ interface OpenDevice {
   buffers: Map<number, { samples: Int16Array; offset: number }>;
   /** How many peers are listening to each channel. */
   listeners: Map<number, number>;
+  /**
+   * Raw PCM subscribers per channel — the rolling recorder.
+   *
+   * Distinct from listeners because they are always on: a tap keeps the
+   * device open with nobody listening, which is the whole point of recording
+   * continuously rather than only while someone happens to be monitoring.
+   */
+  taps: Map<number, Set<(samples: Int16Array) => void>>;
   /** Leftover bytes when a chunk does not end on a frame boundary. */
   residue: Buffer;
 }
 
 export class CaptureManager {
   private devices = new Map<string, OpenDevice>();
+
+  /** 10 ms of mono samples at the capture rate — one tap callback's payload. */
+  static readonly SAMPLE_RATE = SAMPLE_RATE;
+  static readonly FRAMES_PER_CHUNK = FRAMES_PER_CHUNK;
+
+  /**
+   * Subscribe to raw mono PCM for one input, opening the device if needed.
+   *
+   * Returns a function that removes the tap. Unlike `acquire`, this creates no
+   * WebRTC source and needs no listener: it exists so recording can run
+   * continuously on every patched channel.
+   */
+  addTap(deviceId: string, channel: number, cb: (samples: Int16Array) => void): (() => void) | null {
+    const dev = this.open(deviceId);
+    if (!dev) return null;
+    if (channel < 1 || channel > dev.channels) {
+      log.warn(`[capture] ${deviceId} has ${dev.channels} inputs; tap on channel ${channel} refused`);
+      return null;
+    }
+
+    if (!dev.buffers.has(channel)) {
+      dev.buffers.set(channel, { samples: new Int16Array(FRAMES_PER_CHUNK), offset: 0 });
+    }
+    let set = dev.taps.get(channel);
+    if (!set) { set = new Set(); dev.taps.set(channel, set); }
+    set.add(cb);
+
+    return () => {
+      const current = this.devices.get(deviceId);
+      if (current !== dev) return; // device was reopened; nothing to remove
+      set!.delete(cb);
+      if (set!.size === 0) dev.taps.delete(channel);
+      this.closeIfIdle(deviceId);
+    };
+  }
 
   // A source for one input of one device. Opens the device if needed.
   acquire(deviceId: string, channel: number): InstanceType<typeof RTCAudioSource> | null {
@@ -68,9 +111,16 @@ export class CaptureManager {
       return;
     }
     dev.listeners.delete(channel);
+    this.closeIfIdle(deviceId);
+  }
 
-    const anyLeft = [...dev.listeners.values()].some(n => n > 0);
-    if (!anyLeft) this.close(deviceId);
+  // A device stays open while anything wants its audio — a listener or a tap.
+  private closeIfIdle(deviceId: string): void {
+    const dev = this.devices.get(deviceId);
+    if (!dev) return;
+    const listening = [...dev.listeners.values()].some(n => n > 0);
+    const tapped = [...dev.taps.values()].some(s => s.size > 0);
+    if (!listening && !tapped) this.close(deviceId);
   }
 
   private open(deviceId: string): OpenDevice | null {
@@ -107,6 +157,7 @@ export class CaptureManager {
       sources: new Map(),
       buffers: new Map(),
       listeners: new Map(),
+      taps: new Map(),
       residue: Buffer.alloc(0),
     };
     this.devices.set(deviceId, dev);
@@ -146,27 +197,40 @@ export class CaptureManager {
     const frames = Math.floor(buf.length / frameBytes);
     dev.residue = buf.subarray(frames * frameBytes);
 
-    // Only decode channels somebody is actually listening to.
-    const active = [...dev.listeners.keys()].filter(ch => (dev.listeners.get(ch) ?? 0) > 0);
-    if (active.length === 0 || frames === 0) return;
+    // Decode channels somebody is listening to OR recording from.
+    const active = new Set<number>();
+    for (const [ch, n] of dev.listeners) if (n > 0) active.add(ch);
+    for (const [ch, s] of dev.taps) if (s.size > 0) active.add(ch);
+    if (active.size === 0 || frames === 0) return;
 
     for (const channel of active) {
       const acc = dev.buffers.get(channel);
+      if (!acc) continue;
       const source = dev.sources.get(channel);
-      if (!acc || !source) continue;
+      const taps = dev.taps.get(channel);
 
       const offsetBytes = (channel - 1) * 2;
       for (let f = 0; f < frames; f++) {
         acc.samples[acc.offset++] = buf.readInt16LE(f * frameBytes + offsetBytes);
 
         if (acc.offset >= acc.samples.length) {
-          source.onData({
+          source?.onData({
             samples: acc.samples,
             sampleRate: SAMPLE_RATE,
             bitsPerSample: 16,
             channelCount: 1,
             numberOfFrames: FRAMES_PER_CHUNK,
           });
+          // Taps get their own copy: this buffer is reused for the next frame,
+          // and a recorder holding a reference would see it overwritten.
+          if (taps?.size) {
+            const copy = acc.samples.slice();
+            for (const cb of taps) {
+              try { cb(copy); } catch (err: any) {
+                log.warn(`[capture] Tap on ${channel} threw: ${err?.message}`);
+              }
+            }
+          }
           acc.offset = 0;
         }
       }

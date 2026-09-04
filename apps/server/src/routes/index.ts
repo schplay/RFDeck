@@ -10,6 +10,7 @@ import { audioRoutes } from './audio';
 import { aes67Routes } from './aes67';
 import { performerRoutes } from './performers';
 import { showReportRoutes } from './showReport';
+import { detectionRoutes } from './detections';
 
 export default async function routes(fastify: FastifyInstance) {
   fastify.register(healthRoutes, { prefix: '/health' });
@@ -23,6 +24,7 @@ export default async function routes(fastify: FastifyInstance) {
   fastify.register(aes67Routes);
   fastify.register(performerRoutes);
   fastify.register(showReportRoutes);
+  fastify.register(detectionRoutes);
 }
 
 

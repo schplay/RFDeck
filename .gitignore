@@ -28,3 +28,7 @@ apps/desktop/resources/prisma-client/
 
 # Local ssh-agent socket details — machine-specific, never useful in the repo
 scripts/ssh-agent-vars
+
+# Recorded incident clips (rolling capture)
+clips/
+*.wav

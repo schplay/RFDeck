@@ -6,6 +6,7 @@ import { mcpBus } from '../hardware/sennheiser/McpBus';
 import { WebRTCSignaling } from '../audio/WebRTCSignaling';
 import { AES67Manager } from '../audio/AES67Manager';
 import { CaptureManager } from '../audio/CaptureManager';
+import { RecordingManager } from '../recording/RecordingManager';
 import { listAudioInputDevices } from '../audio/deviceList';
 import { prisma } from '../db';
 import { log } from '../logger';
@@ -22,12 +23,19 @@ export default fp(async (fastify, opts) => {
   const deviceManager = new DeviceManagerService(io);
   const audioManager = new AES67Manager();
   const captureManager = new CaptureManager();
+  const recordingManager = new RecordingManager(captureManager, io);
   const webrtcSignaling = new WebRTCSignaling(io, audioManager, captureManager);
 
   fastify.decorate('io', io);
   fastify.decorate('deviceManager', deviceManager);
   fastify.decorate('audioManager', audioManager);
   fastify.decorate('captureManager', captureManager);
+  fastify.decorate('recordingManager', recordingManager);
+
+  // Detections keep the audio that proves them.
+  deviceManager.on('rf:detection', (input: any) => {
+    void recordingManager.record(input);
+  });
 
   // Forward mDNS discovery events to all connected frontend clients
   deviceManager.on('device:discovered', (device: DiscoveredDevice) => {
@@ -67,6 +75,11 @@ export default fp(async (fastify, opts) => {
       io.emit('device:heartbeat', deviceManager.getHeartbeat());
     }, HEARTBEAT_MS);
 
+    // Recording follows the audio patch, so it starts once and then only on
+    // patch changes. Never fatal: a server that cannot record must still monitor.
+    recordingManager.start().catch(err =>
+      log.warn(`[recording] Could not start rolling capture: ${err?.message}`));
+
     fastify.log.info('Socket.io server listening and DeviceManager started');
   });
 
@@ -75,6 +88,7 @@ export default fp(async (fastify, opts) => {
     deviceManager.stop();
     mcpBus.close();
     audioManager.stop();
+    recordingManager.stopAll();
     io.close();
   });
 

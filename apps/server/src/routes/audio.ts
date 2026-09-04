@@ -46,6 +46,8 @@ export const audioRoutes: FastifyPluginAsync = async (fastify) => {
     if (!deviceId || !inputChannel) {
       await prisma.channelAudioMap.deleteMany({ where: { channelKey } });
       (fastify as any).io?.emit('audio:assignments-changed');
+      // Recording follows the patch: unpatching stops the tap.
+      (fastify as any).recordingManager?.reload().catch(() => {});
       return { channelKey, deviceId: null, inputChannel: null };
     }
 
@@ -70,6 +72,9 @@ export const audioRoutes: FastifyPluginAsync = async (fastify) => {
 
     log.info(`[audio] ${channelKey} patched to ${deviceId} input ${inputChannel}`);
     (fastify as any).io?.emit('audio:assignments-changed');
+    // A newly patched channel starts recording immediately — there is no
+    // separate switch to remember.
+    (fastify as any).recordingManager?.reload().catch(() => {});
     return saved;
   });
 

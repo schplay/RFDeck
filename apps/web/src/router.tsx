@@ -8,6 +8,7 @@ import Settings from './pages/settings/Settings';
 import BackstageView from './pages/backstage/BackstageView';
 import ShowManagement from './pages/shows/ShowManagement';
 import PerformersPage from './pages/performers/PerformersPage';
+import DetectionsPage from './pages/detections/DetectionsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Each route is wrapped so a render error takes down one page, not the whole
@@ -53,6 +54,10 @@ export const router = createHashRouter([
       {
         path: 'performers',
         element: guard('Performers', <PerformersPage />)
+      },
+      {
+        path: 'detections',
+        element: guard('Detections', <DetectionsPage />)
       }
     ]
   }
