@@ -272,9 +272,20 @@ network access gate, not per-user identity.
 |---|---|---|
 | **Sennheiser** (EW-DX, EM 6000, EM 9046 — firmware ≥ 4.0) | SSCv2 (HTTPS/JSON REST) | Full: RF, AF, battery, mute, gain, frequency, identify, network config, spectrum scan |
 | **Sennheiser Legacy** (G3, G4, EM 3732, etc.) | SSCv1 (TCP/UDP) | Monitoring: RF, battery, status |
+| **Shure** (Axient Digital AD4D/AD4Q, ULX-D, QLX-D) | Command strings (TCP 2202) | Monitoring: RF per antenna, audio, battery bars and runtime, name, frequency. Control: mute, frequency 🚧 *— see below* |
+
+> **Shure support has not been run against real hardware.** It is written
+> against Shure's published command-strings specification and tested against a
+> simulated receiver that speaks the same wire format, which proves the framing,
+> metering and unit conversions but cannot prove the specification was read
+> correctly. Receivers are added by IP — auto-discovery needs a packet capture
+> from a real device to learn the mDNS service type. The model must be chosen
+> when adding one, because it selects the command vocabulary (Axient and ULX-D
+> use different parameter names) and the channel count. What was verified, what
+> was assumed, and every source is written up in
+> [`docs/SHURE_PROTOCOL.md`](docs/SHURE_PROTOCOL.md).
 
 ### Phase 2+ (Planned)
-- Shure (Axient Digital, ULX-D, SLX-D) — Shure System API + TCP 2202 command strings
 - Wisycom (MRK series) — Ember+ open protocol
 - Lectrosonics — via middleware bridge
 - Sony, Sound Devices, Beyerdynamic — HTTP/JSON APIs

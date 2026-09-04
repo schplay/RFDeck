@@ -17,9 +17,15 @@ import {
 } from '../batteryEstimator';
 import { decryptSecret } from '../../auth/secretBox';
 import { detectFirmwareChange } from '../firmwareChange';
+import { ShureClient } from '../shure/ShureClient';
 import { log } from '../../logger';
 
-type ClientType = SSCClient | G3G4Client;
+// The union is kept rather than replaced by HardwareClient because the
+// Sennheiser-specific branches below still narrow on it with `instanceof`.
+// What matters for a third vendor is that everything those branches guard is
+// optional: a ShureClient falls through them and is driven entirely by the
+// shared `state` / `connected` / `disconnected` contract.
+type ClientType = SSCClient | G3G4Client | ShureClient;
 
 export class DeviceManagerService extends EventEmitter {
   private discovery: DiscoveryService;
@@ -187,7 +193,9 @@ export class DeviceManagerService extends EventEmitter {
   }
 
   // Called via REST API when user adds a device
-  public trackDevice(device: { ip: string; port: number; name?: string }) {
+  public trackDevice(
+    device: { ip: string; port: number; name?: string; manufacturer?: string; model?: string },
+  ) {
     const id = `${device.ip}:${device.port}`;
     log.debug(`[DeviceManager] trackDevice called for ${device.name ?? id} at ${id}`);
     if (this.clients.has(id)) {
@@ -197,6 +205,21 @@ export class DeviceManagerService extends EventEmitter {
 
     // Store user-assigned name for use in channel labels
     if (device.name) this.deviceNames.set(id, device.name);
+
+    // Shure speaks a different protocol on a different port, and there is no
+    // probe chain to fall into: the manufacturer on the inventory row decides.
+    //
+    // Sennheiser keeps the behaviour it had — try SSCv2, fall back to G3/G4 on
+    // failure — because that fallback is how a G3 is recognised at all, and it
+    // is a Sennheiser-internal detail rather than something a second vendor
+    // should be dragged through.
+    if (/shure/i.test(device.manufacturer ?? '')) {
+      const shure = new ShureClient(device.ip, device.port, device.model ?? '');
+      this.setupClientListeners(shure, device.ip, device.port, id);
+      this.clients.set(id, shure);
+      shure.startPolling();
+      return;
+    }
 
     // First try SSCv2 (HTTPS), passing password if one is stored.
     // Passwords are encrypted at rest and only decrypted here, in memory.
@@ -227,7 +250,17 @@ export class DeviceManagerService extends EventEmitter {
     client.startPolling(250);
   }
 
-  public updateTrackedDevice(device: { ip: string; port: number; active?: boolean }) {
+  // manufacturer and model are carried through, not merely tolerated: they are
+  // what trackDevice uses to decide which protocol to speak. Callers pass the
+  // whole inventory row, so they are present at runtime either way — declaring
+  // them stops a future caller building a literal here and silently turning a
+  // Shure receiver back into a Sennheiser one.
+  public updateTrackedDevice(
+    device: {
+      ip: string; port: number; active?: boolean;
+      name?: string; manufacturer?: string; model?: string;
+    },
+  ) {
     this.untrackDevice(device.ip, device.port);
     if (device.active === false) return; // inactive devices are never tracked
     this.trackDevice(device);
@@ -237,7 +270,10 @@ export class DeviceManagerService extends EventEmitter {
   // untracked: no polling, no telemetry, no dropout or battery alerts, and their
   // channel strips are removed from the dashboard.
   public setDeviceActive(
-    device: { ip: string; port: number; name?: string; password?: string | null },
+    device: {
+      ip: string; port: number; name?: string; password?: string | null;
+      manufacturer?: string; model?: string;
+    },
     active: boolean,
   ) {
     const id = `${device.ip}:${device.port}`;
@@ -463,8 +499,15 @@ export class DeviceManagerService extends EventEmitter {
       }
     });
 
-    // SSCv2 only: forward device identity metadata to the frontend and reconcile by MAC
-    if (client instanceof SSCClient) {
+    // Device identity: persist it, forward it, and reconcile an IP change by MAC.
+    //
+    // Subscribed for every client rather than only SSCv2. The handler already
+    // acts per field, so a vendor that reports less simply triggers less — and
+    // gating on the class meant a Shure receiver's firmware was never recorded
+    // and never appeared in its maintenance log, silently, because ShureClient
+    // emits this event perfectly well and nobody was listening. G3/G4 never
+    // emits it at all, so nothing changes there.
+    {
       client.on('metadata', async (meta: any) => {
         // Persist identity fields so they survive server restarts
         const patch: Record<string, string> = {};

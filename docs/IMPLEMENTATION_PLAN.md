@@ -9,7 +9,7 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | Stage | State |
 |---|---|
 | 1 — Durability & truth | ✅ Complete |
-| 2 — Shared state | ✅ 2.1–2.4 complete; 2.5 (control attribution) outstanding — see reconciliation note |
+| 2 — Shared state | ✅ 2.1–2.4 complete; 2.5 (control attribution) closed without building, deliberately |
 | 3 — Access control & deployment | ✅ Complete — PIN gate, encryption at rest, installer + updater, HTTPS, AES67, shell CLI |
 | 4 — Show-day hardening | ✅ Complete — 4.3 show report landed as JSON, CSV, and a printable page |
 | A — Audio monitoring *(added)* | ✅ Server-side capture, any-interface patching, AES67 subscriptions from RFDeck |
@@ -17,7 +17,7 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | 5 — Client reach | 5.1 responsive ✅; PWA, push and QR not started |
 | 6 — Feature completion | ✅ 6.1 rolling capture and detection; ✅ 6.2 notebook and photos; ✅ 6.3 maintenance log; 6.4 outstanding |
 | B — Micboard & Go Live *(added)* | ✅ Read-only wall display; one action to put RFDeck on the rig |
-| 7 — Breadth & operations | In progress — ✅ 7.1 (186 unit + 44 end-to-end) and 7.5 CI; 7.2–7.4 outstanding |
+| 7 — Breadth & operations | In progress — ✅ 7.1 (245 unit + 44 end-to-end) and 7.5 CI; 🚧 7.3 Shure (unverified on hardware); 7.2, 7.4 outstanding |
 
 *Last reconciled 2026-08-23 against commit `c78aa86`. See "Work since the plan" below for
 what landed outside the original stages.*
@@ -41,12 +41,13 @@ wrong one, issues tokens, and always exempts loopback.
 3. ~~**README accuracy.**~~ done — six built features were marked planned or
    partial, and the Windows build section pointed at a directory the installer
    has never written to.
-4. **2.5 — Control command attribution.** Still blocked on a decision: with no
-   named accounts, "who" can only be a label each client sets for itself.
+4. ~~**2.5 — Control command attribution.**~~ Closed without building — see
+   2.5 for why a self-declared label would read as audit while being
+   decoration.
 5. ~~**6.3 — Device maintenance log.**~~ ✅ *complete*.
-6. **7.3 — Shure support.** The largest single expansion of what RFDeck can
-   talk to, and the audience Micboard already serves. Extract the hardware
-   client interface first.
+6. **7.3 — Shure support.** 🚧 Protocol layer, client and inventory wiring
+   landed; **unverified against real hardware**, and discovery still needs a
+   capture from a device. See 7.3 for what that leaves.
 
 Stage 5 mobile is partly done: the responsive pass landed, so the Micboard and
 dashboard work on a phone. PWA, push and QR remain unstarted and unurgent.
@@ -387,14 +388,19 @@ Not needed now, but it is the natural request once several people use it.
 
 ---
 
-### 2.5 Control-command conflict handling — **M** — *decision needed*
+### 2.5 Control-command conflict handling — **M** — *closed, not built*
 
-> With named accounts superseded (3.1), there is no identity to attribute a
-> command to. The workable substitute is a **per-client operator label** — a
-> name each browser sets for itself ("FOH", "Dana", "Stage L") and sends with
-> every control command and mic-check tick. It is self-declared, so it is
-> context rather than audit, but it answers the actual question ("who just
-> muted CH 4?") without reintroducing accounts. Needs a yes before building.
+> **Decided 2026-09-04: not doing this.** The options were a self-declared
+> per-client operator label, or an anonymous "changed from another station"
+> announcement. Neither was taken.
+>
+> The reasoning worth keeping: telemetry already echoes hardware state back, so
+> the rig never lies about what it is doing — it just does not say who asked.
+> That is a smaller problem than it looks on a crew that can talk to each other,
+> and a self-declared label is not identity: nothing stops "FOH" being typed on
+> the wrong laptop, so it would read as audit while being decoration.
+>
+> Reopen if a deployment appears where operators cannot see or hear each other.
 
 **Problem.** Mute, gain, and frequency commands arrive over the socket from any client with no
 arbitration. Two operators can fight over a channel, and neither sees the other's action except
@@ -714,7 +720,7 @@ multi-venue deployment and for concurrent write volume beyond one show's worth o
 Prisma makes the provider swap mechanical; the work is migration strategy and verifying no
 SQLite-specific behaviour leaked into queries.
 
-### 7.3 Additional manufacturers — **XL each**
+### 7.3 Additional manufacturers — **XL each** — 🚧 Shure landed, unverified
 
 Shure (Axient Digital, ULX-D, SLX-D) first — largest installed base, documented API. Then
 Wisycom via Ember+, then Lectrosonics.
@@ -722,6 +728,42 @@ Wisycom via Ember+, then Lectrosonics.
 Before starting, extract an explicit hardware-client interface. `SSCClient` and `G3G4Client`
 already share an implicit contract through the `ClientType` union; making it explicit turns a
 third manufacturer into an addition rather than a refactor.
+
+**Shure, as built.** The interface turned out to be a description rather than a
+design: the two Sennheiser clients had already converged, and the manager told
+them apart with `instanceof` at eleven sites — every one of them a capability
+check wearing a class check's clothes. `HardwareClient` writes that down, and
+the real contract turned out not to be the class at all but the `state` event's
+payload. A client emitting `{ rxN: { rf_quality 0-100, af_level dBFS,
+frequency kHz, battery.percent } }` gets telemetry, alerts, RF dropout
+detection, battery projection and recording for free.
+
+So `trackDevice` gained one branch on `manufacturer` and nothing else moved.
+The Sennheiser probe chain — try SSCv2, fall back to G3/G4 on failure — stayed
+exactly as it was, because that fallback is *how a G3 is identified*, and it is
+a Sennheiser-internal detail rather than something a second vendor should be
+dragged through.
+
+One latent bug fell out of the exercise: the manager subscribed to `metadata`
+only for `SSCClient`, so a Shure receiver's firmware would never have been
+recorded and never reached its maintenance log — silently, because the client
+emits the event perfectly well and nobody was listening.
+
+**What is not done.** No Shure hardware exists on the development machine, so:
+
+- Nothing has been run against a real receiver. The protocol layer is tested
+  against strings copied out of Shure's own document, and the client against a
+  simulated device that speaks the same wire format — which proves the framing,
+  the metering subscription and the unit conversions, but cannot prove the
+  specification was read correctly. A shared misreading passes both.
+- Discovery is not implemented. Shure devices announce over mDNS, but the
+  service type string is in no document found, so it needs a capture from a
+  real device. Receivers are added by IP until then.
+- ULX-D and QLX-D rest on a single source. Shure publishes a command-strings
+  document for Axient Digital; the ULX-D parameter names come from a working
+  third-party implementation, with no primary document to corroborate them.
+
+Sources, formats and the full list of assumptions: `docs/SHURE_PROTOCOL.md`.
 
 ### 7.4 Packaging and updates — **M**
 
