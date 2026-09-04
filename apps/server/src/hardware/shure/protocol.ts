@@ -112,6 +112,40 @@ const MODEL_CHANNELS: Array<{ match: RegExp; family: ShureFamily; channels: numb
 ];
 
 /**
+ * Shure receivers that speak this protocol but that RFDeck cannot yet drive.
+ *
+ * Named explicitly so they can be refused rather than misidentified. SLX-D is
+ * the case that matters: it answers `MODEL` exactly as Axient does, but its
+ * metering sample is a different shape — three fields with no antenna status
+ * and no channel quality. Treated as Axient, its audio peak would be read as
+ * channel quality and its RF level as an antenna string, and every value on
+ * the dashboard would be wrong while looking entirely plausible.
+ *
+ * See docs/MANUFACTURER_ROADMAP.md for what each of these needs.
+ */
+const KNOWN_UNSUPPORTED: Array<{ match: RegExp; what: string }> = [
+  { match: /\bSLX-?D/i,                what: 'SLX-D' },
+  { match: /\bP10T\b|\bPSM\s?1000\b/i, what: 'PSM1000 (IEM transmitter)' },
+  { match: /\bUR4|\bUHF-?R\b/i,        what: 'UHF-R' },
+];
+
+/**
+ * A Shure model this build knows about but cannot drive, or null.
+ *
+ * "Recognised and refused" is a far better outcome than "misidentified": an
+ * operator gets a message naming their receiver, rather than a channel strip
+ * full of numbers that are quietly meaningless.
+ */
+export function unsupportedModel(model: string): string | null {
+  const m = (model ?? '').trim();
+  if (!m) return null;
+  for (const entry of KNOWN_UNSUPPORTED) {
+    if (entry.match.test(m)) return entry.what;
+  }
+  return null;
+}
+
+/**
  * What family and how many channels, from a model string.
  *
  * Returns null rather than a guess when the model is unrecognised: opening the

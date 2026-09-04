@@ -1,7 +1,7 @@
 import net from 'net';
 import { log } from '../../logger';
 import {
-  ShureFamily, identifyModel, splitMessages, parseMessage,
+  ShureFamily, identifyModel, unsupportedModel, splitMessages, parseMessage,
 } from './protocol';
 
 // Ask a host on TCP 2202 what it is.
@@ -72,11 +72,30 @@ export function identifyFromReplies(messages: string[]): ShureIdentity | null {
   // Nothing well-formed came back: not a Shure receiver, whatever is on 2202.
   if (!sawAnyReport) return null;
 
-  // A MODEL reply is definitive — only Axient answers it, and the string
-  // carries the channel count.
   const fromModel = model ? identifyModel(model) : null;
 
-  const family: ShureFamily = fromModel?.family ?? (model ? 'axtd' : 'ulxd');
+  // A model this build recognises but cannot drive is refused by name.
+  //
+  // The earlier version of this treated *any* MODEL reply as "Axient", on the
+  // reasoning that only Axient answers MODEL. SLX-D answers it too, and its
+  // metering sample is a different shape — so an SLX-D would have been
+  // identified as Axient and then had its audio peak read as channel quality
+  // and its RF level as an antenna string. Every number on the dashboard
+  // wrong, and every one of them plausible.
+  if (!fromModel && model) {
+    const unsupported = unsupportedModel(model);
+    log.warn(
+      unsupported
+        ? `[Shure] ${model} is a ${unsupported}, which RFDeck cannot drive yet — ` +
+          `see docs/MANUFACTURER_ROADMAP.md`
+        : `[Shure] Unrecognised model "${model}". Not claiming it rather than ` +
+          `guessing at its protocol dialect.`,
+    );
+    return null;
+  }
+
+  // No MODEL reply at all means ULX-D or QLX-D, which have no such parameter.
+  const family: ShureFamily = fromModel?.family ?? 'ulxd';
 
   // Prefer what actually answered over what the model implies. A receiver with
   // a channel card removed, or a model string this build does not recognise,
