@@ -2,7 +2,7 @@
 
 > Professional wireless audio device management for live sound, theater, and broadcast.
 
-RFDeck is a cross-platform application for managing wireless microphone and in-ear monitor (IEM) systems in demanding live production environments. It consolidates real-time RF telemetry, battery monitoring, audio monitoring, hardware inventory, and show workflow tools into a single, unified interface — available as a desktop application and a hosted web application from one shared codebase.
+RFDeck is a cross-platform application for managing wireless microphone and in-ear monitor (IEM) systems in demanding live production environments. It consolidates real-time RF telemetry, battery monitoring, audio monitoring, automatic fault detection with recorded evidence, hardware inventory, and show workflow tools into a single, unified interface — available as a desktop application and a hosted web application from one shared codebase.
 
 ---
 
@@ -36,7 +36,8 @@ RFDeck is designed for the A2 / RF tech who manages multi-brand wireless systems
 Real-time telemetry for all active wireless channels:
 - Dual-antenna RF signal meters (A/B, 10-segment with glow indicators)
 - Audio level (AF) meters
-- Battery percentage 🚧 *— estimated runtime countdown not yet implemented*
+- Battery percentage 🚧 *— the runtime estimate is on the Battery page and in the
+  show report, but not yet on the channel card itself*
 - Status indicators: ON AIR, MUTED, TX OFF, LOW BATT, DROPOUT
 - Color-coded channel cards (cyan = healthy, orange = warning, red = critical)
 - Per-channel quick actions: Mute, Listen, Identify Hardware
@@ -59,20 +60,53 @@ Real-time telemetry for all active wireless channels:
   yet tested on hardware 📋)*
 - Mobile audio monitoring via WebRTC stream over Wi-Fi (same path as browser)
 
-### Instant Audio Replay 📋
-- Configurable rolling audio buffer per device (1–30 minutes) 📋
-- Per-device enable/disable; configurable duration 📋
-- Live storage estimate display 📋
-- Click-to-scrub playback for investigating dropouts or anomalies 📋
+### Instant Audio Replay
+Every channel with an audio patch is recorded continuously while RFDeck is live.
+The point is not to review a whole show — it is that when something goes wrong,
+the audio from around it already exists.
+
+- Always-on rolling capture on every patched channel, with no per-show setup —
+  recording that has to be switched on first is off when it matters
+- When a problem is detected, the audio from around it is kept as a clip:
+  pre-roll and post-roll are configurable (15s / 10s by default)
+- Clips play back in the browser from the Detections log
+- Disk budget in MB rather than minutes, with a live estimate of how many clips
+  it buys and a warning if it exceeds free space. Clips are pruned oldest-first;
+  flagged clips are never pruned automatically
+- Recording follows the patch: unpatching a channel stops its tap
+
+  *This deliberately departs from the original specification*, which called for
+  a 1–30 minute scrubbable buffer per device, individually enabled. What is
+  built is event-triggered rather than continuous-scrub, and the enable is
+  global. Scrubbing a whole show's buffer 📋 and per-device enable 📋 remain
+  unbuilt — a clip around a detection answers "what happened at 20:41" without
+  keeping gigabytes nobody will ever open.
+
+### Detections
+The log of problems RFDeck noticed on its own, each with the audio that proves it.
+
+- Every detection carries the channel, the show and act it happened in, RF levels
+  at the time, and a playable clip
+- **Flag** a detection to keep its clip permanently and exempt it from pruning
+- **Dismiss** to clear it from the list while keeping the record
+- Filter to flagged only, or include dismissed
+- Notes per detection, for what you worked out afterwards
 
 ### Diagnostics
-- Auto-detection of signal dropouts 🚧 *— dropout/recovery with hysteresis and a
-  3s confirmation window is implemented server-side and shared across clients.
-  Clipping, sustained silence, sudden level drops, and low SNR are not yet detected.*
+- Auto-detection of RF signal dropouts — dropout/recovery with hysteresis and a
+  3s confirmation window, server-side and shared across clients
+- Auto-detection of **audio** faults from the captured waveform: dropouts
+  (sudden silence), noise/"fuzz" (a spectral-flatness proxy via lag-1
+  autocorrelation), and clicks/pops (second-difference impulses against a
+  rolling MAD-style baseline). RF state gates promotion, so a click while the
+  RF link is degrading is reported differently from one that is not.
+  See [`docs/AUDIO_DETECTION.md`](docs/AUDIO_DETECTION.md) 🚧 *— clipping and
+  low SNR are not yet detected as distinct kinds*
 - Alert feed with severity levels (CRITICAL / WARNING / INFO); acknowledgement is
   shared across all connected clients 🚧 *— actionable CTAs not yet implemented*
 - Event log: timestamped history of all system events, persisted to the database
-  and exportable as CSV 🚧 *— no PDF export yet*
+  and exportable as CSV. Events also appear in the show report, which has a
+  printable page for PDF
 
 ### RF Environment Visualization
 - Channel frequency and signal-strength map, drawn from what connected receivers
@@ -103,12 +137,26 @@ Real-time telemetry for all active wireless channels:
 ### Battery Management
 - Battery dashboard: all packs sorted by charge level
 - Configurable alert thresholds (warning % and critical %)
-- Estimated runtime per pack (based on live drain rate) 📋
+- **Estimated runtime per pack**, from least-squares regression over a window of
+  live readings rather than differencing adjacent samples — many packs report in
+  5% or 10% steps, so consecutive readings are identical and then jump, and
+  neither is a drain rate. Reports nothing until the history means something,
+  because "6 hours remaining" from two samples 20 seconds apart is worse than
+  silence when an operator may act on it
+- **Show-duration projection** — flags which packs will not last the show, given
+  the show's expected length
+- Runtime and its confidence appear in the show report as well as the dashboard
 - Battery health (cycle count, capacity %) where supported by hardware 📋
 - Battery replacement logging with history per device 📋
-- Show-duration runtime projection: flag which packs won't last the show 📋
 
 ### Show & Event Management
+- **Go Live** — one action for the three things that always belong together and
+  are easy to forget separately. Going live enables every device in the
+  inventory, starts rolling capture and fault detection, and puts the selected
+  show's cast on the Micboard. **Stand down** reverses all three: the lights-off
+  switch at the end of a day, which is also what keeps the detection log free of
+  dropouts from receivers that were simply switched off. The cast is whichever
+  show the operator picked when going live — never inferred
 - Named shows/projects grouping roster, channel assignments, and mic-check state
 - Multi-show database with archived history — shows may live indefinitely or be
   archived, which is reversible and keeps every record
@@ -119,25 +167,42 @@ Real-time telemetry for all active wireless channels:
   clients — a tick made backstage appears at FOH immediately
 - Show notes and run-of-show documentation 🚧 *— per-channel notes exist; run-of-show
   documentation does not*
-- Structured report export: PDF/CSV with device list, events, frequency log, battery
-  data 📋
+- Structured report export with device list, events, frequency log and battery
+  data 🚧 *— CSV downloads and a printable HTML report are implemented; the
+  printable page is the PDF path, so no PDF library is carried*
 
 ### Performer & Role Management *(Theater / Broadcast modes)*
 - Performer roster with channel assignment, real name, character/role, and notes
 - Roster terminology adapts to the show's environment mode
-- Optional headshots 📋
-- Notebook per performer: rich text notes (vocal quirks, mic preferences, character
-  list) 📋
+- Optional headshots — stored on disk beside the database, for finding someone
+  backstage you have not met
+- **Notebook per performer**, split by what the note actually belongs to:
+  - *Fit notes* travel with the person — where the element is taped, where the
+    pack sits, spare element, comfort and allergy notes. The same next season
+  - *Show notes* belong to this production only
+  - Which fields appear adapts to the environment mode: quick changes and fit
+    notes are theatre business and do not clutter a corporate event
+- **Mic and IEM per performer** — the IEM is assigned on the same terms as the
+  mic but kept separate, because soundcheck is about mics and an IEM in that
+  checklist is noise
+- **Quick-change log** — a performer coming off mic and back on within a show,
+  with the cues either side and the act it happens in
 - Character ↔ Transmitter mapping (theater: mic stays on character, performer changes)
   🚧 *— assignment is to a channel; the character-persistent model is not yet distinct*
-- Mic assignment view: performer → transmitter → channel → status 🚧 *— visible on the
-  mic-check rows; no dedicated view*
-- Quick-change log during show 📋
+- Mic assignment view: performer → transmitter → channel → status — this is the
+  **Micboard** (see View Modes)
 
 ### View Modes
 - **Grid View** — standard card grid, 1–4 columns
 - **List / Table View** — high-density, sortable, full data
-- **Backstage / Talent View** — read-only, large text, MicBoard-style; shareable URL or second window
+- **Micboard** — the wall display: one tile per performer with their headshot,
+  name, character, RF and battery, and mic/IEM state at a glance. Read-only, so
+  it needs no PIN even when one is set — the PIN exists to prevent unauthorised
+  *changes*, and a display in a corridor makes none. Shows the cast of whatever
+  show is live, and says plainly that nothing is running when nothing is
+- **Backstage / Talent View** — read-only, large text; shareable URL or second
+  window. Kept separate from the Micboard rather than merged: they are read by
+  different people for different reasons
 - **Stage Plot View** — spatial layout view *(Concert/Touring mode)* 📋
 
 ### Show Environment Modes
@@ -178,13 +243,15 @@ network access gate, not per-user identity.
 | `TECH` | Monitoring + device configuration, no system/user settings |
 | `MONITOR` | Read-only monitoring (suitable for stage manager, talent wrangler) |
 
-### Mobile (PWA) 📋
+### Mobile
+- Responsive across every page — the sidebar becomes an off-canvas drawer behind
+  a hamburger, and multi-column layouts collapse to one. Covered by end-to-end
+  tests that fail if any page scrolls sideways on a phone
+- Audio monitoring via WebRTC stream, the same path as any other browser
+- Alert feed with action buttons 🚧 *— feed works and is readable on a phone;
+  actionable CTAs not yet implemented*
 - Progressive Web App — installable on iOS and Android from the browser 📋
-- Full monitoring view optimized for mobile 📋 *— the UI is currently built for
-  desktop widths*
-- Alert feed with action buttons 🚧 *— feed works; not yet mobile-optimised*
 - Inventory with QR/barcode scanning (camera via browser) 📋
-- Audio monitoring via WebRTC stream
 - Web Push notifications for critical alerts 📋
 
 ---
@@ -223,8 +290,9 @@ RFDeck runs on a **single Node.js codebase** for both the desktop app and hosted
 | **Desktop Shell** | Electron | 42.x |
 | **Desktop Build** | electron-builder | 25.x |
 | **Audio / WebRTC** | @roamhq/wrtc (node-webrtc) | 0.10.x |
+| **Audio capture** | ALSA `arecord` (Linux) · ffmpeg (Windows/macOS) | ffmpeg 6.x, bundled with the desktop build |
 | **Styling** | Vanilla CSS + Custom Properties | — |
-| **Testing** | Vitest + Playwright 📋 | — |
+| **Testing** | Vitest (unit) + Playwright (end-to-end) | — |
 
 ### Architecture
 
@@ -265,8 +333,10 @@ rfdeck/
 ├── packages/
 │   ├── shared-types/    # TypeScript interfaces (Device, Channel, Alert, etc.)
 │   └── shared-utils/    # Pure utility functions (frequency math, battery calc)
+├── e2e/                 # Playwright specs, driven against the real stack
 ├── design/              # Stitch design reference files
 ├── docs/                # Architecture documentation
+├── playwright.config.ts
 ├── pnpm-workspace.yaml
 └── README.md
 ```
@@ -481,6 +551,8 @@ rfdeck status              # access and audio configuration at a glance
 rfdeck set-pin 4821        # require a PIN from remote devices
 rfdeck disable-pin         # network becomes open again
 rfdeck audio-devices       # capture devices and the current channel patch
+rfdeck audio-level hw:2,0  # capture a second and report the level on each
+                           # input — is signal reaching this machine at all?
 ```
 
 `rfdeck status` is the first thing to run when something looks wrong. It shows
@@ -500,6 +572,9 @@ Audio
 `rfdeck audio-devices` lists what the machine can capture from, with the input
 count each interface reports and the current patch — useful for confirming the
 AES67 kernel module loaded, since its virtual device appears here once it has.
+It names the capture backend first (ALSA on the server, DirectShow or
+AVFoundation elsewhere), which is what distinguishes "nothing is plugged in"
+from "the capture tool is missing".
 
 The command reads the database path out of the running systemd unit rather than
 assuming one, so it always acts on the same data as the service.
@@ -621,23 +696,42 @@ pnpm --filter @rfdeck/server dev
 pnpm --filter @rfdeck/web dev
 ```
 
+### Tests
+
+```bash
+# Unit tests — parsers, allocators, detectors, state machines
+pnpm --filter @rfdeck/server test
+
+# End-to-end — drives the real server, database and socket in a browser,
+# including phone viewports. Builds first, so it takes a minute.
+pnpm test:e2e
+
+# Typecheck
+pnpm --filter @rfdeck/server exec tsc --noEmit
+pnpm --filter @rfdeck/web exec tsc --noEmit
+```
+
+CI runs all of the above on every push and pull request
+(`.github/workflows/ci.yml`).
+
 ### Building for Production (Windows Executable)
 
 To build a standalone `.exe` installer for Windows:
 
 ```bash
-# 1. Build the shared types, frontend web app, and server
-pnpm --filter @rfdeck/shared-types build
-pnpm --filter @rfdeck/web build
-pnpm --filter @rfdeck/server build
-
-# 2. Build the desktop app and package it
-pnpm --filter @rfdeck/desktop build
 pnpm --filter @rfdeck/desktop package
-
-# The resulting installer (e.g., RFDeck Setup 1.0.0.exe) will be located in:
-# apps/desktop/dist/
 ```
+
+That one command builds the shared types, the frontend, the server and the
+Electron shell, stages the Prisma client and database template, and runs
+electron-builder. The resulting installer lands in **`apps/desktop/release/`**
+as `RFDeck Setup 1.0.0.exe`.
+
+> On the first desktop build, `scripts/fetch-ffmpeg.mjs` downloads the ffmpeg
+> binary the app captures audio with (~80 MB, from the ffmpeg-static GitHub
+> release). It is deliberately not fetched by `pnpm install`, so that installing
+> on the Ubuntu server — which captures through ALSA and has no use for it —
+> does not pull it down or fail without network access to GitHub.
 
 ---
 
