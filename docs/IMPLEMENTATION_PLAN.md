@@ -32,17 +32,11 @@ wrong one, issues tokens, and always exempts loopback.
 
 ### Next up
 
-1. **End-to-end tests (7.1).** 156 unit tests cover parsers, allocators and
-   state machines — and every defect found in live use this cycle was in a
-   flow none of them touch: a mute button that sent to a path the firmware
-   does not serve, a Listen that toggled itself off, a page blank for thirty
-   seconds after waking, a page that scrolled sideways on a phone. Playwright
-   over go-live, the dashboard, mic check and the Micboard is the gap between
-   "compiles" and "works".
-2. **Rebuild and verify the desktop package.** It has not been built since
-   before Stage A. The schema, the Prisma client staging and the recording
-   directories have all changed under it, and the packaging was the hardest
-   part of this project to stabilise. Left much longer it becomes archaeology.
+1. ~~**End-to-end tests (7.1).**~~ ✅ *complete* — 37 Playwright tests over
+   go-live, the dashboard, shows, the Micboard and the phone layouts, driving
+   the real server, database and socket.
+2. ~~**Rebuild and verify the desktop package.**~~ ✅ *complete*, and it
+   uncovered a bigger problem than staleness: see below.
 3. **README accuracy.** It still marks the replay buffer as planned and
    dropout detection as partial, and does not mention Detections, the Micboard,
    Go Live, the performer notebook, or IEM assignment. It now understates the
@@ -101,6 +95,30 @@ capture.
 Unverified on real hardware at the time of writing: the AES67 kernel module
 surviving a kernel upgrade, and the `ufw` rules on a host with pre-existing
 firewall policy.
+
+### Stage A2 — Capture off the Linux server *(added)*
+
+"Complete for the supported case" above was doing a lot of work: the supported
+case was Linux. Enumeration and capture both went through ALSA, so the desktop
+build — the shape the README leads with — had no audio at all. It presented as
+an empty device list on the Patch page, indistinguishable from nothing being
+plugged in.
+
+Now behind a `CaptureBackend` per platform: arecord on Linux (unchanged, so
+existing `hw:X,Y` patches and the server install are untouched), ffmpeg via
+DirectShow on Windows and AVFoundation on macOS. The desktop build ships its
+own ffmpeg and hands the sidecar its path.
+
+Worth recording, because all three were latent in code that compiled and had
+been reviewed: ffmpeg stopped printing the section headings the device parser
+looked for around version 5; the channel probe expected `max ch=2` where
+current ffmpeg prints `ch= 2,`; and `execFileSync` returns only stdout on
+success, while ffmpeg writes its listing to stderr and exits 0 — so the list
+came back empty on a machine with six working inputs. Every one was found by
+running the real binary, and none would have been found by reading the code.
+
+Verified end to end on Windows 11, both from a checkout and from inside the
+packaged app. macOS uses the same code path but has not been run on hardware.
 
 ---
 
