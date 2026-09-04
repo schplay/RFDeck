@@ -302,6 +302,40 @@ describe('ShureClient', () => {
     expect(emits).toBeLessThan(8);
   });
 
+  it('drives an SLX-D receiver, whose sample is a different shape', async () => {
+    const { client } = await connect({ family: 'slxd', model: 'SLXD4D', channels: 2 });
+    client.startPolling();
+
+    const tree = await nextState(client, t => t.rx1?.af_level !== undefined && t.rx1?.rf_quality !== undefined);
+    // Same -120 offset as Axient: audio 102 -> -18 dBFS.
+    expect(tree.rx1!.af_level).toBe(-18);
+    expect(tree.rx1!.rf_quality).toBeGreaterThan(0);
+    // Bars only — SLX-D reports no charge percentage, so 4 bars is 80%.
+    expect(tree.rx1!.battery?.percent).toBe(80);
+    expect(tree.rx1!.battery?.minutesRemaining).toBe(125);
+  });
+
+  it('reports failure when asked to mute an SLX-D, which cannot', async () => {
+    // Returning true and sending nothing would leave an operator pressing
+    // Mute during a show while the channel stays open.
+    const { client, device } = await connect({ family: 'slxd', model: 'SLXD4', channels: 1 });
+    client.startPolling();
+    await nextState(client, t => !!t.rx1?.name);
+
+    expect(await client.setMute(1, true)).toBe(false);
+    await new Promise(r => setTimeout(r, 100));
+    expect(device.received.some(m => m.includes('AUDIO_MUTE'))).toBe(false);
+  });
+
+  it('does not invent an antenna B for a single-RF receiver', async () => {
+    // SLX-D's sample carries one RF figure. Reporting B as zero would read as
+    // a dead diversity antenna on a receiver that has no such indicator.
+    const { client } = await connect({ family: 'slxd', model: 'SLXD4', channels: 1 });
+    client.startPolling();
+    const tree = await nextState(client, t => t.rx1?.rf_quality !== undefined);
+    expect(tree.rx1!.rf_quality_b).toBe(tree.rx1!.rf_quality);
+  });
+
   it('falls back to a warned-about default for an unrecognised model', async () => {
     // Rather than refusing to connect: an operator who typed the model in
     // slightly wrong still gets a working two-channel receiver, and a log line

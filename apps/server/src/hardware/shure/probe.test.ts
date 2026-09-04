@@ -93,19 +93,32 @@ describe('identifyFromReplies', () => {
   });
 
   it('refuses a model it recognises but cannot drive, rather than misreading it', () => {
+    // Better a device that does not appear than one that appears and lies.
+    expect(identifyFromReplies(['< REP MODEL {PSM1000} >', '< REP 1 CHAN_NAME {IEM} >'])).toBeNull();
+    expect(identifyFromReplies(['< REP MODEL {UR4D} >', '< REP 1 CHAN_NAME {A} >'])).toBeNull();
+  });
+
+  it('identifies SLX-D as SLX-D, not as Axient', () => {
     // SLX-D answers MODEL exactly as Axient does, and an earlier version took
     // any MODEL reply as proof of Axient. Its sample is a different shape —
     // three fields, no antenna, no quality — so it would have had its audio
     // peak read as channel quality and its RF level as an antenna string.
     // Every number wrong, and every one of them plausible.
-    expect(identifyFromReplies([
-      '< REP MODEL {SLXD4D} >',
-      '< REP DEVICE_ID {Rack} >',
+    const dual = identifyFromReplies([
+      '< REP MODEL {SLXD4D                          } >',
+      '< REP DEVICE_ID {Rack1   } >',
       '< REP 1 CHAN_NAME {A} >',
-    ])).toBeNull();
+      '< REP 2 CHAN_NAME {B} >',
+    ])!;
+    expect(dual.family).toBe('slxd');
+    expect(dual.channels).toBe(2);
 
-    expect(identifyFromReplies(['< REP MODEL {PSM1000} >', '< REP 1 CHAN_NAME {IEM} >'])).toBeNull();
-    expect(identifyFromReplies(['< REP MODEL {UR4D} >', '< REP 1 CHAN_NAME {A} >'])).toBeNull();
+    const single = identifyFromReplies([
+      '< REP MODEL {SLXD4                           } >',
+      '< REP 1 CHAN_NAME {A} >',
+    ])!;
+    expect(single.family).toBe('slxd');
+    expect(single.channels).toBe(1);
   });
 
   it('refuses an unrecognised model rather than guessing its dialect', () => {
@@ -118,7 +131,7 @@ describe('identifyFromReplies', () => {
 
   it('still accepts the models it does support', () => {
     // The refusal above must not be so broad that it rejects real receivers.
-    for (const model of ['AD4D', 'AD4Q', 'ULXD4D', 'QLXD4']) {
+    for (const model of ['AD4D', 'AD4Q', 'ULXD4D', 'QLXD4', 'SLXD4', 'SLXD4D']) {
       const id = identifyFromReplies([
         `< REP MODEL {${model}} >`,
         '< REP 1 CHAN_NAME {A} >',

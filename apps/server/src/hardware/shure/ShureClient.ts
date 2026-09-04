@@ -291,17 +291,6 @@ export class ShureClient extends EventEmitter implements HardwareClient {
         ch.frequency = parseFrequencyKhz(msg.value);
         break;
 
-      case p.battPercent: {
-        // The real 0-100 charge figure. Both families report one, and it is
-        // strictly better than inferring a percentage from five bars.
-        const percent = parseBatteryPercent(msg.value);
-        if (percent !== null) {
-          ch.battery = { ...ch.battery, percent };
-          this.hasChargePercent.add(msg.channel);
-        }
-        break;
-      }
-
       case p.battBars: {
         // The fallback, for a transmitter that reports bars but no charge.
         // Never allowed to overwrite a real percentage with a rounder one:
@@ -320,14 +309,26 @@ export class ShureClient extends EventEmitter implements HardwareClient {
         break;
       }
 
-      case p.mute:
-        ch.mute = msg.value === 'ON';
-        break;
-
       default:
         // The rest are optional per family, so they cannot be `case` labels —
         // an undefined label would match any REP whose parameter name we do
         // not recognise, and quietly write garbage into the channel.
+        if (p.battPercent && msg.param === p.battPercent) {
+          // The real 0-100 charge figure, where the family reports one. SLX-D
+          // does not, and falls back to bars above.
+          const percent = parseBatteryPercent(msg.value);
+          if (percent !== null) {
+            ch.battery = { ...ch.battery, percent };
+            this.hasChargePercent.add(msg.channel);
+          }
+          break;
+        }
+
+        if (p.mute && msg.param === p.mute) {
+          ch.mute = msg.value === 'ON';
+          break;
+        }
+
         if (p.audioLevel && msg.param === p.audioLevel) {
           const db = audioToDbfs(msg.value, this.family);
           if (db !== null) ch.af_level = db;
@@ -415,7 +416,19 @@ export class ShureClient extends EventEmitter implements HardwareClient {
 
   async setMute(rxIndex: number, muted: boolean): Promise<boolean> {
     if (!this.connected) return false;
-    this.write(buildSetMute(rxIndex, muted, this.family));
+
+    // SLX-D has no mute command of any kind. Reporting success and sending
+    // nothing would leave an operator pressing Mute during a show and watching
+    // the channel stay open.
+    const command = buildSetMute(rxIndex, muted, this.family);
+    if (command === null) {
+      log.warn(
+        `[Shure] ${this.ip} is ${this.spec.label}, which has no mute command — ` +
+        `mute must be done at the transmitter or the desk.`,
+      );
+      return false;
+    }
+    this.write(command);
     // Fire and forget, like the Sennheiser path: the device answers with a REP
     // carrying the new value, and that telemetry is what the UI believes.
     return true;

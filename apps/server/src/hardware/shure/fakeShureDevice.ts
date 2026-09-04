@@ -35,7 +35,7 @@ export interface FakeDeviceOptions {
    * to tell the families apart — so a fake that answers MODEL regardless would
    * make that logic untestable.
    */
-  family?: 'axtd' | 'ulxd';
+  family?: 'axtd' | 'ulxd' | 'slxd';
 }
 
 export class FakeShureDevice {
@@ -151,6 +151,8 @@ export class FakeShureDevice {
     }
 
     if (t[0] === 'SET' && t[2] === 'AUDIO_MUTE') {
+      // SLX-D has no such command; a real one ignores it entirely.
+      if (this.opts.family === 'slxd') return;
       const ch = Number(t[1]);
       const v = this.values.get(ch);
       if (v) v.mute = t[3] === 'ON' ? 'ON' : 'OFF';
@@ -175,8 +177,10 @@ export class FakeShureDevice {
 
     if (t[0] === 'GET' && t[1] === 'MODEL') {
       // ULX-D has no MODEL parameter. A real one answers nothing at all, and
-      // that silence is what identifies the family.
-      if (this.opts.family !== 'axtd') return;
+      // that silence is what identifies the family. Axient and SLX-D both
+      // answer, which is why the model string rather than its presence is what
+      // decides.
+      if (this.opts.family === 'ulxd') return;
       return this.send(socket, `< REP MODEL {${this.opts.model.padEnd(32)}} >`);
     }
 
@@ -203,14 +207,21 @@ export class FakeShureDevice {
     this.send(socket, `< REP ${channel} FREQUENCY ${v.frequency} >`);
 
     // The battery vocabulary differs between families, which is half the point
-    // of having a family at all.
-    const ax = this.opts.family === 'axtd';
-    this.send(socket, `< REP ${channel} ${ax ? 'TX_BATT_BARS' : 'BATT_BARS'} ${v.battBars} >`);
-    this.send(socket, `< REP ${channel} ${ax ? 'TX_BATT_CHARGE_PERCENT' : 'BATT_CHARGE'} ${v.battPercent} >`);
-    this.send(socket, `< REP ${channel} ${ax ? 'TX_BATT_MINS' : 'BATT_RUN_TIME'} ${v.battMins} >`);
+    // of having a family at all. SLX-D uses Axient's transmitter-side names
+    // but reports no charge percentage and has no mute at all.
+    const fam = this.opts.family;
+    const txNames = fam === 'axtd' || fam === 'slxd';
+    this.send(socket, `< REP ${channel} ${txNames ? 'TX_BATT_BARS' : 'BATT_BARS'} ${v.battBars} >`);
+    if (fam === 'axtd') {
+      this.send(socket, `< REP ${channel} TX_BATT_CHARGE_PERCENT ${v.battPercent} >`);
+    } else if (fam === 'ulxd') {
+      this.send(socket, `< REP ${channel} BATT_CHARGE ${v.battPercent} >`);
+    }
+    this.send(socket, `< REP ${channel} ${txNames ? 'TX_BATT_MINS' : 'BATT_RUN_TIME'} ${v.battMins} >`);
 
-    this.send(socket, `< REP ${channel} AUDIO_MUTE ${v.mute} >`);
-    if (ax) this.send(socket, `< REP ${channel} ANTENNA_STATUS ${v.antennas} >`);
+    // SLX-D has no mute command, so a real one answers nothing here.
+    if (fam !== 'slxd') this.send(socket, `< REP ${channel} AUDIO_MUTE ${v.mute} >`);
+    if (fam === 'axtd') this.send(socket, `< REP ${channel} ANTENNA_STATUS ${v.antennas} >`);
   }
 
   private setMetering(socket: net.Socket, channel: number, intervalMs: number): void {
@@ -225,6 +236,21 @@ export class FakeShureDevice {
     const timer = setInterval(() => {
       const v = this.values.get(channel);
       if (!v || socket.destroyed) return;
+
+      if (this.opts.family === 'slxd') {
+        // < SAMPLE chNum ALL audPeak audRms rfRssi > — three fields, no
+        // antenna status and no channel quality.
+        this.send(socket, `< SAMPLE ${channel} ALL ${v.audio} ${v.audio} ${v.rssiA} >`);
+        return;
+      }
+
+      if (this.opts.family === 'ulxd') {
+        // < SAMPLE x ALL nn aaa eee > — one RF figure, and nn is only which
+        // antenna LEDs are lit.
+        this.send(socket, `< SAMPLE ${channel} ALL AX ${v.rssiA} 040 >`);
+        return;
+      }
+
       // < SAMPLE chNum ALL qual audBitmap audPeak audRms rfAntStats
       //          rfBitmapA rfRssiA rfBitmapB rfRssiB >
       this.send(socket,

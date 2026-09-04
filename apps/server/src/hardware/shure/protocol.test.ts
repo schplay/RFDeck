@@ -177,6 +177,37 @@ describe('parseSample — ULX-D', () => {
   });
 });
 
+describe('parseSample — SLX-D', () => {
+  // Verbatim from Shure's SLX-D document:
+  //   < SAMPLE chNum ALL audPeak audRms rfRssi >
+  //   < SAMPLE 1 ALL 102 102 086 >
+  const SAMPLE = '< SAMPLE 1 ALL 102 102 086 >';
+
+  it('reads the three fields SLX-D actually sends', () => {
+    const s = parseSample(parseMessage(SAMPLE)!, 'slxd')!;
+    expect(s.channel).toBe(1);
+    // Same -120 offset as Axient, stated outright in SLX-D's own document.
+    expect(s.audioDbfs).toBe(-18);
+    expect(s.rfPercent).toHaveLength(1);
+  });
+
+  it('reports no antenna state and no quality, because SLX-D sends neither', () => {
+    // Claiming either would be inventing it. An antenna indicator that is
+    // always "off" reads as a fault on a working receiver.
+    const s = parseSample(parseMessage(SAMPLE)!, 'slxd')!;
+    expect(s.antennas).toEqual([]);
+    expect(s.quality).toBeNull();
+  });
+
+  it('is not parsed as Axient, which would scramble every field', () => {
+    // Read as Axient, this same line gives quality=102, audio from the antenna
+    // slot and RF from nowhere. The numbers all look plausible.
+    const asAxient = parseSample(parseMessage(SAMPLE)!, 'axtd');
+    const asSlxd = parseSample(parseMessage(SAMPLE)!, 'slxd')!;
+    expect(asAxient?.audioDbfs).not.toBe(asSlxd.audioDbfs);
+  });
+});
+
 describe('value conversions', () => {
   it('converts RSSI to dBm by the offset each family documents', () => {
     // These are NOT the same, and using one for both is the mistake this
@@ -366,6 +397,27 @@ describe('family command names', () => {
     expect(FAMILIES.axtd.param.antenna).toBe('ANTENNA_STATUS');
   });
 
+  it('gives SLX-D Axient names for battery, and no mute at all', () => {
+    // SLX-D borrows Axient's transmitter-side vocabulary but has no mute
+    // command of any kind — "mute" does not appear in its specification.
+    expect(FAMILIES.slxd.param.battBars).toBe('TX_BATT_BARS');
+    expect(FAMILIES.slxd.param.battMins).toBe('TX_BATT_MINS');
+    expect(FAMILIES.slxd.param.mute).toBeUndefined();
+    // And no charge percentage: bars are all it reports.
+    expect(FAMILIES.slxd.param.battPercent).toBeUndefined();
+    // No antenna status and no channel quality either.
+    expect(FAMILIES.slxd.param.antenna).toBeUndefined();
+    expect(FAMILIES.slxd.param.quality).toBeUndefined();
+  });
+
+  it('refuses to build a mute command for a family that has none', () => {
+    // Returning a command string here would have the client send
+    // "< SET 1 undefined ON >" and report success, leaving an operator
+    // pressing Mute during a show while the channel stays open.
+    expect(setMute(1, true, 'slxd')).toBeNull();
+    expect(setMute(1, true, 'axtd')).toBe('< SET 1 AUDIO_MUTE ON >');
+  });
+
   it('only Axient claims to report link quality', () => {
     expect(FAMILIES.axtd.param.quality).toBe('CHAN_QUALITY');
     expect(FAMILIES.ulxd.param.quality).toBeUndefined();
@@ -383,6 +435,14 @@ describe('identifyModel', () => {
     expect(identifyModel('ULX-D Quad')).toEqual({ family: 'ulxd', channels: 4 });
     expect(identifyModel('ULXD4D')).toEqual({ family: 'ulxd', channels: 2 });
     expect(identifyModel('ULXD4')).toEqual({ family: 'ulxd', channels: 1 });
+  });
+
+  it('reads the SLX-D variants, longest match first', () => {
+    // SLXD4D must not be matched by the SLXD4 pattern — that would make a
+    // two-channel receiver report one channel and lose half the rack.
+    expect(identifyModel('SLXD4D')).toEqual({ family: 'slxd', channels: 2 });
+    expect(identifyModel('SLXD4')).toEqual({ family: 'slxd', channels: 1 });
+    expect(identifyModel('SLXD4D+')).toEqual({ family: 'slxd', channels: 2 });
   });
 
   it('returns null for an unknown model rather than guessing a channel count', () => {

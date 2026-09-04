@@ -29,14 +29,20 @@ const SHURE_MODELS = [
   { value: 'ULXD4D', label: 'ULX-D ULXD4D — 2 channel' },
   { value: 'ULXD4Q', label: 'ULX-D ULXD4Q — 4 channel' },
   { value: 'QLXD4',  label: 'QLX-D QLXD4 — 1 channel' },
+  { value: 'SLXD4',  label: 'SLX-D SLXD4 — 1 channel' },
+  { value: 'SLXD4D', label: 'SLX-D SLXD4D — 2 channel' },
 ];
 
+// What each manufacturer's default port is, and what RFDeck can actually do
+// with it. The hints say plainly where support does not exist — an operator
+// who adds a device that will never connect deserves to find that out here
+// rather than from a card that stays grey all night.
 const MANUFACTURER_PORT_HINTS: Record<string, { port: number; hint: string }> = {
-  Sennheiser:   { port: 443,  hint: 'EW-DX / EM 6000 / EM 9046 (firmware ≥ 4.0) — port 443 (HTTPS SSCv2)' },
-  Shure:        { port: 2202, hint: 'Axient Digital / ULX-D / SLX-D — port 2202' },
-  Wisycom:      { port: 8080, hint: 'MRK series — port 8080 (Ember+)' },
-  Lectrosonics: { port: 80,   hint: 'Check device web UI — typically port 80' },
-  Sony:         { port: 443,  hint: 'DWX series — port 443' },
+  Sennheiser:   { port: 443,  hint: 'EW-DX (firmware ≥ 4.0) — port 443 (HTTPS SSCv2). G3/G4 are found automatically. Digital 6000 (EM 6000) is not yet supported: it uses SSC over UDP 6970.' },
+  Shure:        { port: 2202, hint: 'Axient Digital / ULX-D / QLX-D / SLX-D — port 2202' },
+  Wisycom:      { port: 2101, hint: 'Not yet supported. MRK receivers use Ember+; the tree layout is undocumented.' },
+  Lectrosonics: { port: 4080, hint: 'Not yet supported. Lectrosonics publishes the port but not the protocol.' },
+  Sony:         { port: 443,  hint: 'Not supported. Sony publishes no third-party control protocol for DWX.' },
   Other:        { port: 80,   hint: 'Check your device manual for the correct API port' },
 };
 
@@ -462,9 +468,17 @@ export function AddDeviceDialog({ open, onClose }: Props) {
                         ))}
                       </select>
                       <p className="form-hint">
-                        Shure receivers do not announce their model over this protocol,
-                        so RFDeck cannot work it out for you.
+                        Selects the command dialect and channel count. Axient and
+                        SLX-D report their model when probed; ULX-D and QLX-D do not,
+                        so pick theirs by hand.
                       </p>
+                      {form.model.startsWith('SLXD') && (
+                        <p className="form-hint form-hint-warn">
+                          SLX-D blocks command strings by default. Enable network
+                          control on the receiver first, or it will accept the
+                          connection and answer nothing.
+                        </p>
+                      )}
                     </>
                   ) : (
                     <input
