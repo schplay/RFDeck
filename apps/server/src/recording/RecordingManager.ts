@@ -5,6 +5,21 @@ import { prisma } from '../db';
 import { log } from '../logger';
 import { CaptureManager } from '../audio/CaptureManager';
 import { PcmRing, encodeWav, selectForPruning } from './pcm';
+import { ChannelDetector, frameFeatures, shouldPromote } from './detectors';
+
+/**
+ * What the RF side knows about a channel right now.
+ *
+ * The audio detectors cannot tell a dropout from a pause, or fuzz from a
+ * sibilant, on their own. This is the evidence that settles it — and the
+ * reason a mute by the performer is not reported as a fault.
+ */
+export interface RfContext {
+  /** RF is low or the channel is in dropout. */
+  marginal: boolean;
+  /** Muted at the transmitter or the receiver — silence here is deliberate. */
+  muted: boolean;
+}
 
 // Rolling capture and incident clips.
 //
@@ -37,6 +52,8 @@ interface Recorder {
   stop: () => void;
   /** Post-roll being collected for a detection that already fired. */
   pending: Array<{ detectionId: string; want: number; got: Int16Array[]; have: number }>;
+  /** Watches this channel's audio for the signatures of a wireless fault. */
+  detector: ChannelDetector;
 }
 
 export class RecordingManager {
@@ -45,9 +62,15 @@ export class RecordingManager {
   private config = { enabled: true, maxMb: 2048, preSec: 15, postSec: 10 };
   private pruneChain: Promise<void> = Promise.resolve();
 
+  /** Last detection per channel, from any source, for cross-source suppression. */
+  private lastDetectionAt = new Map<string, number>();
+  private static readonly CROSS_SOURCE_QUIET_MS = 5_000;
+
   constructor(
     private readonly capture: CaptureManager,
     private readonly io: Server,
+    /** Supplied by the socket plugin; absent in tests and on a desktop build. */
+    private readonly rfContext?: (channelKey: string) => RfContext,
   ) {
     this.clipsDir = RecordingManager.resolveClipsDir();
   }
@@ -116,10 +139,19 @@ export class RecordingManager {
 
   private startRecorder(channelKey: string, deviceId: string, inputChannel: number): void {
     const ring = new PcmRing(SAMPLE_RATE * this.config.preSec);
-    const rec: Recorder = { deviceId, inputChannel, ring, stop: () => {}, pending: [] };
+    const rec: Recorder = {
+      deviceId, inputChannel, ring, stop: () => {}, pending: [],
+      detector: new ChannelDetector(),
+    };
 
     const stop = this.capture.addTap(deviceId, inputChannel, (samples) => {
       ring.push(samples);
+
+      // Watch the audio itself for the signatures of a wireless fault. See
+      // docs/AUDIO_DETECTION.md — the RF context is what keeps this from
+      // reporting every sibilant and every pause.
+      const event = rec.detector.push(frameFeatures(samples), Date.now());
+      if (event) this.considerAudioEvent(channelKey, deviceId, event);
 
       // Feed any post-roll still being collected, and finish the ones that
       // have enough. Iterated over a copy: finalize mutates the list.
@@ -140,6 +172,37 @@ export class RecordingManager {
     }
     rec.stop = stop;
     this.recorders.set(channelKey, rec);
+  }
+
+  // Decide whether an audio candidate is worth reporting.
+  private considerAudioEvent(
+    channelKey: string,
+    deviceId: string,
+    event: { kind: string; confidence: number; message: string; durationMs: number },
+  ): void {
+    const ctx = this.rfContext?.(channelKey);
+
+    // A muted channel is silent on purpose. Reporting a performer's own mute
+    // switch as a dropout would be the fastest way to make this untrusted.
+    if (ctx?.muted) return;
+
+    if (!shouldPromote(event as any, ctx?.marginal ?? false)) return;
+
+    // The RF side may already have reported this same incident a moment ago —
+    // one dropout should not appear twice because two detectors noticed it.
+    const last = this.lastDetectionAt.get(channelKey) ?? 0;
+    if (Date.now() - last < RecordingManager.CROSS_SOURCE_QUIET_MS) return;
+
+    void this.record({
+      channelKey,
+      channelName: channelKey,
+      deviceId,
+      trigger: event.kind,
+      severity: event.confidence >= 0.8 ? 'CRITICAL' : 'WARNING',
+      message: ctx?.marginal
+        ? `${event.message} (RF was marginal)`
+        : event.message,
+    });
   }
 
   /**
@@ -179,6 +242,7 @@ export class RecordingManager {
       return null;
     }
 
+    this.lastDetectionAt.set(input.channelKey, Date.now());
     this.io.emit('detection:new', detection);
 
     const rec = this.recorders.get(input.channelKey);
