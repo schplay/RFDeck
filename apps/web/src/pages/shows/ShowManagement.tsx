@@ -4,7 +4,7 @@ import { Show, Player, MicCheckAct } from '@rfdeck/shared-types';
 import { useShowStore, migrateLegacyShows } from '../../stores/showStore';
 import { useChannelStore } from '../../stores/channelStore';
 import { useDeviceStore } from '../../stores/deviceStore';
-import { useActiveChannels } from '../../hooks/useActiveChannels';
+import { useChannelsByRole } from '../../hooks/useActiveChannels';
 import { usePerformerStore } from '../../stores/performerStore';
 import { channelKey } from '../../lib/channelKey';
 import { API_BASE, getToken } from '../../lib/api';
@@ -212,7 +212,10 @@ function NewShowDialog({ onDone }: { onDone: () => void }) {
 // ── MicCheckTab ──────────────────────────────────────────────────
 function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
   const { setCurrentAct, setChannelChecked, setChannelNotes, resetAct } = useShowStore();
-  const channels = useActiveChannels();
+  // Mics only. An IEM carries a monitor feed, not a performer — ticking one
+  // during a soundcheck means nothing, and its presence lengthens the list
+  // the operator has to work through under time pressure.
+  const { mics: channels } = useChannelsByRole();
 
   const [focusedIdx, setFocusedIdx] = useState(-1);
   const [editingNotesFor, setEditingNotesFor] = useState<string | null>(null);
@@ -382,7 +385,8 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
 // ── PlayersTab ───────────────────────────────────────────────────
 function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
   const { addPlayer, updatePlayer, deletePlayer } = useShowStore();
-  const channels = useActiveChannels();
+  // A performer can wear both, so they are assigned separately.
+  const { mics, iems } = useChannelsByRole();
 
   // The roster is shared across shows; this tab casts from it. A name typed
   // here joins the roster too, so the next show can pick the same person.
@@ -426,7 +430,8 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
           <div className="sm-player-list-header">
             <span>{terms.realNameLabel}</span>
             <span>{terms.roleLabel}</span>
-            <span>Channel</span>
+            <span>Mic</span>
+            <span>IEM</span>
             <span>Notes</span>
             <span />
           </div>
@@ -455,13 +460,41 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
                 className="sm-select sm-player-field"
                 value={player.assignedChannelKey || ''}
                 onChange={e => updatePlayer(show.id, player.id, { assignedChannelKey: e.target.value || null })}
+                title="Microphone channel — this is what the soundcheck ticks"
               >
-                <option value="">— unassigned —</option>
-                {channels.map(ch => (
+                <option value="">— no mic —</option>
+                {mics.map(ch => (
                   <option key={ch.id} value={channelKey(ch)}>
                     {ch.name || `CH ${ch.channelIndex}`}
                   </option>
                 ))}
+                {/* A saved assignment whose device is off or gone would
+                    otherwise vanish from the select and read as unassigned. */}
+                {player.assignedChannelKey &&
+                 !mics.some(ch => channelKey(ch) === player.assignedChannelKey) && (
+                  <option value={player.assignedChannelKey}>
+                    {player.assignedChannelKey} (offline)
+                  </option>
+                )}
+              </select>
+              <select
+                className="sm-select sm-player-field"
+                value={player.iemChannelKey || ''}
+                onChange={e => updatePlayer(show.id, player.id, { iemChannelKey: e.target.value || null })}
+                title="In-ear monitor channel — assigned here, never part of the soundcheck"
+              >
+                <option value="">— no IEM —</option>
+                {iems.map(ch => (
+                  <option key={ch.id} value={channelKey(ch)}>
+                    {ch.name || `CH ${ch.channelIndex}`}
+                  </option>
+                ))}
+                {player.iemChannelKey &&
+                 !iems.some(ch => channelKey(ch) === player.iemChannelKey) && (
+                  <option value={player.iemChannelKey}>
+                    {player.iemChannelKey} (offline)
+                  </option>
+                )}
               </select>
               <input
                 className="sm-input sm-player-field"
