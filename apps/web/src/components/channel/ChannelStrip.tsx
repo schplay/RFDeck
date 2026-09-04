@@ -43,7 +43,11 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
     const t = setTimeout(() => setControlError(null), 8_000);
     return () => clearTimeout(t);
   }, [controlError]);
-  const isOutput = deviceType === 'output';
+  // The channel now says what it is, server-side. The prop is kept as a
+  // fallback for callers that still pass it, but the channel wins: it is the
+  // same answer the server used when deciding whether to alert on this
+  // channel's RF, and the two must not be able to disagree.
+  const isOutput = channel.role === 'iem' || deviceType === 'output';
 
   const statusBorder = !deviceOnline ? 'error'
                      : channel.status === 'ACTIVE' ? 'success'

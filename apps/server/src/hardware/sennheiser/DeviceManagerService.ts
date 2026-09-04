@@ -33,6 +33,10 @@ export class DeviceManagerService extends EventEmitter {
   private clients: Map<string, ClientType> = new Map();
   private channelCache: Map<string, Channel> = new Map();
   private deviceNames: Map<string, string> = new Map(); // base id → user-assigned name
+  // base id → what the device is for. An IEM transmitter has no RF and no
+  // transmitter battery, and alerting on their absence is how a working
+  // monitor rig raises a dropout every few seconds all night.
+  private deviceRoles: Map<string, 'mic' | 'iem'> = new Map();
   private discoveredCache: Map<string, any> = new Map(); // key → discovered device payload
   // IPs that have had at least one successful connection — used to distinguish
   // a real "went offline" from an initial SSCv2 probe failure before G3/G4 fallback.
@@ -194,7 +198,10 @@ export class DeviceManagerService extends EventEmitter {
 
   // Called via REST API when user adds a device
   public trackDevice(
-    device: { ip: string; port: number; name?: string; manufacturer?: string; model?: string },
+    device: {
+      ip: string; port: number; name?: string;
+      manufacturer?: string; model?: string; deviceType?: string;
+    },
   ) {
     const id = `${device.ip}:${device.port}`;
     log.debug(`[DeviceManager] trackDevice called for ${device.name ?? id} at ${id}`);
@@ -205,6 +212,9 @@ export class DeviceManagerService extends EventEmitter {
 
     // Store user-assigned name for use in channel labels
     if (device.name) this.deviceNames.set(id, device.name);
+    // And what it is for. 'output' is the inventory's word for an IEM
+    // transmitter; everything else carries a microphone.
+    this.deviceRoles.set(id, device.deviceType === 'output' ? 'iem' : 'mic');
 
     // Shure speaks a different protocol on a different port, and there is no
     // probe chain to fall into: the manufacturer on the inventory row decides.
@@ -258,7 +268,7 @@ export class DeviceManagerService extends EventEmitter {
   public updateTrackedDevice(
     device: {
       ip: string; port: number; active?: boolean;
-      name?: string; manufacturer?: string; model?: string;
+      name?: string; manufacturer?: string; model?: string; deviceType?: string;
     },
   ) {
     this.untrackDevice(device.ip, device.port);
@@ -272,7 +282,7 @@ export class DeviceManagerService extends EventEmitter {
   public setDeviceActive(
     device: {
       ip: string; port: number; name?: string; password?: string | null;
-      manufacturer?: string; model?: string;
+      manufacturer?: string; model?: string; deviceType?: string;
     },
     active: boolean,
   ) {
@@ -296,6 +306,7 @@ export class DeviceManagerService extends EventEmitter {
 
   public untrackDevice(ip: string, port: number) {
     const id = `${ip}:${port}`;
+    this.deviceRoles.delete(id);
     const client = this.clients.get(id);
     if (client) {
       client.stopPolling();
@@ -980,8 +991,13 @@ export class DeviceManagerService extends EventEmitter {
         // TX mute is the performer's own switch — deliberate, not a fault, so
         // it no longer degrades status to WARNING. It travels as its own flag
         // and the views render it as a mute.
+        // The '-legacy' suffix is a Sennheiser artefact of the id, not part of
+        // how the device was catalogued.
+        const role = this.deviceRoles.get(baseId) ?? 'mic';
+
+        // An IEM is never CRITICAL for want of RF: it has none to want.
         const status = isMuted ? 'WARNING'
-                     : (rfKnown && rfA < 20) ? 'CRITICAL'
+                     : (role !== 'iem' && rfKnown && rfA < 20) ? 'CRITICAL'
                      : 'ACTIVE';
 
         // Battery may be absent (no transmitter paired) — distinguish that from
@@ -1010,6 +1026,7 @@ export class DeviceManagerService extends EventEmitter {
           isMuted,
           isTxMuted: isSquelch,
           gain: Number.isFinite(rawGain) ? rawGain : 0,
+          role,
           status,
         };
 

@@ -17,6 +17,46 @@ describe('signalLevel', () => {
   });
 });
 
+describe('evaluateSample — IEM transmitters', () => {
+  // An IEM transmitter receives nothing, so it reports no RF and reads as 0 on
+  // both antennas. Run through the normal path it arms a dropout, waits out
+  // the confirmation window, confirms, and alerts — on a transmitter that is
+  // working perfectly, every time, forever. That is what a monitor rig looked
+  // like before the channel carried its role.
+  const iem = (a = 0, b = 0): RfSample => ({
+    rfLevelA: a, rfLevelB: b, isMuted: false, role: 'iem',
+  });
+
+  it('never arms a dropout, however low the RF reads', () => {
+    expect(evaluateSample('OK', iem())).toEqual({ kind: 'none' });
+    expect(evaluateSample('OK', iem(0, 0))).toEqual({ kind: 'none' });
+  });
+
+  it('cancels a confirmation that was already pending', () => {
+    // A channel reclassified as an IEM mid-flight must not have its timer
+    // fire afterwards.
+    expect(evaluateSample('OK', iem(), DEFAULT_RF_THRESHOLDS, true))
+      .toEqual({ kind: 'disarm' });
+  });
+
+  it('does not announce a recovery it never dropped from', () => {
+    expect(evaluateSample('DROPPED', iem(0, 0))).toEqual({ kind: 'none' });
+  });
+
+  it('still alerts normally for a microphone at the same levels', () => {
+    // The guard must be about the role, not about the numbers — a real mic
+    // reading zero is exactly the alert that matters most.
+    const mic: RfSample = { rfLevelA: 0, rfLevelB: 0, isMuted: false, role: 'mic' };
+    expect(evaluateSample('OK', mic)).toEqual({ kind: 'arm' });
+  });
+
+  it('treats a channel with no role as a microphone', () => {
+    // Every existing caller predates the field; none of them may lose alerting
+    // by omitting it.
+    expect(evaluateSample('OK', sample(0))).toEqual({ kind: 'arm' });
+  });
+});
+
 describe('evaluateSample — from OK', () => {
   const state: RfState = 'OK';
 

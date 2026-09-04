@@ -27,26 +27,26 @@ export function useActiveChannels(): Channel[] {
  * A receiver carries a microphone; an IEM transmitter carries a monitor feed.
  * They are both channels, but they are not interchangeable: a soundcheck is
  * about mics, and putting IEMs in that list gives the operator rows to tick
- * that no one is speaking into. The distinction is the inventory's
- * `deviceType`, which the operator sets per device.
+ * that no one is speaking into.
  *
- * Channel ids are prefixed with "ip:port", so devices are matched on IP.
+ * The channel says which it is. This used to be worked out here by matching
+ * channel ids against inventory IPs, which meant every client reimplementing
+ * the rule and the *server* — where the RF dropout alerting actually lives —
+ * never knowing at all. An IEM has no RF to receive, so it read as a channel
+ * permanently at 0% and armed a dropout alert on a transmitter that was
+ * working perfectly.
  */
 export function useChannelsByRole(): { mics: Channel[]; iems: Channel[] } {
   const channels = useActiveChannels();
-  const inventory = useDeviceStore((s) => s.inventory);
 
   return useMemo(() => {
-    const outputIps = new Set(
-      inventory.filter((d) => d.deviceType === 'output').map((d) => d.ip)
-    );
     const mics: Channel[] = [];
     const iems: Channel[] = [];
     for (const ch of channels) {
-      // Unknown devices count as mics: the soundcheck missing a channel is
-      // worse than it listing one extra.
-      (outputIps.has(ch.deviceId.split(':')[0]) ? iems : mics).push(ch);
+      // Anything not explicitly an IEM counts as a mic: a soundcheck missing a
+      // channel is worse than one listing an extra.
+      (ch.role === 'iem' ? iems : mics).push(ch);
     }
     return { mics, iems };
-  }, [channels, inventory]);
+  }, [channels]);
 }

@@ -35,6 +35,14 @@ export interface RfSample {
   rfLevelA: number;
   rfLevelB: number;
   isMuted: boolean;
+  /**
+   * What the channel is for. An IEM transmitter has no RF to receive, so its
+   * levels are 0 for a reason that is not a fault.
+   *
+   * Optional and defaulting to a microphone, so every existing caller keeps
+   * its behaviour.
+   */
+  role?: 'mic' | 'iem';
 }
 
 /** What the caller should do as a result of this sample. */
@@ -60,6 +68,17 @@ export function evaluateSample(
   thresholds: RfThresholds = DEFAULT_RF_THRESHOLDS,
   hasPendingConfirmation = false,
 ): RfAction {
+  // An IEM transmitter receives nothing, so it reports no RF and reads as 0 on
+  // both antennas. Run through the rest of this and it arms a dropout, waits
+  // out the confirmation window, confirms, and alerts — on a transmitter that
+  // is working perfectly, every time, forever.
+  //
+  // Disarm rather than none: a channel reclassified as an IEM while a
+  // confirmation was already pending must not have that timer fire.
+  if (sample.role === 'iem') {
+    return hasPendingConfirmation ? { kind: 'disarm' } : { kind: 'none' };
+  }
+
   const level = signalLevel(sample);
 
   if (state === 'OK') {
