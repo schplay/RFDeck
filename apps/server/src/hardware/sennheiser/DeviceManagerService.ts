@@ -16,6 +16,7 @@ import {
   BatterySample, BatteryEstimate,
 } from '../batteryEstimator';
 import { decryptSecret } from '../../auth/secretBox';
+import { detectFirmwareChange } from '../firmwareChange';
 import { log } from '../../logger';
 
 type ClientType = SSCClient | G3G4Client;
@@ -471,10 +472,35 @@ export class DeviceManagerService extends EventEmitter {
         if (meta.serial)   patch.serial   = meta.serial;
         if (meta.firmware) patch.firmware = meta.firmware;
         if (Object.keys(patch).length > 0) {
+          // Read before writing, so a firmware change can be noticed. This is
+          // the one maintenance event that is visible over the network, and
+          // it is the one most likely to explain "it worked last month".
+          const before = meta.firmware
+            ? await prisma.inventoryDevice.findFirst({ where: { ip } })
+            : null;
+
           await prisma.inventoryDevice.updateMany({
             where: { ip },
             data: patch,
           });
+
+          // Only when it actually changed — see detectFirmwareChange for what
+          // that excludes, and why each exclusion matters.
+          const change = before && detectFirmwareChange(before.firmware, meta.firmware);
+          if (before && change) {
+            await prisma.maintenanceEntry.create({
+              data: {
+                deviceId: before.id,
+                kind: 'FIRMWARE',
+                summary: `Firmware changed from ${change.from} to ${change.to}`,
+                detail: 'Recorded automatically when the device reported a different version.',
+                automatic: true,
+              },
+            }).catch(err => log.warn(`[maintenance] Could not log firmware change: ${err?.message}`));
+
+            log.info(`[DeviceManager] ${ip} firmware ${change.from} → ${change.to}`);
+            this.io.emit('maintenance:changed', { deviceId: before.id });
+          }
         }
         if (meta.mac) {
           await this.reconcileByMac(meta.mac, ip, port);

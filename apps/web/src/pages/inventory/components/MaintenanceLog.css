@@ -1,0 +1,194 @@
+/* Maintenance log, inside the device drawer.
+ *
+ * Reads as a history: newest at the top, each entry a date and a line. The
+ * form only appears when asked for, because most visits to this section are to
+ * read it rather than to add to it. */
+
+.maint {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.maint-empty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-on-surface-variant);
+}
+
+.maint-error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-error);
+}
+
+.maint-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.maint-entry {
+  padding: 7px 8px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container);
+  border-left: 2px solid var(--color-outline-variant);
+}
+
+/* Written by RFDeck rather than a person — visually quieter, since it is
+ * corroboration rather than someone's account of what they did. */
+.maint-entry.is-auto {
+  border-left-color: var(--color-primary-container);
+  background: var(--color-surface-container-low);
+}
+
+.maint-entry-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.maint-kind {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-container-highest);
+  color: var(--color-on-surface-variant);
+  white-space: nowrap;
+}
+
+/* Consumables that fail routinely read neutral; a repair is an event. */
+.maint-kind-repair   { background: var(--color-error-container); color: var(--color-on-error-container); }
+.maint-kind-firmware { background: var(--color-primary-container); color: var(--color-on-primary-container); }
+
+.maint-date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-on-surface-variant);
+}
+
+.maint-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  color: var(--color-outline);
+}
+
+.maint-del {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--color-outline);
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.maint-entry:hover .maint-del,
+.maint-del:focus-visible {
+  opacity: 1;
+}
+
+.maint-del:hover { color: var(--color-error); }
+
+.maint-summary {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-on-surface);
+}
+
+.maint-detail {
+  margin: 3px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-on-surface-variant);
+  white-space: pre-wrap;
+}
+
+.maint-add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: var(--font-body);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-outline-variant);
+  background: none;
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.maint-add:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.maint-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-container-low);
+  border: 1px solid var(--color-surface-container-highest);
+}
+
+.maint-form-row {
+  display: flex;
+  gap: 6px;
+}
+
+.maint-form-row select { flex: 1 1 auto; min-width: 0; }
+.maint-form-row input  { flex: 0 0 auto; }
+
+.maint-form select,
+.maint-form input,
+.maint-form textarea {
+  padding: 5px 7px;
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--color-on-surface);
+  background: var(--color-surface-container);
+  border: 1px solid var(--color-surface-container-highest);
+  border-radius: var(--radius-sm);
+}
+
+.maint-form select:focus,
+.maint-form input:focus,
+.maint-form textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.maint-form textarea {
+  resize: vertical;
+  min-height: 44px;
+}
+
+.maint-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* On a phone the drawer is the full width of the screen and the date input is
+ * wide; stacking keeps the summary field from being squeezed to nothing. */
+@media (max-width: 480px) {
+  .maint-form-row { flex-direction: column; }
+  .maint-form-row input { width: 100%; }
+}
