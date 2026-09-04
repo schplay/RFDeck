@@ -31,6 +31,13 @@ what remains to be verified on hardware is listed at the end.
   (Shure Applications Engineering, 12 Jan 2018). The ULX-D/QLX-D equivalent,
   found later than it should have been — the first version of this file said no
   such document existed and leaned on a third-party implementation instead.
+- **[PSM1000 Command Strings](https://web.archive.org/web/20230922221808/https://pubs.shure.com/command-strings/PSM1000/en-US)**
+  — Shure's own page, via the Internet Archive. The live page is now a
+  JavaScript-only shell that serves no content to a fetch; the 2023 snapshot
+  predates that and carries the full command table.
+- **[wirelessboard](https://github.com/willcgage/wirelessboard)** — the actively
+  maintained micboard fork. Its `py/shure_protocol.py` isolates the vendor
+  knowledge deliberately and is the cleanest statement of the framing rules.
 - **[Bitfocus Companion — Shure Wireless module](https://github.com/bitfocus/companion-module-shure-wireless)**
   — `src/index.js`, `src/internalAPI.js`, `src/setup.js`. Covers ULX-D, QLX-D,
   Axient Digital and SLX-D, and is the second independent implementation used
@@ -248,6 +255,59 @@ selection. The add-device form says so when an SLX-D model is picked.
 
 There is one RF figure, not one per antenna.
 
+## The PSM1000 is a different dialect
+
+Same port, same angle brackets, and almost nothing else in common. Every
+difference below fails silently rather than loudly — a wrong mute value looks
+accepted, a wrong meter-rate width is ignored, an ALL command to a device that
+has none simply goes unanswered.
+
+| | Receivers | PSM1000 |
+|---|---|---|
+| Reply keyword | `REP` | `REPORT` |
+| String values | `{braced and padded}` | bare |
+| Terminator | none | **CRLF** — "each message is terminated by a carriage return and line feed" |
+| Mute | `AUDIO_MUTE ON`/`OFF` | **`RF_MUTE 1`/`0`** |
+| Meter rate | `00100`, 5 chars fixed | `100`, 11-char milliseconds |
+| `GET n ALL` | yes | **no such command** |
+| Metering | a `SAMPLE` message | periodic `REPORT AUDIO_IN_LVL_L` / `_R` |
+| Battery | bars, minutes, sometimes percent | **none** — it is a transmitter |
+| RF | RSSI per antenna | **none** — it transmits |
+
+Other parameters: `DEVICE_NAME` (device-level, 8 chars), `RF_TX_LVL`,
+`AUDIO_TX_MODE` (1 mono / 2 point-to-point / 3 stereo), `AUDIO_IN_LINE_LVL`
+(0 Aux / 1 Line), `AUDIO_IN_LVL` — which despite the name is a *setting*, the
+input gain, and not the meter.
+
+That PSM1000 has no `SAMPLE` is worth stating plainly, because micboard's IEM
+class has `parse_sample: pass` and that reads like an unfinished implementation.
+It is not — there is nothing to parse.
+
+### The meter has no documented units
+
+`AUDIO_IN_LVL_L` and `AUDIO_IN_LVL_R` appear in Shure's command table as
+"Audio Meter Level" with an 11-character value and no units, range or scale.
+Companion's module says so outright in its source: `AUDIO_IN_LVL_L: unknown
+format`.
+
+The values are large linear amplitudes. micboard, and the actively maintained
+wirelessboard fork, bucket them with these thresholds:
+
+```
+10272  23728  85488  246260  641928  1588744  2157767  2502970
+```
+
+Converted to dB those edges sit at roughly −58, −51, −40, −31, −22, −14, −12
+and −10.5: wide steps at the bottom, compressed at the top. That is the shape
+of an LED ladder, so this reproduces the transmitter's own front-panel meter
+rather than measuring anything.
+
+RFDeck uses that ladder and **deliberately does not convert to dBFS**. Doing so
+needs a full-scale reference nobody documents, and inventing one is precisely
+how the ULX-D conversions went wrong. The value is carried on `af_level` as a
+0–100 meter reading offset by −100, and is labelled as a meter rather than a
+measurement.
+
 ## Channel counts by model
 
 Shure's product pages, micboard's `DCID_MODEL` table and Companion's model
@@ -260,6 +320,7 @@ table all agree:
 | ULXD4 / ULXD4D / ULXD4Q | 1 / 2 / 4 |
 | QLXD4 | 1 |
 | SLXD4 / SLXD4D (and the "+" variants) | 1 / 2 |
+| P10T (PSM1000) | 2 |
 
 ## Discovery
 

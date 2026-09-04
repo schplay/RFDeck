@@ -8,8 +8,9 @@ import {
   ShureFamily, FAMILIES, identifyModel,
   splitMessages, parseMessage, parseSample,
   parseBatteryBars, batteryBarsToPercent, parseBatteryPercent, parseBatteryMinutes,
-  parseFrequencyKhz, audioToDbfs, rssiToPercent,
-  getAll, setMeterRate, setMute as buildSetMute, setFrequency as buildSetFrequency,
+  parseFrequencyKhz, audioToDbfs, rssiToPercent, iemMeterToPercent,
+  getAll, getEveryChannelParam, getDeviceParam,
+  setMeterRate, setMute as buildSetMute, setFrequency as buildSetFrequency,
 } from './protocol';
 
 // Shure receivers over the "command strings" protocol: ASCII in angle brackets
@@ -72,6 +73,8 @@ export class ShureClient extends EventEmitter implements HardwareClient {
    * five-bar fallback never overwrites it afterwards.
    */
   private hasChargePercent = new Set<number>();
+  /** Per-channel-per-side IEM meter readings, keyed "channel:l" / "channel:r". */
+  private iemLevels = new Map<string, number>();
   /** Emitting on every field would be a storm; coalesce into one tick. */
   private emitScheduled = false;
 
@@ -140,12 +143,20 @@ export class ShureClient extends EventEmitter implements HardwareClient {
       this.emit('connected');
       this.emit('alive');
 
-      // Ask for everything once, then subscribe to metering. GET ALL covers
-      // names, frequencies, battery and mute in one exchange; after that the
+      // Ask for everything once, then subscribe to metering. After that the
       // device reports changes unprompted.
+      //
+      // `GET n ALL` covers names, frequencies, battery and mute in one
+      // exchange on a receiver. The PSM1000 has no ALL command at all, so its
+      // parameters are asked for one at a time.
+      if (this.spec.isTransmitter) this.write(getDeviceParam('DEVICE_NAME', this.family));
+
       for (const ch of this.channelList) {
-        this.write(getAll(ch));
-        this.write(setMeterRate(ch, METER_INTERVAL_MS));
+        const all = getAll(ch, this.family);
+        if (all) this.write(all);
+        else for (const cmd of getEveryChannelParam(ch, this.family)) this.write(cmd);
+
+        this.write(setMeterRate(ch, METER_INTERVAL_MS, this.family));
       }
 
       this.armSilenceTimer();
@@ -195,7 +206,7 @@ export class ShureClient extends EventEmitter implements HardwareClient {
 
     const wasConnected = this.connected;
     if (wasConnected) {
-      for (const ch of this.channelList) this.write(setMeterRate(ch, 0));
+      for (const ch of this.channelList) this.write(setMeterRate(ch, 0, this.family));
     }
 
     this.socket = null;
@@ -252,7 +263,11 @@ export class ShureClient extends EventEmitter implements HardwareClient {
   }
 
   private refresh(): void {
-    for (const ch of this.channelList) this.write(getAll(ch));
+    for (const ch of this.channelList) {
+      const all = getAll(ch, this.family);
+      if (all) this.write(all);
+      else for (const cmd of getEveryChannelParam(ch, this.family)) this.write(cmd);
+    }
   }
 
   // ── Reading ───────────────────────────────────────────────────────────────
@@ -325,7 +340,27 @@ export class ShureClient extends EventEmitter implements HardwareClient {
         }
 
         if (p.mute && msg.param === p.mute) {
-          ch.mute = msg.value === 'ON';
+          // Receivers answer ON/OFF; the PSM1000 answers 1/0.
+          ch.mute = this.spec.muteStyle === 'binary'
+            ? msg.value === '1'
+            : msg.value === 'ON';
+          break;
+        }
+
+        // A monitor feed has two sides, and RFDeck's channel carries one
+        // level. The louder side is what an operator is watching for: a feed
+        // is in trouble when BOTH go quiet, exactly as with diversity antennas.
+        if ((p.audioLevelL && msg.param === p.audioLevelL) ||
+            (p.audioLevelR && msg.param === p.audioLevelR)) {
+          const level = iemMeterToPercent(msg.value);
+          if (level === null) break;
+          const side = msg.param === p.audioLevelL ? 'l' : 'r';
+          this.iemLevels.set(`${msg.channel}:${side}`, level);
+          const other = this.iemLevels.get(`${msg.channel}:${side === 'l' ? 'r' : 'l'}`) ?? 0;
+          // af_level is dBFS by contract and the manager adds 100 to it. The
+          // PSM1000's meter has no documented units, so this is a 0-100 meter
+          // reading carried on that field rather than a calibrated figure.
+          ch.af_level = Math.max(level, other) - 100;
           break;
         }
 
@@ -406,7 +441,11 @@ export class ShureClient extends EventEmitter implements HardwareClient {
 
       const tree: DeviceStateTree = {};
       for (const [channel, state] of this.channels) {
-        tree[`rx${channel}`] = { ...state };
+        // The device knows better than an inventory checkbox: a PSM1000 is a
+        // transmitter whatever the operator ticked when adding it.
+        tree[`rx${channel}`] = this.spec.isTransmitter
+          ? { ...state, role: 'iem' }
+          : { ...state };
       }
       this.emit('state', tree);
     });
@@ -437,7 +476,7 @@ export class ShureClient extends EventEmitter implements HardwareClient {
   async setFrequency(rxIndex: number, frequencyHz: number): Promise<boolean> {
     if (!this.connected) return false;
     // Callers pass Hz; Shure sets in kHz.
-    this.write(buildSetFrequency(rxIndex, Math.round(frequencyHz / 1000)));
+    this.write(buildSetFrequency(rxIndex, Math.round(frequencyHz / 1000), this.family));
     return true;
   }
 

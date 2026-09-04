@@ -991,9 +991,14 @@ export class DeviceManagerService extends EventEmitter {
         // TX mute is the performer's own switch — deliberate, not a fault, so
         // it no longer degrades status to WARNING. It travels as its own flag
         // and the views render it as a mute.
+        // What the channel is for. The device wins where it knows: a Shure
+        // PSM1000 is an IEM transmitter whatever the operator ticked when
+        // adding it, and the hardware is the better authority. Otherwise the
+        // inventory's deviceType decides.
+        //
         // The '-legacy' suffix is a Sennheiser artefact of the id, not part of
         // how the device was catalogued.
-        const role = this.deviceRoles.get(baseId) ?? 'mic';
+        const role = rxData.role ?? this.deviceRoles.get(baseId) ?? 'mic';
 
         // An IEM is never CRITICAL for want of RF: it has none to want.
         const status = isMuted ? 'WARNING'

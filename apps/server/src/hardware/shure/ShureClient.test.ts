@@ -336,6 +336,59 @@ describe('ShureClient', () => {
     expect(tree.rx1!.rf_quality_b).toBe(tree.rx1!.rf_quality);
   });
 
+  it('drives a PSM1000, which is a transmitter and a different dialect', async () => {
+    const { client } = await connect({ family: 'p10t', model: 'P10T', channels: 2 });
+    client.startPolling();
+
+    const tree = await nextState(client, t => !!t.rx1?.name && t.rx1?.frequency !== undefined);
+    expect(tree.rx1!.name).toBe('Channel1');
+    expect(tree.rx1!.frequency).toBe(578350);
+
+    // The device says what it is, and that is what stops the RF dropout
+    // detector alerting on a transmitter that is working perfectly.
+    expect(tree.rx1!.role).toBe('iem');
+
+    // A transmitter reports no RF and no battery. Absent, not zero — zero is
+    // a dead link and a flat pack.
+    expect(tree.rx1!.rf_quality).toBeUndefined();
+    expect(tree.rx1!.battery).toBeUndefined();
+  });
+
+  it('reads the stereo monitor meter, taking the louder side', async () => {
+    // A feed is in trouble when both sides go quiet, the same logic as
+    // diversity antennas.
+    const { client } = await connect({ family: 'p10t', model: 'P10T', channels: 2 });
+    client.startPolling();
+    const tree = await nextState(client, t => t.rx1?.af_level !== undefined);
+    // Fake sends L=700000 (level 60) and R=1700000 (level 70); af_level is
+    // carried as (level - 100) because the manager adds 100 back.
+    expect(tree.rx1!.af_level).toBe(-30);
+  });
+
+  it('mutes a PSM1000 with its own vocabulary', async () => {
+    // RF_MUTE 1, not AUDIO_MUTE ON. The wrong one looks accepted and does
+    // nothing at all.
+    const { client, device } = await connect({ family: 'p10t', model: 'P10T', channels: 2 });
+    client.startPolling();
+    await nextState(client, t => t.rx1?.mute === false);
+
+    expect(await client.setMute(1, true)).toBe(true);
+    expect(await receivedCommand(device, '< SET 1 RF_MUTE 1 >')).toBe(true);
+
+    const tree = await nextState(client, t => t.rx1?.mute === true);
+    expect(tree.rx1!.mute).toBe(true);
+  });
+
+  it('never asks a PSM1000 for ALL, which it does not have', async () => {
+    const { client, device } = await connect({ family: 'p10t', model: 'P10T', channels: 2 });
+    client.startPolling();
+    await nextState(client, t => !!t.rx1?.name);
+
+    expect(device.received.some(m => m.includes(' ALL '))).toBe(false);
+    // It asks per parameter instead.
+    expect(device.received.some(m => m.includes('CHAN_NAME'))).toBe(true);
+  });
+
   it('falls back to a warned-about default for an unrecognised model', async () => {
     // Rather than refusing to connect: an operator who typed the model in
     // slightly wrong still gets a working two-channel receiver, and a log line

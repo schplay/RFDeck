@@ -94,7 +94,6 @@ describe('identifyFromReplies', () => {
 
   it('refuses a model it recognises but cannot drive, rather than misreading it', () => {
     // Better a device that does not appear than one that appears and lies.
-    expect(identifyFromReplies(['< REP MODEL {PSM1000} >', '< REP 1 CHAN_NAME {IEM} >'])).toBeNull();
     expect(identifyFromReplies(['< REP MODEL {UR4D} >', '< REP 1 CHAN_NAME {A} >'])).toBeNull();
   });
 
@@ -131,7 +130,7 @@ describe('identifyFromReplies', () => {
 
   it('still accepts the models it does support', () => {
     // The refusal above must not be so broad that it rejects real receivers.
-    for (const model of ['AD4D', 'AD4Q', 'ULXD4D', 'QLXD4', 'SLXD4', 'SLXD4D']) {
+    for (const model of ['AD4D', 'AD4Q', 'ULXD4D', 'QLXD4', 'SLXD4', 'SLXD4D', 'P10T']) {
       const id = identifyFromReplies([
         `< REP MODEL {${model}} >`,
         '< REP 1 CHAN_NAME {A} >',

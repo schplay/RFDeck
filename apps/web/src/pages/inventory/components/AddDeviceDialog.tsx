@@ -31,6 +31,7 @@ const SHURE_MODELS = [
   { value: 'QLXD4',  label: 'QLX-D QLXD4 — 1 channel' },
   { value: 'SLXD4',  label: 'SLX-D SLXD4 — 1 channel' },
   { value: 'SLXD4D', label: 'SLX-D SLXD4D — 2 channel' },
+  { value: 'P10T',   label: 'PSM1000 P10T — IEM transmitter, 2 channel' },
 ];
 
 // What each manufacturer's default port is, and what RFDeck can actually do

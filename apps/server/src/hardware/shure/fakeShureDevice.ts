@@ -35,7 +35,7 @@ export interface FakeDeviceOptions {
    * to tell the families apart — so a fake that answers MODEL regardless would
    * make that logic untestable.
    */
-  family?: 'axtd' | 'ulxd' | 'slxd';
+  family?: 'axtd' | 'ulxd' | 'slxd' | 'p10t';
 }
 
 export class FakeShureDevice {
@@ -53,6 +53,8 @@ export class FakeShureDevice {
     name: string; frequency: string; battBars: string; battMins: string;
     mute: 'ON' | 'OFF'; rssiA: string; rssiB: string; audio: string; antennas: string;
     battPercent: string;
+    /** Linear amplitudes, as the PSM1000's undocumented meter reports them. */
+    iemLevelL: string; iemLevelR: string;
   }>();
 
   constructor(options: FakeDeviceOptions = {}) {
@@ -77,6 +79,8 @@ export class FakeShureDevice {
         audio: '102',
         antennas: 'BB',
         battPercent: '073',
+        iemLevelL: '700000',
+        iemLevelR: '1700000',
       });
     }
 
@@ -141,6 +145,11 @@ export class FakeShureDevice {
     const body = raw.replace(/^</, '').replace(/>$/, '').trim();
     const t = body.split(/\s+/);
 
+    // The PSM1000 is a different dialect end to end: REPORT rather than REP,
+    // no braces around strings, no ALL command, RF_MUTE 1/0, and metering as
+    // periodic reports rather than a SAMPLE.
+    if (this.opts.family === 'p10t') return this.handleIem(socket, t);
+
     if (t[0] === 'GET' && t[2] === 'ALL') return this.sendAll(socket, Number(t[1]));
 
     if (t[0] === 'SET' && t[2] === 'METER_RATE') {
@@ -194,6 +203,45 @@ export class FakeShureDevice {
     }
   }
 
+  /** A PSM1000, which has no ALL command and answers with REPORT. */
+  private handleIem(socket: net.Socket, t: string[]): void {
+    const rep = (body: string) => this.send(socket, `< REPORT ${body} >\r\n`);
+
+    if (t[0] === 'GET' && t[1] === 'DEVICE_NAME') {
+      return rep(`DEVICE_NAME ${this.opts.deviceId}`);
+    }
+
+    if (t[0] === 'GET' && t[2]) {
+      const ch = Number(t[1]);
+      const v = this.values.get(ch);
+      if (!v) return;
+      if (t[2] === 'CHAN_NAME') return rep(`${ch} CHAN_NAME ${v.name}`);
+      if (t[2] === 'FREQUENCY') return rep(`${ch} FREQUENCY ${Number(v.frequency)}`);
+      if (t[2] === 'RF_MUTE')   return rep(`${ch} RF_MUTE ${v.mute === 'ON' ? '1' : '0'}`);
+      return;
+    }
+
+    if (t[0] === 'SET' && t[2] === 'RF_MUTE') {
+      const ch = Number(t[1]);
+      const v = this.values.get(ch);
+      if (v) v.mute = t[3] === '1' ? 'ON' : 'OFF';
+      return rep(`${ch} RF_MUTE ${v?.mute === 'ON' ? '1' : '0'}`);
+    }
+
+    if (t[0] === 'SET' && t[2] === 'METER_RATE') {
+      const ch = Number(t[1]);
+      rep(`${ch} METER_RATE ${Number(t[3])}`);
+      return this.setMetering(socket, ch, Number(t[3]));
+    }
+
+    if (t[0] === 'SET' && t[2] === 'FREQUENCY') {
+      const ch = Number(t[1]);
+      const v = this.values.get(ch);
+      if (v) v.frequency = String(t[3]);
+      return rep(`${ch} FREQUENCY ${Number(v?.frequency)}`);
+    }
+  }
+
   private sendAll(socket: net.Socket, channel: number): void {
     const v = this.values.get(channel);
     if (!v) return;
@@ -236,6 +284,14 @@ export class FakeShureDevice {
     const timer = setInterval(() => {
       const v = this.values.get(channel);
       if (!v || socket.destroyed) return;
+
+      if (this.opts.family === 'p10t') {
+        // "Audio Meter Level": REPORT x AUDIO_IN_LVL_L / _R, large linear
+        // amplitudes rather than an offset dB value.
+        this.send(socket, `< REPORT ${channel} AUDIO_IN_LVL_L ${v.iemLevelL} >\r\n`);
+        this.send(socket, `< REPORT ${channel} AUDIO_IN_LVL_R ${v.iemLevelR} >\r\n`);
+        return;
+      }
 
       if (this.opts.family === 'slxd') {
         // < SAMPLE chNum ALL audPeak audRms rfRssi > — three fields, no
