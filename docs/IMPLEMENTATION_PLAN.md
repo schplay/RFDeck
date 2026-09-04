@@ -13,9 +13,10 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | 3 — Access control & deployment | ✅ Complete — PIN gate, encryption at rest, installer + updater, HTTPS, AES67, shell CLI |
 | 4 — Show-day hardening | ✅ Complete — 4.3 show report landed as JSON, CSV, and a printable page |
 | A — Audio monitoring *(added)* | ✅ Server-side capture, any-interface patching, AES67 subscriptions from RFDeck |
-| 5 — Client reach | Not started |
-| 6 — Feature completion | 6.2 partially — performer roster exists; notebook/photos do not |
-| 7 — Breadth & operations | In progress — 109 tests; CI runs them on every push (7.5) |
+| 5 — Client reach | 5.1 responsive ✅; PWA, push and QR not started |
+| 6 — Feature completion | ✅ 6.1 rolling capture and detection; ✅ 6.2 notebook and photos; 6.3 and 6.4 outstanding |
+| B — Micboard & Go Live *(added)* | ✅ Read-only wall display; one action to put RFDeck on the rig |
+| 7 — Breadth & operations | In progress — 156 tests; CI runs them on every push (7.5) |
 
 *Last reconciled 2026-08-23 against commit `c78aa86`. See "Work since the plan" below for
 what landed outside the original stages.*
@@ -31,19 +32,31 @@ wrong one, issues tokens, and always exempts loopback.
 
 ### Next up
 
-1. **6.1 — Rolling capture, problem detection, flagged clips.** Critical, and
-   reframed from "replay buffer" — see the entry. Builds on the Stage A capture
-   path and the persisted event log.
-2. **2.5 — Control command attribution.** Needs a decision first: there are no
-   named accounts (superseded by the PIN model), so "who" can only be a label each
-   client sets for itself. See the note under 2.5.
-3. **6.3 — Device maintenance log.** Small, and the device drawer is ready for it.
-4. **6.2 — Performer notebook and photos.** The roster exists; the notebook
-   and headshot upload hang off it.
-5. **7.4 — Packaging.** Docker image for the headless target; desktop auto-update.
+1. **End-to-end tests (7.1).** 156 unit tests cover parsers, allocators and
+   state machines — and every defect found in live use this cycle was in a
+   flow none of them touch: a mute button that sent to a path the firmware
+   does not serve, a Listen that toggled itself off, a page blank for thirty
+   seconds after waking, a page that scrolled sideways on a phone. Playwright
+   over go-live, the dashboard, mic check and the Micboard is the gap between
+   "compiles" and "works".
+2. **Rebuild and verify the desktop package.** It has not been built since
+   before Stage A. The schema, the Prisma client staging and the recording
+   directories have all changed under it, and the packaging was the hardest
+   part of this project to stabilise. Left much longer it becomes archaeology.
+3. **README accuracy.** It still marks the replay buffer as planned and
+   dropout detection as partial, and does not mention Detections, the Micboard,
+   Go Live, the performer notebook, or IEM assignment. It now understates the
+   product rather than overstating it — the opposite of the original problem,
+   and equally misleading.
+4. **2.5 — Control command attribution.** Still blocked on a decision: with no
+   named accounts, "who" can only be a label each client sets for itself.
+5. **6.3 — Device maintenance log.** Small, and the device drawer is ready.
+6. **7.3 — Shure support.** The largest single expansion of what RFDeck can
+   talk to, and the audience Micboard already serves. Extract the hardware
+   client interface first.
 
-Stage 5 (mobile) is deprioritised: operators running a soundcheck are at their
-console.
+Stage 5 mobile is partly done: the responsive pass landed, so the Micboard and
+dashboard work on a phone. PWA, push and QR remain unstarted and unurgent.
 
 ---
 
@@ -814,3 +827,39 @@ the desktop packaging was the hardest part of this project to stabilise. Moving
 to `^6` first is near-zero risk and can be done any time; 7 is an afternoon on
 the server plus a separate budget for Electron. A useful side effect of 7: the
 engine DLL that causes `EPERM` on `prisma generate` under Windows goes away.
+
+---
+
+## Stage B — Micboard & Go Live *(added)*
+
+Not in the original plan. Both came out of using the application rather than
+from the stage list.
+
+### B.1 Micboard — ✅ *complete*
+
+A read-only wall display: one tile per channel, leading with the performer's
+face and name over RF, audio, battery and status, sized to be read across a
+room rather than studied. Photos come from the cast list of the show that is
+live.
+
+Read-only without a PIN, because the PIN exists to prevent unauthorised
+changes rather than to hide telemetry — and enforced rather than trusted: a
+display announces itself at the socket handshake and the server then never
+registers the control or audio handlers for it. The REST exemption is matched
+by method as well as path.
+
+Deliberately not built: Micboard's numbered groups. One grid of every active
+channel until using it shows grouping is needed.
+
+### B.2 Go Live — ✅ *complete*
+
+One action for "I am working the rig now": track every device in the
+inventory, start rolling capture and fault detection, put the chosen show's
+cast on the Micboard. Standing down reverses all three.
+
+This replaced a heuristic that was quietly wrong. Detections and the Micboard
+had been picking the most recently *updated* unarchived show — but a mic-check
+tick writes to `MicCheckEntry`, not the show row, so renaming an old show
+outranked the one actually on stage, and detections were filed against the
+wrong show. The live show is now declared, never inferred, and held as a
+single nullable pointer so two shows cannot be live at once.
