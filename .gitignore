@@ -35,3 +35,7 @@ clips/
 
 # Performer headshots
 images/
+
+# Playwright
+test-results/
+playwright-report/

@@ -105,7 +105,19 @@ export class DiscoveryService extends EventEmitter {
 
   constructor() { super(); }
 
+  // Off by default; set only by the end-to-end harness. Discovery broadcasts
+  // on the network and sweeps the subnet, which makes a test run slow, noisy,
+  // and dependent on whatever else is plugged in — none of which the tests are
+  // about. Nothing in a deployment sets this.
+  private get disabled(): boolean {
+    return process.env.RFDECK_DISABLE_DISCOVERY === '1';
+  }
+
   start() {
+    if (this.disabled) {
+      log.warn('[Discovery] Disabled by RFDECK_DISABLE_DISCOVERY — no devices will be found');
+      return;
+    }
     log.debug('[Discovery] Starting passive listeners (mDNS + MCP)...');
     this.startMdns();
     this.startMcpListener();
@@ -115,6 +127,7 @@ export class DiscoveryService extends EventEmitter {
   // ── On-demand scan ───────────────────────────────────────────────────────
 
   async scan(): Promise<void> {
+    if (this.disabled) return;
     if (this.scanInProgress) {
       log.debug('[Discovery] Scan already in progress, skipping');
       return;
