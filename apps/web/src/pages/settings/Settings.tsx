@@ -4,6 +4,7 @@ import { Volume2, BellRing, Network, RefreshCw, ShieldCheck } from 'lucide-react
 import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
 import { AudioPatchSettings } from './AudioPatch';
 import { AES67RoutingSettings } from './AES67Routing';
+import { RecordingSettings } from './RecordingSettings';
 import './Settings.css';
 
 interface AppSettings {
@@ -274,6 +275,7 @@ export default function Settings() {
               server before there is anything to patch a channel to. */}
           <AES67RoutingSettings />
           <AudioPatchSettings />
+          <RecordingSettings />
         </Tabs.Content>
 
         <Tabs.Content value="access" className="tabs-content">

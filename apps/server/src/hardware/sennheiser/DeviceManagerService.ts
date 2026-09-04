@@ -1100,6 +1100,22 @@ export class DeviceManagerService extends EventEmitter {
     }
     this.io.emit('rf:event', event);
 
+    // A dropout is the first thing worth keeping audio for. Emitted as its own
+    // signal rather than calling the recorder directly, so device tracking
+    // stays independent of whether recording exists at all.
+    if (type === 'DROPOUT') {
+      this.emit('rf:detection', {
+        channelKey:  channel.name,
+        channelName: channel.name,
+        deviceId,
+        trigger:     'RF_DROPOUT',
+        severity:    'CRITICAL',
+        message:     `RF dropout on ${channel.name}`,
+        rfLevelA:    Math.round(channel.rfLevelA),
+        rfLevelB:    Math.round(channel.rfLevelB),
+      });
+    }
+
     // Persist so the history survives a restart and can back a show report.
     // Fire-and-forget: a database hiccup must never interrupt live monitoring.
     prisma.event.create({

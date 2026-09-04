@@ -53,6 +53,53 @@ model Settings {
   authPinHash        String?
   // Hours before a remote client must re-enter the PIN. 0 = never re-prompt.
   authReauthHours    Int      @default(0)
+
+  // ── Rolling capture ──
+  // On by default: a problem worth reviewing is one nobody predicted, so
+  // recording that must be switched on first would be off when it mattered.
+  recordingEnabled   Boolean  @default(true)
+  // Ceiling for stored clips, in megabytes. Clips fill it FIFO; flagged clips
+  // are never pruned automatically.
+  recordingMaxMb     Int      @default(2048)
+  // Seconds kept before and after a detection. The pre-roll is held in memory
+  // per patched channel, so it is deliberately short.
+  recordingPreSec    Int      @default(15)
+  recordingPostSec   Int      @default(10)
+}
+
+// Something that looked like a wireless fault, with the audio that proves it.
+//
+// Distinct from Event: an Event is a log line, a Detection is an incident with
+// a clip attached that an operator reviews, flags, or dismisses afterwards.
+model Detection {
+  id          String   @id @default(uuid())
+  timestamp   DateTime @default(now())
+  // Channel NAME — survives a device IP change, as everywhere else.
+  channelKey  String
+  channelName String?
+  deviceId    String?
+  // What raised it: RF_DROPOUT for now; audio-signature triggers later.
+  trigger     String
+  severity    String   @default("WARNING")
+  message     String
+  rfLevelA    Int?
+  rfLevelB    Int?
+  // The show running at the time, for report scoping.
+  showId      String?
+  act         Int?
+  // Filename within the clips directory. Null while the post-roll is still
+  // being captured, or if writing failed.
+  clipPath    String?
+  clipBytes   Int      @default(0)
+  clipMs      Int      @default(0)
+  // Flagged by an operator: "this one matters". Exempt from FIFO pruning.
+  flagged     Boolean  @default(false)
+  note        String?
+  dismissed   Boolean  @default(false)
+
+  @@index([timestamp])
+  @@index([channelKey])
+  @@index([flagged])
 }
 
 // Which audio input each RF channel is patched to.
