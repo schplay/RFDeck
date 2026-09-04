@@ -18,6 +18,10 @@ export function serializePerformer(row: any) {
     id:           row.id,
     name:         row.name,
     notes:        row.notes ?? '',
+    fitNotes:     row.fitNotes ?? '',
+    // The client is given a URL, never the filename — where the file lives is
+    // the server's business and the path is not something a client can forge.
+    photoUrl:     row.photoPath ? `/performers/${row.id}/photo` : null,
     castingCount: row._count?.castings ?? 0,
     createdAt:    row.createdAt.toISOString(),
     updatedAt:    row.updatedAt.toISOString(),

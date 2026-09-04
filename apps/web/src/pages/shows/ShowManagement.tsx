@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Show, Player, MicCheckAct } from '@rfdeck/shared-types';
+import { Show, Player, MicCheckAct, EnvironmentProfile, ENVIRONMENTS } from '@rfdeck/shared-types';
 import { useShowStore, migrateLegacyShows } from '../../stores/showStore';
 import { useChannelStore } from '../../stores/channelStore';
 import { useDeviceStore } from '../../stores/deviceStore';
@@ -11,7 +11,7 @@ import { API_BASE, getToken } from '../../lib/api';
 import {
   Plus, Trash2, CheckCircle2, Circle, ChevronRight,
   ClipboardList, MessageSquare, RotateCcw, Users, Radio, Archive, ArchiveRestore,
-  FileText, Download,
+  FileText, Download, BookOpen, ChevronDown,
 } from 'lucide-react';
 import './ShowManagement.css';
 
@@ -19,63 +19,8 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-interface EnvTerms {
-  periodLabel: string;   // Act / Service / Set / Session / Segment
-  rosterLabel: string;   // Players / Roster / Performers / Presenters / Talent
-  personLabel: string;   // Player / Musician / Performer / Presenter
-  roleLabel: string;     // Character / Part-Instrument / Role / Title
-  addPersonLabel: string;
-  emptyRoster: string;
-  realNameLabel: string;
-}
-
-const ENV_TERMS: Record<Show['environmentMode'], EnvTerms> = {
-  THEATER: {
-    periodLabel:    'Act',
-    rosterLabel:    'Players',
-    personLabel:    'Player',
-    roleLabel:      'Character',
-    addPersonLabel: 'Add Player',
-    emptyRoster:    'No players yet — add your cast below',
-    realNameLabel:  'Real Name',
-  },
-  CONCERT: {
-    periodLabel:    'Set',
-    rosterLabel:    'Performers',
-    personLabel:    'Performer',
-    roleLabel:      'Instrument / Role',
-    addPersonLabel: 'Add Performer',
-    emptyRoster:    'No performers yet — add your band below',
-    realNameLabel:  'Name',
-  },
-  CORPORATE: {
-    periodLabel:    'Session',
-    rosterLabel:    'Presenters',
-    personLabel:    'Presenter',
-    roleLabel:      'Title',
-    addPersonLabel: 'Add Presenter',
-    emptyRoster:    'No presenters yet — add your speakers below',
-    realNameLabel:  'Name',
-  },
-  BROADCAST: {
-    periodLabel:    'Segment',
-    rosterLabel:    'Talent',
-    personLabel:    'Talent',
-    roleLabel:      'Role',
-    addPersonLabel: 'Add Talent',
-    emptyRoster:    'No talent yet — add your on-air team below',
-    realNameLabel:  'Name',
-  },
-  HOUSE_OF_WORSHIP: {
-    periodLabel:    'Service',
-    rosterLabel:    'Roster',
-    personLabel:    'Musician',
-    roleLabel:      'Part / Instrument',
-    addPersonLabel: 'Add to Roster',
-    emptyRoster:    'No one on the roster yet — add musicians below',
-    realNameLabel:  'Name',
-  },
-};
+// Vocabulary and which notebook sections apply, per show type. Shared so the
+// roster, this page and the printed report describe a production the same way.
 
 // ── ShowListPanel ────────────────────────────────────────────────
 function ShowListPanel({
@@ -210,7 +155,7 @@ function NewShowDialog({ onDone }: { onDone: () => void }) {
 }
 
 // ── MicCheckTab ──────────────────────────────────────────────────
-function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
+function MicCheckTab({ show, terms }: { show: Show; terms: EnvironmentProfile }) {
   const { setCurrentAct, setChannelChecked, setChannelNotes, resetAct } = useShowStore();
   // Mics only. An IEM carries a monitor feed, not a performer — ticking one
   // during a soundcheck means nothing, and its presence lengthens the list
@@ -382,8 +327,114 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvTerms }) {
   );
 }
 
+// ── PlayerNotebook ───────────────────────────────────────────────
+// Everything about one person in THIS show: notes that belong to the
+// production rather than the person, and — where the environment works that
+// way — the quick changes that take their pack off and back on.
+function PlayerNotebook({ show, player, terms }: { show: Show; player: Player; terms: EnvironmentProfile }) {
+  const { updatePlayer, addQuickChange, updateQuickChange, deleteQuickChange } = useShowStore();
+  const changes = player.quickChanges ?? [];
+
+  return (
+    <div className="sm-notebook">
+      <div className="sm-notebook-section">
+        <label className="sm-notebook-label">
+          Notes for this show
+          <span className="sm-notebook-hint">
+            Specific to {show.name}. Standing notes about the person live on the
+            Performers page and follow them everywhere.
+          </span>
+        </label>
+        <textarea
+          className="sm-notebook-textarea"
+          rows={2}
+          value={player.notes}
+          onChange={e => updatePlayer(show.id, player.id, { notes: e.target.value })}
+          placeholder="e.g. doubles as the Innkeeper in Act 2 — second pack on the props table"
+        />
+      </div>
+
+      {/* Theatre business. A worship service or a panel has no costume changes,
+          and an empty section there is just clutter — see ENVIRONMENTS. */}
+      {terms.quickChanges && (
+        <div className="sm-notebook-section">
+          <div className="sm-notebook-head">
+            <label className="sm-notebook-label">
+              Quick changes
+              <span className="sm-notebook-hint">
+                When the pack comes off and goes back on, so nobody is caught out by
+                a dead channel that is dead on purpose.
+              </span>
+            </label>
+            <button
+              className="btn-text-primary"
+              onClick={() => addQuickChange(show.id, player.id)}
+            >
+              <Plus size={12} /> Add
+            </button>
+          </div>
+
+          {changes.length === 0 ? (
+            <p className="sm-notebook-empty">No quick changes recorded.</p>
+          ) : (
+            <div className="sm-qc-list">
+              <div className="sm-qc-header">
+                <span>{terms.periodLabel}</span>
+                <span>Off at</span>
+                <span>Back at</span>
+                <span>Notes</span>
+                <span />
+              </div>
+              {changes.map(qc => (
+                <div key={qc.id} className="sm-qc-row">
+                  <input
+                    className="sm-input sm-qc-act"
+                    type="number"
+                    min={1}
+                    max={4}
+                    value={qc.act ?? ''}
+                    onChange={e => updateQuickChange(show.id, player.id, qc.id, {
+                      act: e.target.value ? Number(e.target.value) : null,
+                    })}
+                    placeholder="—"
+                  />
+                  <input
+                    className="sm-input"
+                    value={qc.outCue}
+                    onChange={e => updateQuickChange(show.id, player.id, qc.id, { outCue: e.target.value })}
+                    placeholder="e.g. end of sc. 3"
+                  />
+                  <input
+                    className="sm-input"
+                    value={qc.inCue}
+                    onChange={e => updateQuickChange(show.id, player.id, qc.id, { inCue: e.target.value })}
+                    placeholder="e.g. top of sc. 5"
+                  />
+                  <input
+                    className="sm-input"
+                    value={qc.notes}
+                    onChange={e => updateQuickChange(show.id, player.id, qc.id, { notes: e.target.value })}
+                    placeholder="e.g. pack to SR quick-change booth"
+                  />
+                  <button
+                    className="sm-player-delete"
+                    onClick={() => deleteQuickChange(show.id, player.id, qc.id)}
+                    title="Remove"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── PlayersTab ───────────────────────────────────────────────────
-function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
+function PlayersTab({ show, terms }: { show: Show; terms: EnvironmentProfile }) {
   const { addPlayer, updatePlayer, deletePlayer } = useShowStore();
   // A performer can wear both, so they are assigned separately.
   const { mics, iems } = useChannelsByRole();
@@ -402,6 +453,7 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
   const [newPerformerId, setNewPerformerId] = useState('');
   const [newRealName, setNewRealName] = useState('');
   const [newCharName, setNewCharName] = useState('');
+  const [openNotebook, setOpenNotebook] = useState<string | null>(null);
   const canAdd = !!newPerformerId || !!newRealName.trim();
 
   const handleAddPlayer = (e: React.FormEvent) => {
@@ -436,7 +488,8 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
             <span />
           </div>
           {show.players.map(player => (
-            <div key={player.id} className="sm-player-row">
+            <div key={player.id} className="sm-player-entry">
+            <div className="sm-player-row">
               {/* Who fills this slot. Names are edited on the Performers page,
                   where a change reaches every show; here you only recast. */}
               <select
@@ -504,11 +557,23 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvTerms }) {
               />
               <button
                 className="sm-player-delete"
+                onClick={() => setOpenNotebook(x => (x === player.id ? null : player.id))}
+                title={openNotebook === player.id ? 'Hide notebook' : 'Notebook for this show'}
+              >
+                {openNotebook === player.id ? <ChevronDown size={13} /> : <BookOpen size={13} />}
+              </button>
+              <button
+                className="sm-player-delete"
                 onClick={() => deletePlayer(show.id, player.id)}
                 title="Remove player"
               >
                 <Trash2 size={13} />
               </button>
+            </div>
+
+            {openNotebook === player.id && (
+              <PlayerNotebook show={show} player={player} terms={terms} />
+            )}
             </div>
           ))}
         </div>
@@ -617,7 +682,7 @@ function DevicesTab() {
 function ShowDetail({ show }: { show: Show }) {
   const { deleteShow, setActiveShow, setShowArchived } = useShowStore();
   const [activeTab, setActiveTab] = useState<'miccheck' | 'players' | 'devices'>('miccheck');
-  const terms = ENV_TERMS[show.environmentMode];
+  const terms = ENVIRONMENTS[show.environmentMode];
   const inactiveCount = useDeviceStore(
     s => s.inventory.filter(d => d.active === false).length
   );

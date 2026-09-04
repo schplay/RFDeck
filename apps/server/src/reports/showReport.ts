@@ -15,6 +15,9 @@ export interface ReportDevice {
 
 export interface ReportCasting {
   name: string; role: string; channel: string | null; iem: string | null; notes: string;
+  /** How the person is rigged — from the roster, not this show. */
+  fitNotes: string;
+  quickChanges: Array<{ act: number | null; outCue: string; inCue: string; notes: string }>;
 }
 
 export interface ReportCheckEntry {
@@ -108,6 +111,10 @@ export function assembleReport(input: ReportInputs): ShowReport {
       name: p.realName, role: p.characterName ?? '',
       channel: p.assignedChannelKey ?? null,
       iem: p.iemChannelKey ?? null, notes: p.notes ?? '',
+      fitNotes: p.performer?.fitNotes ?? '',
+      quickChanges: (p.quickChanges ?? []).map((q: any) => ({
+        act: q.act ?? null, outCue: q.outCue ?? '', inCue: q.inCue ?? '', notes: q.notes ?? '',
+      })),
     })),
     micCheck,
     events: events.map(e => ({
@@ -197,8 +204,14 @@ export function reportToCsv(r: ShowReport): string {
     r.devices.map(d => [d.name, d.manufacturer, d.model, d.ip, d.location ?? '', d.serial ?? '',
                         d.firmware ?? '', d.mac ?? '', d.active ? 'yes' : 'no']));
 
-  section('Roster', ['Name', 'Role', 'Mic', 'IEM', 'Notes'],
-    r.roster.map(c => [c.name, c.role, c.channel ?? '', c.iem ?? '', c.notes]));
+  section('Roster', ['Name', 'Role', 'Mic', 'IEM', 'Notes', 'Mic & pack'],
+    r.roster.map(c => [c.name, c.role, c.channel ?? '', c.iem ?? '', c.notes, c.fitNotes]));
+
+  const changes = r.roster.flatMap(c =>
+    c.quickChanges.map(q => [c.name, q.act ?? '', q.outCue, q.inCue, q.notes]));
+  if (changes.length > 0) {
+    section('Quick changes', ['Performer', 'Act', 'Off at', 'Back at', 'Notes'], changes);
+  }
 
   section('Mic check', ['Act', 'Channel', 'Checked', 'Checked at', 'Checked by', 'Notes'],
     r.micCheck.flatMap(a => a.entries.map(e =>
@@ -270,8 +283,15 @@ ${table(['Name', 'Model', 'IP', 'Location', 'Serial', 'Firmware', 'Active'],
   'No devices in inventory.')}
 
 <h2>Roster</h2>
-${table(['Name', 'Role', 'Mic', 'IEM', 'Notes'],
-  r.roster.map(c => [c.name, c.role, c.channel ?? '—', c.iem ?? '—', c.notes]), 'No one cast.')}
+${table(['Name', 'Role', 'Mic', 'IEM', 'Notes', 'Mic &amp; pack'],
+  r.roster.map(c => [c.name, c.role, c.channel ?? '—', c.iem ?? '—', c.notes, c.fitNotes]), 'No one cast.')}
+
+${r.roster.some(c => c.quickChanges.length > 0) ? `
+<h2>Quick changes</h2>
+${table(['Performer', 'Act', 'Off at', 'Back at', 'Notes'],
+  r.roster.flatMap(c => c.quickChanges.map(q =>
+    [c.name, q.act ?? '—', q.outCue, q.inCue, q.notes])),
+  'None recorded.')}` : ''}
 
 <h2>Mic check</h2>
 ${acts}

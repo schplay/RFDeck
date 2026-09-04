@@ -7,7 +7,14 @@ import { findOrCreatePerformer, listPerformers } from '../performers/roster';
 // broadcasts over the socket rather than relying on clients to refetch.
 
 export const showInclude = {
-  players:  { orderBy: { sortIndex: 'asc' } },
+  players: {
+    orderBy: { sortIndex: 'asc' },
+    include: {
+      quickChanges: { orderBy: { sortIndex: 'asc' } },
+      // The report prints how each person is rigged, which lives on the roster.
+      performer: true,
+    },
+  },
   micCheck: true,
 } as const;
 
@@ -41,6 +48,15 @@ export function serializeShow(row: any) {
       notes:              p.notes,
       assignedChannelKey: p.assignedChannelKey ?? null,
       iemChannelKey:      p.iemChannelKey ?? null,
+      quickChanges: (p.quickChanges ?? []).map((q: any) => ({
+        id:        q.id,
+        playerId:  q.playerId,
+        act:       q.act ?? null,
+        outCue:    q.outCue ?? '',
+        inCue:     q.inCue ?? '',
+        notes:     q.notes ?? '',
+        sortIndex: q.sortIndex,
+      })),
     })),
     micCheck: { currentAct: row.currentAct, acts },
     createdAt: row.createdAt.toISOString(),
@@ -218,6 +234,70 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
       if (err?.code === 'P2025') return reply.code(404).send({ error: 'Player not found' });
       request.log.error({ err }, 'Failed to delete player');
       return reply.code(500).send({ error: 'Could not remove the player' });
+    }
+    return await pushShow(id);
+  });
+
+  // ── Quick changes ──
+  //
+  // A costume change that takes the pack off and puts it back on, with the
+  // cues either side. Theatre business — the roster page hides this section
+  // for environments that do not work that way (see ENVIRONMENTS).
+
+  fastify.post('/shows/:id/players/:playerId/changes', async (request, reply) => {
+    const { id, playerId } = request.params as { id: string; playerId: string };
+    const d = request.body as any;
+
+    const player = await prisma.player.findUnique({ where: { id: playerId } });
+    if (!player || player.showId !== id) {
+      return reply.code(404).send({ error: 'Casting not found in this show' });
+    }
+
+    const count = await prisma.quickChange.count({ where: { playerId } });
+    await prisma.quickChange.create({
+      data: {
+        playerId,
+        act:       typeof d?.act === 'number' ? d.act : null,
+        outCue:    String(d?.outCue ?? ''),
+        inCue:     String(d?.inCue ?? ''),
+        notes:     String(d?.notes ?? ''),
+        sortIndex: count,
+      },
+    });
+    return await pushShow(id);
+  });
+
+  fastify.put('/shows/:id/players/:playerId/changes/:changeId', async (request, reply) => {
+    const { id, changeId } = request.params as { id: string; changeId: string };
+    const d = request.body as any;
+    try {
+      await prisma.quickChange.update({
+        where: { id: changeId },
+        data: {
+          act: Object.prototype.hasOwnProperty.call(d, 'act')
+                 ? (typeof d.act === 'number' ? d.act : null) : undefined,
+          outCue: typeof d?.outCue === 'string' ? d.outCue : undefined,
+          inCue:  typeof d?.inCue  === 'string' ? d.inCue  : undefined,
+          notes:  typeof d?.notes  === 'string' ? d.notes  : undefined,
+          sortIndex: typeof d?.sortIndex === 'number' ? d.sortIndex : undefined,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2025') return reply.code(404).send({ error: 'Quick change not found' });
+      request.log.error({ err }, 'Failed to update quick change');
+      return reply.code(500).send({ error: 'Could not save the change' });
+    }
+    return await pushShow(id);
+  });
+
+  fastify.delete('/shows/:id/players/:playerId/changes/:changeId', async (request, reply) => {
+    const { id, changeId } = request.params as { id: string; changeId: string };
+    try {
+      await prisma.quickChange.delete({ where: { id: changeId } });
+    } catch (err: any) {
+      if (err?.code === 'P2025') return reply.code(404).send({ error: 'Quick change not found' });
+      request.log.error({ err }, 'Failed to delete quick change');
+      return reply.code(500).send({ error: 'Could not remove it' });
     }
     return await pushShow(id);
   });

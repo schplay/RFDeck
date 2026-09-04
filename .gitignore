@@ -32,3 +32,6 @@ scripts/ssh-agent-vars
 # Recorded incident clips (rolling capture)
 clips/
 *.wav
+
+# Performer headshots
+images/

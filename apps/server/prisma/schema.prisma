@@ -145,10 +145,32 @@ model Performer {
   id        String   @id @default(uuid())
   name      String
   notes     String   @default("")
+  // How this person is rigged: where the element is taped, where the pack
+  // sits, spare element, comfort and allergy notes. Belongs to the person
+  // rather than the production — it is the same next season.
+  fitNotes  String   @default("")
+  // Filename within the images directory beside the database. A headshot, for
+  // finding someone backstage you have not met.
+  photoPath String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   castings  Player[]
+}
+
+// One performer coming off mic and back on, within one show. Theatre business:
+// a costume change that takes the pack off, and the cues either side of it.
+model QuickChange {
+  id        String @id @default(uuid())
+  playerId  String
+  player    Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  act       Int?
+  outCue    String @default("")
+  inCue     String @default("")
+  notes     String @default("")
+  sortIndex Int    @default(0)
+
+  @@index([playerId])
 }
 
 // One performer's place in one show: their role, channel and notes for THAT
@@ -172,6 +194,8 @@ model Player {
   // but not checked there.
   iemChannelKey      String?
   sortIndex          Int        @default(0)
+
+  quickChanges       QuickChange[]
 
   @@index([showId])
   @@index([performerId])
