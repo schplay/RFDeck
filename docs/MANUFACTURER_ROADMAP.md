@@ -32,8 +32,8 @@ actually verified and what is inference.
 | Target | Protocol | Port | Spec | Open source | Effort | Verdict |
 |---|---|---|---|---|---|---|
 | **Shure SLX-D** | Command strings | 2202/TCP | ✅ Shure | ✅ Companion, Q-SYS | **S** | ✅ **Done** |
-| **Shure PSM1000** (IEM) | Command strings | 2202/TCP | ❌ **unreachable** | ⚠️ both incomplete | **S–M** | ⚠️ **Metering blocked** — see below |
-| **Sennheiser Digital 6000** | SSC over UDP | 6970 | ✅ Developer's Guide | ✅ Companion | **L** | **Do third** — corrects a false claim |
+| **Shure PSM1000** (IEM) | Command strings | 2202/TCP | ✅ Shure (via Archive) | ✅ Companion, wirelessboard | **S–M** | ✅ **Done** |
+| **Sennheiser Digital 6000** | SSC over UDP | **45** | ✅ Developer's Guide | ✅ Companion | **L** | ✅ **Done** |
 | **Wisycom MRK / MCR** | Ember+ | ~9000 *(unconfirmed)* | ⚠️ partial | ❌ none for receivers | **XL** | Research first |
 | **Sennheiser Spectera** | SSC over HTTPS | 443 | ⚠️ partial | ✅ Companion (large) | **L** | Later |
 | **Audio-Technica ESW** | Proprietary TCP | 17200 | ❓ | ✅ Companion | **M** | Different market |
@@ -222,7 +222,7 @@ Not started, pending that choice.
 
 ---
 
-## Sennheiser Digital 6000 — do third
+## Sennheiser Digital 6000 — done
 
 **Why.** It is in daily use in exactly RFDeck's market — theatre and broadcast
 — and the README already claims it works. Closing a false claim is worth more
@@ -247,10 +247,35 @@ subscription lifecycle that must be renewed. That is a different client, even
 though it shares a message format — and it should be a separate class rather
 than a fourth mode bolted onto a 1244-line file that already handles three.
 
-**Still to do before building.** Obtain Sennheiser's "Developer's Guide for
-Digital 6000 devices", referenced in their documentation portal. The Companion
-module alone is not enough for a subscription protocol, where getting the
-renewal wrong means telemetry that works for twenty seconds.
+**Built.** Sennheiser publishes the guide openly — TI 1109 v2.2, 232 pages —
+and it corrected this entry twice over.
+
+**The port is 45, not 6970.** 6970 came from the Companion module's default and
+appears nowhere in Sennheiser's specification, which states the SSC default
+port is 45 and explains why ("Sennheiser was founded in 1945"). Taking a
+number from an implementation without checking it against the document is the
+same mistake as the ULX-D conversions, and it was in this roadmap.
+
+**The transport was already there; the address tree was not.** `SSCClient`
+already speaks SSC-over-UDP:45 for EW-DX telemetry, so the transport was
+familiar. Nothing else was: EW-DX has `rx1.frequency` and `m.rx1.rsqi`, while
+Digital 6000 has `rx1.carrier` and a single `mm` metering array. It is a
+separate client, as planned, but for a different reason than expected.
+
+Notable in the implementation:
+
+  - The metering array's RF and AF formulae are written differently in the
+    document and are algebraically identical. A test asserted they differed,
+    failed, and now pins the equivalence instead.
+  - The battery is a four-state string, not a percentage. Three states name
+    their own value; "low" does not, and the 10 RFDeck uses is the only number
+    in that module which is a choice rather than a quotation.
+  - The simulated device deliberately models a **lapsed subscription**: it
+    stops sending without closing anything, which is what a real one does and
+    is indistinguishable from a quiet channel. That is the failure the renewal
+    logic exists to prevent, and it is now covered.
+
+Full notes: `docs/SENNHEISER_D6000_PROTOCOL.md`.
 
 ---
 
@@ -355,8 +380,8 @@ Lowest priority of everything here.
 2. ~~**Shure SLX-D.**~~ ✅ Done.
 3. ~~**Make RFDeck's channel model honest about IEMs**~~ ✅ Done.
    **Shure PSM1000** ⚠️ blocked on evidence — see above.
-4. **Sennheiser Digital 6000**, and correct the README's claim either way —
-   ✅ claim corrected already; the work is next.
+4. ~~**Sennheiser Digital 6000**~~ ✅ Done, and the README now describes it
+   rather than claiming it.
 5. **Wisycom**, once the Ember+ tree is documented.
 6. Spectera, Audio-Technica, UHF-R on request.
 7. Lectrosonics and Sony stay blocked until a vendor publishes something.

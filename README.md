@@ -272,6 +272,7 @@ network access gate, not per-user identity.
 |---|---|---|
 | **Sennheiser** (EW-DX — firmware ≥ 4.0) | SSCv2 (HTTPS/JSON REST) | Full: RF, AF, battery, mute, gain, frequency, identify, network config, spectrum scan |
 | **Sennheiser Legacy** (G3, G4, EM 3732, etc.) | SSCv1 (TCP/UDP) | Monitoring: RF, battery, status |
+| **Sennheiser Digital 6000** (EM 6000, EM 6000 Dante) | SSC over UDP 45 (subscriptions) | Monitoring: RF per antenna, audio, link quality, four-state battery gauge with runtime, name, frequency. Control: mute, frequency, identify 🚧 *— not verified on hardware* |
 | **Shure** (Axient Digital AD4D/AD4Q, ULX-D, QLX-D, SLX-D) | Command strings (TCP 2202) | Monitoring: RF per antenna, audio, battery bars and runtime, name, frequency. Control: mute, frequency 🚧 *— see below* |
 | **Shure PSM1000** (P10T, IEM transmitter) | Command strings (TCP 2202) | Monitoring: stereo monitor meter, frequency, name, mute state. Control: mute, frequency 🚧 *— see below* |
 
@@ -295,13 +296,13 @@ network access gate, not per-user identity.
 > What was verified, against how many sources, and what remains assumed is
 > written up in [`docs/SHURE_PROTOCOL.md`](docs/SHURE_PROTOCOL.md).
 
-> **EM 6000 and EM 9046 were previously listed here and are not supported.**
-> Sennheiser's Digital 6000 series speaks SSC over **UDP on port 6970**; its
-> documentation states the EM 6000's SSC server is UDP-only. RFDeck's client
-> speaks SSCv2 over HTTPS on 443 with an SSCv1 UDP sidecar on port 45, and has
-> no path that reaches a Digital 6000 — one added today would probe, fail, and
-> sit offline. Digital 6000 is the third item on the roadmap below. EM 9046
-> (Digital 9000) is a further protocol again and has not been researched.
+> **Digital 6000 support is new and unverified on hardware.** Set the model to
+> "EM 6000" when adding one — that is what selects the right client, because
+> nothing distinguishes it from an EW-DX before either has answered. It speaks
+> SSC over UDP 45 with subscriptions, so the port field is ignored.
+>
+> **EM 9046 is still not supported.** It is the Digital 9000 series, a
+> different protocol again, and has not been researched.
 
 ### Phase 2+ (Planned)
 
@@ -311,7 +312,6 @@ behind each, including which have a usable specification and which do not.
 
 | Target | Route | State |
 |---|---|---|
-| Sennheiser Digital 6000 | SSC over UDP 6970 | Planned — needs Sennheiser's Developer's Guide |
 | Wisycom (MRK / MCR) | Ember+ | Needs the Ember+ tree documented; the only Wisycom Companion module is for antenna matrices, not receivers |
 | Sennheiser Spectera | SSC over HTTPS | Deferred — very few in the field |
 | Audio-Technica ESW | Proprietary TCP 17200 | On request — installed/conference rather than live production |
