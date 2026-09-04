@@ -18,8 +18,11 @@ const show = {
   archived: false, archivedAt: null, currentAct: 2,
   createdAt: T0, updatedAt: T1,
   players: [
-    { realName: 'Dana', characterName: 'Emily', notes: '', assignedChannelKey: 'HH 3', iemChannelKey: 'IEM 1' },
-    { realName: 'Lee',  characterName: 'George', notes: 'quick change act 2', assignedChannelKey: null, iemChannelKey: null },
+    { realName: 'Dana', characterName: 'Emily', notes: '', assignedChannelKey: 'HH 3', iemChannelKey: 'IEM 1',
+      performer: { fitNotes: 'B3 at the hairline, left. Reacts to gaffer.' },
+      quickChanges: [{ act: 1, outCue: 'end of sc. 3', inCue: 'top of sc. 5', notes: 'pack to SR booth' }] },
+    { realName: 'Lee',  characterName: 'George', notes: 'quick change act 2', assignedChannelKey: null, iemChannelKey: null,
+      performer: null, quickChanges: [] },
   ],
   micCheck: [
     { act: 2, channelKey: 'HH 3', checked: true,  checkedAt: T1, checkedBy: null, notes: null },
@@ -72,6 +75,31 @@ describe('assembleReport', () => {
     expect(csv).toContain('Name,Role,Mic,IEM,Notes');
     expect(csv).toContain('Dana,Emily,HH 3,IEM 1');
     expect(reportToHtml(r)).toContain('IEM 1');
+  });
+
+  it('carries the notebook: standing fit notes and this show\'s quick changes', () => {
+    const r = assembleReport(inputs());
+    // Fit notes come from the roster entry, not the casting — the same next
+    // season, which is the reason they live on the person.
+    expect(r.roster[0].fitNotes).toContain('hairline');
+    expect(r.roster[0].quickChanges).toHaveLength(1);
+    expect(r.roster[0].quickChanges[0]).toMatchObject({ act: 1, outCue: 'end of sc. 3' });
+    // Someone not on the roster, or with nothing recorded, must not break it.
+    expect(r.roster[1]).toMatchObject({ fitNotes: '', quickChanges: [] });
+  });
+
+  it('prints quick changes only when there are some', () => {
+    const withChanges = reportToHtml(assembleReport(inputs()));
+    expect(withChanges).toContain('Quick changes');
+    expect(withChanges).toContain('top of sc. 5');
+
+    const none = assembleReport({ ...inputs(), show: {
+      ...show,
+      players: [{ realName: 'Lee', characterName: '', notes: '', assignedChannelKey: null,
+                  iemChannelKey: null, performer: null, quickChanges: [] }],
+    } });
+    expect(reportToHtml(none)).not.toContain('Quick changes');
+    expect(reportToCsv(none)).not.toContain('# Quick changes');
   });
 
   it('carries who checked and when, as ISO strings', () => {

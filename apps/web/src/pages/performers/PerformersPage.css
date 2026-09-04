@@ -132,5 +132,77 @@
   .performers-header { flex-direction: column; gap: 6px; }
   .performers-add { grid-template-columns: 1fr; }
   .performers-list-header,
-  .performers-row { grid-template-columns: 1fr 1.4fr 44px 36px; gap: 6px; padding: 8px; }
+  .performers-row { grid-template-columns: 34px 1fr 1.2fr 36px 28px 28px; gap: 6px; padding: 8px; }
+  .performers-detail { padding: 4px 8px 10px; }
 }
+
+/* ── Notebook: headshot and mic/pack details ─────────────────────────────── */
+.performers-entry { display: flex; flex-direction: column; }
+.performers-entry + .performers-entry { border-top: 1px solid var(--color-surface-container-highest); }
+.performers-entry .performers-row { border-top: none; }
+
+.performers-list-header,
+.performers-row {
+  grid-template-columns: 40px 1.2fr 2fr 70px 32px 32px;
+}
+
+.performers-photo { position: relative; width: 34px; height: 34px; }
+.performers-photo-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--color-surface-container-highest);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface-variant);
+  cursor: pointer;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.performers-photo-btn:hover { border-color: var(--color-primary); }
+.performers-photo-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.performers-photo-empty { display: grid; place-items: center; }
+.performers-photo-clear {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-error);
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.performers-photo-error { position: absolute; bottom: -2px; right: -2px; color: var(--color-error); font-weight: 700; }
+
+.performers-detail { padding: 4px 12px 12px 58px; display: flex; flex-direction: column; gap: 6px; }
+.performers-detail-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+.performers-detail-hint {
+  font-weight: 400;
+  color: var(--color-on-surface-variant);
+  font-size: 0.92em;
+  margin-top: 2px;
+}
+.performers-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-surface-container-highest);
+  background: var(--color-surface-container);
+  color: var(--color-on-surface);
+  font: inherit;
+  font-size: 0.9em;
+  resize: vertical;
+}
+.performers-textarea:focus { outline: none; border-color: var(--color-primary); }

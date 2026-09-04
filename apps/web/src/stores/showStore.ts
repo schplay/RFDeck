@@ -34,6 +34,9 @@ interface ShowStore {
   ) => Promise<void>;
   updatePlayer: (showId: string, playerId: string, partial: Partial<Omit<Player, 'id' | 'showId'>>) => Promise<void>;
   deletePlayer: (showId: string, playerId: string) => Promise<void>;
+  addQuickChange: (showId: string, playerId: string) => Promise<void>;
+  updateQuickChange: (showId: string, playerId: string, changeId: string, partial: Record<string, unknown>) => Promise<void>;
+  deleteQuickChange: (showId: string, playerId: string, changeId: string) => Promise<void>;
 
   setCurrentAct: (showId: string, act: MicCheckAct) => Promise<void>;
   setChannelChecked: (showId: string, act: MicCheckAct, channelKey: string, checked: boolean) => Promise<void>;
@@ -165,6 +168,60 @@ export const useShowStore = create<ShowStore>()(
           await apiFetch(`/shows/${showId}/players/${playerId}`, { method: 'DELETE' });
         } catch (err) {
           console.error('Failed to delete player:', err);
+        }
+      },
+
+      // Quick changes round-trip rather than applying optimistically: they are
+      // created and deleted by button, not typed, so the wait is unnoticeable
+      // and the server's copy stays the only truth.
+      addQuickChange: async (showId, playerId) => {
+        try {
+          const show = await apiFetch<Show>(`/shows/${showId}/players/${playerId}/changes`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+          });
+          set(s => ({ shows: upsert(s.shows, show) }));
+        } catch (err) {
+          console.error('Failed to add quick change:', err);
+        }
+      },
+
+      updateQuickChange: async (showId, playerId, changeId, partial) => {
+        // These are text fields, so apply locally first.
+        set(s => ({
+          shows: patchShow(s.shows, showId, sh => ({
+            ...sh,
+            players: sh.players.map(p => (p.id === playerId ? {
+              ...p,
+              quickChanges: (p.quickChanges ?? []).map(q =>
+                q.id === changeId ? { ...q, ...partial } as typeof q : q),
+            } : p)),
+          })),
+        }));
+        try {
+          await apiFetch(`/shows/${showId}/players/${playerId}/changes/${changeId}`, {
+            method: 'PUT',
+            body: JSON.stringify(partial),
+          });
+        } catch (err) {
+          console.error('Failed to update quick change:', err);
+        }
+      },
+
+      deleteQuickChange: async (showId, playerId, changeId) => {
+        set(s => ({
+          shows: patchShow(s.shows, showId, sh => ({
+            ...sh,
+            players: sh.players.map(p => (p.id === playerId ? {
+              ...p,
+              quickChanges: (p.quickChanges ?? []).filter(q => q.id !== changeId),
+            } : p)),
+          })),
+        }));
+        try {
+          await apiFetch(`/shows/${showId}/players/${playerId}/changes/${changeId}`, { method: 'DELETE' });
+        } catch (err) {
+          console.error('Failed to delete quick change:', err);
         }
       },
 

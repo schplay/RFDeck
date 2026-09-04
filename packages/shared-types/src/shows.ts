@@ -1,3 +1,5 @@
+import { QuickChange } from './environments';
+
 export interface Show {
   id: string;
   name: string;
@@ -32,6 +34,8 @@ export interface Player {
   /** The performer's IEM channel, by name. Assigned here; never part of the
    *  soundcheck, which is about mics only. */
   iemChannelKey: string | null;
+  /** Costume changes that take the pack off, for this show. */
+  quickChanges: QuickChange[];
 }
 
 export type MicCheckAct = 1 | 2 | 3 | 4;

@@ -18,7 +18,9 @@ interface PerformerStore {
   applyServerList: (list: Performer[]) => void;
 
   addPerformer: (name: string, notes?: string) => Promise<boolean>;
-  updatePerformer: (id: string, partial: { name?: string; notes?: string }) => Promise<void>;
+  updatePerformer: (id: string, partial: { name?: string; notes?: string; fitNotes?: string }) => Promise<void>;
+  uploadPhoto: (id: string, dataUrl: string) => Promise<void>;
+  removePhoto: (id: string) => Promise<void>;
   deletePerformer: (id: string) => Promise<void>;
 }
 
@@ -62,6 +64,27 @@ export const usePerformerStore = create<PerformerStore>()((set) => ({
       await apiFetch(`/performers/${id}`, { method: 'PUT', body: JSON.stringify(partial) });
     } catch (err: any) {
       set({ error: err?.message ?? 'Could not save the change' });
+    }
+  },
+
+  uploadPhoto: async (id, dataUrl) => {
+    try {
+      const performers = await apiFetch<Performer[]>(`/performers/${id}/photo`, {
+        method: 'POST',
+        body: JSON.stringify({ image: dataUrl }),
+      });
+      set({ performers, error: null });
+    } catch (err: any) {
+      set({ error: err?.message ?? 'Could not save that photo' });
+    }
+  },
+
+  removePhoto: async (id) => {
+    try {
+      const performers = await apiFetch<Performer[]>(`/performers/${id}/photo`, { method: 'DELETE' });
+      set({ performers, error: null });
+    } catch (err: any) {
+      set({ error: err?.message ?? 'Could not remove that photo' });
     }
   },
 
