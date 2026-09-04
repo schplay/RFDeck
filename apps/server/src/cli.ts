@@ -204,9 +204,19 @@ async function cmdAudioLevel(args: string[]): Promise<void> {
 
 async function cmdAudioDevices(): Promise<void> {
   // Imported lazily so `status` works on a machine with no sound subsystem.
-  const { listAudioInputDevices, describeNoDevices, describeAccessProblem } =
+  const { listAudioInputDevices, describeNoDevices, describeAccessProblem, backendSummary } =
     await import('./audio/deviceList');
   const devices = listAudioInputDevices();
+
+  // Which capture path is in play. On a desktop machine an empty list nearly
+  // always means ffmpeg is missing rather than that nothing is plugged in.
+  const backend = backendSummary();
+  console.log(`Capture backend: ${backend.label}` +
+              (backend.ffmpeg ? ` (${backend.ffmpeg})` : '') + '\n');
+  if (!backend.available) {
+    console.log(backend.reason);
+    return;
+  }
 
   // This CLI is normally run under sudo, so it sees more than the service does.
   // Say so plainly: a root-only success here reads as "audio works" while the
@@ -223,11 +233,14 @@ async function cmdAudioDevices(): Promise<void> {
   }
 
   console.log('Capture devices on this machine:\n');
+  // DirectShow ids carry the whole device name, so a fixed column that suits
+  // "hw:2,0" leaves the rest of the line ragged.
+  const idWidth = Math.min(48, Math.max(...devices.map(d => d.id.length)));
   for (const d of devices) {
     const width = d.channelsProbed
       ? `${d.channels} input${d.channels === 1 ? '' : 's'}`
       : `width unknown, assuming ${d.channels}`;
-    console.log(`  ${d.id.padEnd(10)} ${d.label}  (${width})`);
+    console.log(`  ${d.id.padEnd(idWidth)}  ${d.label}  (${width})`);
   }
 
   const accessProblem = describeAccessProblem();

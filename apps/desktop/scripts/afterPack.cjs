@@ -47,4 +47,39 @@ exports.default = async function afterPack(context) {
   if (removed.length) {
     console.log(`  • stripped dev artefacts  files=${removed.join(', ')}`);
   }
+
+  ensureFfmpeg(context, resources);
 };
+
+// The capture backend for this platform.
+//
+// On Windows and macOS the server captures audio through ffmpeg — there is no
+// arecord — so a build without it has no audio at all. ffmpeg-static is a
+// production dependency and normally arrives with the rest of them; this only
+// steps in if that walk misses it, so the failure is a missing binary at build
+// time rather than a silent one in a venue.
+function ensureFfmpeg(context, resources) {
+  const win = context.electronPlatformName === 'win32';
+  const exe = win ? 'ffmpeg.exe' : 'ffmpeg';
+
+  const bundled = path.join(resources, 'app', 'node_modules', 'ffmpeg-static', exe);
+  if (fs.existsSync(bundled)) {
+    if (!win) fs.chmodSync(bundled, 0o755);
+    return;
+  }
+
+  const source = path.join(__dirname, '..', 'node_modules', 'ffmpeg-static', exe);
+  if (!fs.existsSync(source)) {
+    throw new Error(
+      `No ffmpeg at ${source}. The packaged app would ship without audio capture. ` +
+      `Run "pnpm install" — ffmpeg-static downloads its binary in a postinstall step, ` +
+      `which pnpm skips unless the package is listed under onlyBuiltDependencies.`
+    );
+  }
+
+  const dest = path.join(resources, 'ffmpeg', exe);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(source, dest);
+  if (!win) fs.chmodSync(dest, 0o755);
+  console.log(`  • staged ffmpeg  to=resources/ffmpeg/${exe}`);
+}

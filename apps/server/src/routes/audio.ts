@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
 import {
   listAudioInputDevices, describeNoDevices, audioSubsystemPresent, clearChannelCache,
-  describeAccessProblem,
+  describeAccessProblem, backendSummary,
 } from '../audio/deviceList';
 import { log } from '../logger';
 
@@ -30,7 +30,12 @@ export const audioRoutes: FastifyPluginAsync = async (fastify) => {
       assignments,
       hint: devices.length === 0 ? describeNoDevices() : accessProblem,
       accessProblem,
-      alsaPresent: audioSubsystemPresent(),
+      subsystemPresent: audioSubsystemPresent(),
+      // Which capture path this machine is actually using, and where its
+      // ffmpeg came from. "No devices" on a desktop install is almost always
+      // a missing binary rather than missing hardware, and that is impossible
+      // to tell apart from the device list alone.
+      backend: backendSummary(),
     };
   });
 

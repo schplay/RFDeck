@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import { nonstandard } from '@roamhq/wrtc';
 import { probeChannelCount, FALLBACK_CHANNELS } from './deviceList';
+import { captureBackend } from './backends';
 import { log } from '../logger';
 
 const { RTCAudioSource } = nonstandard;
@@ -141,15 +142,17 @@ export class CaptureManager {
     }
     const channels = probed ?? FALLBACK_CHANNELS;
 
-    const proc = spawn('arecord', [
-      '-D', deviceId,
-      '-f', 'S16_LE',
-      '-r', String(SAMPLE_RATE),
-      '-c', String(channels),
-      '-t', 'raw',
-      '--buffer-size=8192',
-      '-q',
-    ]);
+    // What actually opens the device depends on the operating system — ALSA on
+    // the Linux server, ffmpeg via DirectShow or AVFoundation on a desktop.
+    // All three write raw interleaved S16LE to stdout, which is the only thing
+    // the demuxer below cares about.
+    const backend = captureBackend();
+    if (!backend.available()) {
+      log.error(`[capture] Cannot open ${deviceId}: ${backend.unavailableReason()}`);
+      return null;
+    }
+    const { command, args } = backend.captureCommand(deviceId, channels, SAMPLE_RATE);
+    const proc = spawn(command, args);
 
     const dev: OpenDevice = {
       proc,
@@ -168,11 +171,11 @@ export class CaptureManager {
 
     proc.stderr?.on('data', (chunk: Buffer) => {
       const msg = chunk.toString().trim();
-      if (msg) log.warn(`[arecord ${deviceId}] ${msg}`);
+      if (msg) log.warn(`[capture ${deviceId}] ${msg}`);
     });
 
     proc.on('error', (err: Error) => {
-      log.error(`[capture] Could not start arecord for ${deviceId}: ${err.message}`);
+      log.error(`[capture] Could not start capture for ${deviceId}: ${err.message}`);
       this.devices.delete(deviceId);
     });
 

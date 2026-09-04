@@ -35,6 +35,38 @@ const paths = app.isPackaged
       schema:    path.join(__dirname, '../../server/prisma/schema.prisma'),
     };
 
+// Where the bundled ffmpeg ended up.
+//
+// The server captures audio through ffmpeg on Windows and macOS — there is no
+// arecord to fall back on — so without this the desktop build has no audio at
+// all: no devices to patch and nothing to listen to. It is not on a normal
+// machine's PATH, so the path is handed to the sidecar explicitly rather than
+// left to a search.
+//
+// ffmpeg-static's own index.js rewrites the path for asar, which does not
+// apply here (asar is off), so the location is resolved directly instead.
+function ffmpegPath(): string | null {
+  const exe = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+  const candidates = app.isPackaged
+    ? [
+        // Where electron-builder's dependency walk puts it, ffmpeg-static
+        // being a production dependency of this package.
+        path.join(process.resourcesPath, 'app', 'node_modules', 'ffmpeg-static', exe),
+        // Where afterPack puts it if that walk ever stops including it.
+        path.join(process.resourcesPath, 'ffmpeg', exe),
+      ]
+    : [
+        path.join(__dirname, '../node_modules/ffmpeg-static', exe),
+        path.join(__dirname, '../../../node_modules/ffmpeg-static', exe),
+      ];
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  console.warn(`[Electron] Bundled ffmpeg not found (looked in ${candidates.join(', ')}); audio capture will be unavailable`);
+  return null;
+}
+
 // The install directory is read-only under Program Files, so the database has
 // to live in the per-user data directory. This is also what makes the data
 // survive an app upgrade, which replaces the install directory wholesale.
@@ -106,6 +138,8 @@ function startServer() {
     return;
   }
 
+  const ffmpeg = ffmpegPath();
+
   // Run the sidecar with Electron's own bundled Node rather than spawning
   // `node`, which a target machine is not required to have installed.
   // ELECTRON_RUN_AS_NODE turns this same executable into a plain Node runtime.
@@ -128,6 +162,8 @@ function startServer() {
       // at resources/app/server, and no relative walk between them is the same
       // as in a checkout.
       WEB_ROOT: path.dirname(paths.webIndex),
+      // Capture backend. Absent on Linux, where the server uses ALSA directly.
+      ...(ffmpeg ? { FFMPEG_PATH: ffmpeg } : {}),
       // NODE_OPTIONS is passed through untouched.
       //
       // It used to append --openssl-legacy-provider, which killed the sidecar

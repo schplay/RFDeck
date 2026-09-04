@@ -2,6 +2,7 @@ import http from 'http';
 import { buildApp } from './app';
 import { log } from './logger';
 import { backfillPerformers } from './performers/roster';
+import { announceBackend } from './audio/backends';
 
 // A redirect listener on plain HTTP, so someone who types the bare address
 // still lands on the app instead of a connection error. Purely a convenience:
@@ -54,6 +55,11 @@ async function start() {
   try {
     await app.listen({ port, host });
     log.info(`RFDeck server listening on ${secure ? 'https' : 'http'}://${host}:${port}`);
+    // Say which capture path this machine got, at startup rather than on the
+    // first attempt to listen to a mic. The desktop build shipped with none at
+    // all and gave no sign of it until someone tried to use audio during a
+    // show.
+    announceBackend();
   } catch (err) {
     log.error('Failed to start server:', err);
     process.exit(1);
