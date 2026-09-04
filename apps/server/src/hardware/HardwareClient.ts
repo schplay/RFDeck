@@ -39,6 +39,15 @@ export interface ReceiverState {
   mute?: boolean;
   /** Transmitter-side mute — the performer's own switch. Deliberate, not a fault. */
   squelch?: boolean;
+  /**
+   * What this channel is for, where the *device* knows.
+   *
+   * A PSM1000 is an IEM transmitter whatever the operator ticked when adding
+   * it, and the hardware is a better authority than the inventory checkbox.
+   * Left undefined by clients that cannot tell, in which case the inventory's
+   * `deviceType` decides.
+   */
+  role?: 'mic' | 'iem';
   battery?: {
     /** 0–100. Absent when no transmitter is paired, which is not the same as 0. */
     percent?: number;

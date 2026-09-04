@@ -16,7 +16,7 @@
  * the device does not have simply never produces a REP — so a single merged
  * command set would look like a dead device rather than a bug.
  */
-export type ShureFamily = 'axtd' | 'ulxd' | 'qlxd' | 'slxd';
+export type ShureFamily = 'axtd' | 'ulxd' | 'qlxd' | 'slxd' | 'p10t';
 
 export interface FamilySpec {
   family: ShureFamily;
@@ -25,7 +25,11 @@ export interface FamilySpec {
   param: {
     channelName: string;
     frequency: string;
-    battBars: string;
+    /**
+     * The transmitter's battery. Absent on the PSM1000, which *is* a
+     * transmitter and reports nothing about the packs listening to it.
+     */
+    battBars?: string;
     /**
      * A real 0-100 charge figure, preferred over the five-bar gauge.
      *
@@ -34,7 +38,7 @@ export interface FamilySpec {
      * everywhere and cannot accidentally match a REP.
      */
     battPercent?: string;
-    battMins: string;
+    battMins?: string;
     /**
      * Muting a channel at the receiver. **Absent on SLX-D**, whose command set
      * has no mute of any kind — searching Shure's SLX-D document for "mute"
@@ -58,12 +62,48 @@ export interface FamilySpec {
      */
     rfLevel?: string;
     audioLevel?: string;
+    /** Stereo meter, IEM only — a monitor feed has two sides. */
+    audioLevelL?: string;
+    audioLevelR?: string;
     antenna?: string;
     /** Link quality, which only Axient reports. */
     quality?: string;
   };
   /** Highest channel index this family's receivers can have. */
   maxChannels: number;
+
+  /**
+   * A transmitter rather than a receiver: no RF to receive, no transmitter
+   * battery to report. RFDeck marks its channels as IEMs, which stops the RF
+   * dropout detector alerting on a device that is working perfectly.
+   */
+  isTransmitter?: boolean;
+
+  /**
+   * How mute is expressed. Receivers use `AUDIO_MUTE ON|OFF`; the PSM1000 uses
+   * `RF_MUTE 1|0`. Sending the wrong one is accepted-looking and does nothing.
+   */
+  muteStyle?: 'onoff' | 'binary';
+
+  /**
+   * METER_RATE's field width. Receivers document "5-character fixed output";
+   * the PSM1000 documents an 11-character millisecond value, so zero-padding
+   * to five is not what it asks for.
+   */
+  meterRatePad?: number;
+
+  /**
+   * Whether `< GET n ALL >` exists. The PSM1000's command table has no ALL, so
+   * its parameters have to be asked for one at a time.
+   */
+  hasGetAll?: boolean;
+
+  /**
+   * Messages need a trailing CRLF. The PSM1000 specification says each message
+   * "is terminated by a carriage return and line feed (CRLF)"; the receiver
+   * documents say nothing of the sort.
+   */
+  terminator?: string;
 }
 
 export const FAMILIES: Record<ShureFamily, FamilySpec> = {
@@ -116,6 +156,27 @@ export const FAMILIES: Record<ShureFamily, FamilySpec> = {
     // that follows lists only 0 (all channels) and 1, 2 (individual).
     maxChannels: 2,
   },
+  p10t: {
+    family: 'p10t',
+    label: 'PSM1000 (IEM)',
+    param: {
+      channelName: 'CHAN_NAME',
+      frequency:   'FREQUENCY',
+      // A transmitter has no receiver-side battery to report at all.
+      mute:        'RF_MUTE',
+      audioLevelL: 'AUDIO_IN_LVL_L',
+      audioLevelR: 'AUDIO_IN_LVL_R',
+    },
+    maxChannels: 2,
+    isTransmitter: true,
+    muteStyle: 'binary',
+    // "value in milliseconds", 11 characters — not the receivers' padded five.
+    meterRatePad: 0,
+    // The PSM1000 command table has no ALL.
+    hasGetAll: false,
+    // "Each message is terminated by a carriage return and line feed (CRLF)."
+    terminator: '\r\n',
+  },
   qlxd: {
     family: 'qlxd',
     label: 'QLX-D',
@@ -144,6 +205,8 @@ const MODEL_CHANNELS: Array<{ match: RegExp; family: ShureFamily; channels: numb
   // longest-first so SLXD4D is not matched by the SLXD4 pattern.
   { match: /SLXD4D/i,                    family: 'slxd', channels: 2 },
   { match: /SLXD4/i,                     family: 'slxd', channels: 1 },
+  // The IEM transmitter. "PSM1KTx" is what it announces as; P10T is the unit.
+  { match: /P10T|PSM\s?1000|PSM1KTx/i,    family: 'p10t', channels: 2 },
 ];
 
 /**
@@ -321,6 +384,9 @@ const FAMILY_OFFSETS: Record<ShureFamily, { rssi: number; audio: number }> = {
   // and AUDIO_LEVEL_RMS/PEAK (dBFS): "The actual value = the reported value
   // - 120". It shares Axient's units despite a quite different sample.
   slxd: { rssi: 120, audio: 120 },
+  // The PSM1000 uses neither: it has no RSSI at all, and its meter is a linear
+  // amplitude rather than an offset dB value. See iemMeterToPercent.
+  p10t: { rssi: 0, audio: 0 },
 };
 
 /** 255 means "unknown" for the 3-digit gauges, and is not a value. */
@@ -554,16 +620,35 @@ function splitAntennas(raw: string): string[] {
 
 // ── Building commands ───────────────────────────────────────────────────────
 
-export function getAll(channel: number): string {
-  return `< GET ${channel} ALL >`;
+/** Null for a family with no ALL command — the PSM1000 has none. */
+export function getAll(channel: number, family: ShureFamily = 'axtd'): string | null {
+  if (FAMILIES[family].hasGetAll === false) return null;
+  return wrap(`GET ${channel} ALL`, family);
 }
 
-export function getDeviceParam(param: string): string {
-  return `< GET ${param} >`;
+export function getDeviceParam(param: string, family: ShureFamily = 'axtd'): string {
+  return wrap(`GET ${param}`, family);
 }
 
-export function getChannelParam(channel: number, param: string): string {
-  return `< GET ${channel} ${param} >`;
+export function getChannelParam(
+  channel: number, param: string, family: ShureFamily = 'axtd',
+): string {
+  return wrap(`GET ${channel} ${param}`, family);
+}
+
+/**
+ * Everything worth asking a channel about, for a family with no ALL command.
+ *
+ * The PSM1000 has no `< GET n ALL >`, so its parameters are asked for one at a
+ * time on connect. Metering then arrives unprompted.
+ */
+export function getEveryChannelParam(channel: number, family: ShureFamily): string[] {
+  const p = FAMILIES[family].param;
+  const names = [
+    p.channelName, p.frequency, p.mute,
+    p.battBars, p.battMins, p.battPercent,
+  ].filter((n): n is string => !!n);
+  return names.map(n => getChannelParam(channel, n, family));
 }
 
 /**
@@ -573,9 +658,66 @@ export function getChannelParam(channel: number, param: string): string {
  * socket — otherwise the receiver keeps metering into a connection nobody is
  * reading.
  */
-export function setMeterRate(channel: number, intervalMs: number): string {
-  const ms = clamp(Math.round(intervalMs), 0, 65535);
-  return `< SET ${channel} METER_RATE ${String(ms).padStart(5, '0')} >`;
+export function setMeterRate(
+  channel: number, intervalMs: number, family: ShureFamily = 'axtd',
+): string {
+  const spec = FAMILIES[family];
+  // Receivers document "Numeric, 5 character fixed output"; the PSM1000
+  // documents an 11-character millisecond value, so padding it to five is not
+  // what it asked for.
+  const pad = spec.meterRatePad ?? 5;
+  const ceiling = pad === 5 ? 65535 : 99999;
+  const ms = clamp(Math.round(intervalMs), 0, ceiling);
+  return wrap(`SET ${channel} METER_RATE ${String(ms).padStart(pad, '0')}`, family);
+}
+
+/**
+ * Wrap a command in the framing, including any terminator the family needs.
+ *
+ * The PSM1000's specification says each message "is terminated by a carriage
+ * return and line feed (CRLF)"; the receiver documents say nothing of the
+ * kind, and the receivers work without it.
+ */
+function wrap(body: string, family: ShureFamily): string {
+  return `< ${body} >${FAMILIES[family].terminator ?? ''}`;
+}
+
+/**
+ * The IEM audio meter, as a 0-100 level.
+ *
+ * **Shure does not document the units of `AUDIO_IN_LVL_L`/`_R`.** Its command
+ * table lists them only as "Audio Meter Level" with an 11-character value, and
+ * the Companion module's source says outright that the format is unknown.
+ *
+ * What is known: the values are large linear amplitudes, and micboard — and
+ * the actively maintained wirelessboard fork — bucket them into meter segments
+ * with the thresholds below. Converted to dB those bucket edges sit at roughly
+ * -58, -51, -40, -31, -22, -14, -12 and -10.5, which is the shape of an LED
+ * ladder: wide steps at the bottom, compressed at the top. So this is a
+ * reproduction of the transmitter's own front-panel meter, not a calibrated
+ * measurement, and it is treated as such.
+ *
+ * Deliberately not converted to dBFS: that would need a full-scale reference
+ * nobody documents, and inventing one is how the ULX-D conversions went wrong.
+ */
+const IEM_METER_STEPS: Array<[threshold: number, level: number]> = [
+  [2502970, 100],
+  [2157767, 85],
+  [1588744, 70],
+  [641928,  60],
+  [246260,  50],
+  [85488,   40],
+  [23728,   30],
+  [10272,   15],
+];
+
+export function iemMeterToPercent(raw: string | number): number | null {
+  const n = num(raw);
+  if (n === null || n < 0) return null;
+  for (const [threshold, level] of IEM_METER_STEPS) {
+    if (n >= threshold) return level;
+  }
+  return 0;
 }
 
 /**
@@ -583,16 +725,28 @@ export function setMeterRate(channel: number, intervalMs: number): string {
  * the operator rather than sending "< SET 1 undefined ON >" at a receiver.
  */
 export function setMute(channel: number, muted: boolean, family: ShureFamily): string | null {
-  const param = FAMILIES[family].param.mute;
+  const spec = FAMILIES[family];
+  const param = spec.param.mute;
   if (!param) return null;
-  return `< SET ${channel} ${param} ${muted ? 'ON' : 'OFF'} >`;
+  // Receivers say ON/OFF; the PSM1000 says 1/0. Sending the wrong one looks
+  // accepted and does nothing.
+  const value = spec.muteStyle === 'binary'
+    ? (muted ? '1' : '0')
+    : (muted ? 'ON' : 'OFF');
+  return wrap(`SET ${channel} ${param} ${value}`, family);
 }
 
 /** Frequency is set in kHz, without the leading-zero padding a REP carries. */
-export function setFrequency(channel: number, khz: number): string {
-  return `< SET ${channel} FREQUENCY ${Math.round(khz)} >`;
+export function setFrequency(
+  channel: number, khz: number, family: ShureFamily = 'axtd',
+): string {
+  return wrap(`SET ${channel} FREQUENCY ${Math.round(khz)}`, family);
 }
 
-export function setChannelName(channel: number, name: string): string {
-  return `< SET ${channel} CHAN_NAME {${name}} >`;
+export function setChannelName(
+  channel: number, name: string, family: ShureFamily = 'axtd',
+): string {
+  // Receivers brace and pad string values; the PSM1000's examples show none.
+  const value = FAMILIES[family].terminator ? name : `{${name}}`;
+  return wrap(`SET ${channel} CHAN_NAME ${value}`, family);
 }

@@ -3,7 +3,8 @@ import {
   splitMessages, parseMessage, parseSample, identifyModel,
   parseBatteryBars, batteryBarsToPercent, parseBatteryPercent, parseBatteryMinutes,
   rssiToDbm, rssiToPercent, dbmToPercent, audioToDbfs, parseFrequencyKhz,
-  setMeterRate, setMute, setFrequency, getAll, getChannelParam,
+  setMeterRate, setMute, setFrequency, getAll, getChannelParam, getEveryChannelParam,
+  iemMeterToPercent,
   FAMILIES,
 } from './protocol';
 
@@ -205,6 +206,91 @@ describe('parseSample — SLX-D', () => {
     const asAxient = parseSample(parseMessage(SAMPLE)!, 'axtd');
     const asSlxd = parseSample(parseMessage(SAMPLE)!, 'slxd')!;
     expect(asAxient?.audioDbfs).not.toBe(asSlxd.audioDbfs);
+  });
+});
+
+describe('PSM1000 — the IEM dialect', () => {
+  // Verified against Shure's own PSM1000 command-strings page (archived
+  // 2023-09-22, before the site became JavaScript-only). It differs from the
+  // receivers in nearly every mechanical detail, and each difference fails
+  // silently rather than loudly.
+
+  it('mutes with 1/0, not ON/OFF', () => {
+    // "SET x RF_MUTE vvvv  1 = mute, 0 = unmute". Sending ON to a PSM1000
+    // looks accepted and does nothing.
+    expect(setMute(1, true, 'p10t')).toBe('< SET 1 RF_MUTE 1 >\r\n');
+    expect(setMute(1, false, 'p10t')).toBe('< SET 1 RF_MUTE 0 >\r\n');
+    // And the receivers are unchanged.
+    expect(setMute(1, true, 'axtd')).toBe('< SET 1 AUDIO_MUTE ON >');
+  });
+
+  it('terminates messages with CRLF, which the receivers do not', () => {
+    // "Each message is terminated by a carriage return and line feed (CRLF)."
+    expect(setMeterRate(1, 100, 'p10t').endsWith('\r\n')).toBe(true);
+    expect(setMeterRate(1, 100, 'axtd').endsWith('\r\n')).toBe(false);
+  });
+
+  it('does not zero-pad the meter rate to five characters', () => {
+    // The receivers document "5 character fixed output"; the PSM1000
+    // documents an 11-character millisecond value.
+    expect(setMeterRate(1, 100, 'p10t')).toBe('< SET 1 METER_RATE 100 >\r\n');
+    expect(setMeterRate(1, 100, 'axtd')).toBe('< SET 1 METER_RATE 00100 >');
+  });
+
+  it('has no ALL command, so parameters are asked for one at a time', () => {
+    // The PSM1000's command table has no ALL. Sending one would go
+    // unanswered, and the device would look dead.
+    expect(getAll(1, 'p10t')).toBeNull();
+    expect(getAll(1, 'axtd')).toBe('< GET 1 ALL >');
+
+    const each = getEveryChannelParam(1, 'p10t');
+    expect(each).toContain('< GET 1 CHAN_NAME >\r\n');
+    expect(each).toContain('< GET 1 FREQUENCY >\r\n');
+    expect(each).toContain('< GET 1 RF_MUTE >\r\n');
+  });
+
+  it('asks for no battery, because a transmitter has none to report', () => {
+    expect(FAMILIES.p10t.param.battBars).toBeUndefined();
+    expect(FAMILIES.p10t.param.battMins).toBeUndefined();
+    expect(getEveryChannelParam(1, 'p10t').join(' ')).not.toMatch(/BATT/);
+  });
+
+  it('is marked a transmitter, which is what suppresses RF alerting', () => {
+    expect(FAMILIES.p10t.isTransmitter).toBe(true);
+    expect(FAMILIES.axtd.isTransmitter).toBeFalsy();
+  });
+
+  it('names the stereo meter, which only an IEM has', () => {
+    expect(FAMILIES.p10t.param.audioLevelL).toBe('AUDIO_IN_LVL_L');
+    expect(FAMILIES.p10t.param.audioLevelR).toBe('AUDIO_IN_LVL_R');
+    expect(FAMILIES.axtd.param.audioLevelL).toBeUndefined();
+  });
+});
+
+describe('iemMeterToPercent', () => {
+  // Shure documents these values only as "Audio Meter Level" with an
+  // 11-character value — no units. The thresholds come from micboard and its
+  // actively maintained wirelessboard fork, and reproduce the transmitter's
+  // own front-panel LED ladder rather than measuring anything.
+  it('rises monotonically across the ladder', () => {
+    const points = [0, 10272, 23728, 85488, 246260, 641928, 1588744, 2157767, 2502970];
+    const levels = points.map(p => iemMeterToPercent(p)!);
+    for (let i = 1; i < levels.length; i++) {
+      expect(levels[i]).toBeGreaterThan(levels[i - 1]);
+    }
+  });
+
+  it('reads silence as zero and a hot feed as full', () => {
+    expect(iemMeterToPercent(0)).toBe(0);
+    expect(iemMeterToPercent(5000)).toBe(0);
+    expect(iemMeterToPercent(9_000_000)).toBe(100);
+  });
+
+  it('rejects an unreadable value rather than reporting silence', () => {
+    // Reporting 0 for a level that could not be read is indistinguishable
+    // from a dead monitor feed.
+    expect(iemMeterToPercent('')).toBeNull();
+    expect(iemMeterToPercent('---')).toBeNull();
   });
 });
 
