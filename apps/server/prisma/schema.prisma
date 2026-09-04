@@ -30,6 +30,38 @@ model InventoryDevice {
   // when the operator has renamed the inventory row and no MAC is on record.
   hardwareLabel      String?
   addedAt            DateTime @default(now())
+
+  maintenance        MaintenanceEntry[]
+}
+
+// What has been done to a piece of hardware, and when.
+//
+// The question this answers is "has this one been trouble before" — asked when
+// a channel misbehaves and the operator is deciding whether to swap the pack or
+// chase the RF. Answering it from memory across a season, a rental fleet, or a
+// change of A2 does not work.
+//
+// Separate from the event log, which records what the *system* did. This
+// records what a person did with a screwdriver.
+model MaintenanceEntry {
+  id        String   @id @default(uuid())
+  deviceId  String
+  device    InventoryDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  // When the work happened, which is not when it was written down — a repair
+  // on Monday is often logged on Tuesday.
+  at        DateTime @default(now())
+  // BATTERY | ELEMENT | REPAIR | FIRMWARE | SERVICE | NOTE. A string rather
+  // than an enum so SQLite and Postgres behave the same and adding a kind is
+  // not a migration.
+  kind      String   @default("NOTE")
+  summary   String
+  detail    String   @default("")
+  // Set on entries RFDeck wrote itself, so an operator can tell a firmware
+  // change it observed from one someone typed in.
+  automatic Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([deviceId, at])
 }
 
 model Settings {

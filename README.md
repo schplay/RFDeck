@@ -132,7 +132,16 @@ The log of problems RFDeck noticed on its own, each with the audio that proves i
   Gear not yet modelled*
 - Network configuration (DHCP/Static) manageable from the app
 - Firmware status indicators
-- Per-device maintenance log 📋
+- **Per-device maintenance log** — element and battery changes, repairs, service
+  and firmware, per unit. It answers "has this one been trouble before", which
+  is the question when a channel misbehaves and you are deciding whether to swap
+  the pack or chase the RF. A season, a rental fleet or a change of A2 all defeat
+  memory. Distinct from the event log, which records what the *system* saw; this
+  records what a person did with a screwdriver, and is the only record of it
+  - The date of the work is separate from the date it was written down, because
+    it is routinely logged the next morning
+  - Firmware changes log themselves and are marked as observed rather than
+    typed, so the automatic entries are never mistaken for someone's account
 
 ### Battery Management
 - Battery dashboard: all packs sorted by charge level

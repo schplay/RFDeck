@@ -13,10 +13,11 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | 3 — Access control & deployment | ✅ Complete — PIN gate, encryption at rest, installer + updater, HTTPS, AES67, shell CLI |
 | 4 — Show-day hardening | ✅ Complete — 4.3 show report landed as JSON, CSV, and a printable page |
 | A — Audio monitoring *(added)* | ✅ Server-side capture, any-interface patching, AES67 subscriptions from RFDeck |
+| A2 — Capture off Linux *(added)* | ✅ Per-platform capture backend; the desktop build had no audio at all before this |
 | 5 — Client reach | 5.1 responsive ✅; PWA, push and QR not started |
-| 6 — Feature completion | ✅ 6.1 rolling capture and detection; ✅ 6.2 notebook and photos; 6.3 and 6.4 outstanding |
+| 6 — Feature completion | ✅ 6.1 rolling capture and detection; ✅ 6.2 notebook and photos; ✅ 6.3 maintenance log; 6.4 outstanding |
 | B — Micboard & Go Live *(added)* | ✅ Read-only wall display; one action to put RFDeck on the rig |
-| 7 — Breadth & operations | In progress — 156 tests; CI runs them on every push (7.5) |
+| 7 — Breadth & operations | In progress — ✅ 7.1 (186 unit + 44 end-to-end) and 7.5 CI; 7.2–7.4 outstanding |
 
 *Last reconciled 2026-08-23 against commit `c78aa86`. See "Work since the plan" below for
 what landed outside the original stages.*
@@ -37,14 +38,12 @@ wrong one, issues tokens, and always exempts loopback.
    the real server, database and socket.
 2. ~~**Rebuild and verify the desktop package.**~~ ✅ *complete*, and it
    uncovered a bigger problem than staleness: see below.
-3. **README accuracy.** It still marks the replay buffer as planned and
-   dropout detection as partial, and does not mention Detections, the Micboard,
-   Go Live, the performer notebook, or IEM assignment. It now understates the
-   product rather than overstating it — the opposite of the original problem,
-   and equally misleading.
+3. ~~**README accuracy.**~~ done — six built features were marked planned or
+   partial, and the Windows build section pointed at a directory the installer
+   has never written to.
 4. **2.5 — Control command attribution.** Still blocked on a decision: with no
    named accounts, "who" can only be a label each client sets for itself.
-5. **6.3 — Device maintenance log.** Small, and the device drawer is ready.
+5. ~~**6.3 — Device maintenance log.**~~ ✅ *complete*.
 6. **7.3 — Shure support.** The largest single expansion of what RFDeck can
    talk to, and the audience Micboard already serves. Extract the hardware
    client interface first.
@@ -670,9 +669,23 @@ Extends the `Player` model from 1.1: rich notes, headshot upload, quick-change l
 on disk with a path reference, not as database blobs — and serve them through the same auth
 layer as everything else.
 
-### 6.3 Device maintenance log — **S**
+### 6.3 Device maintenance log — **S** — done
 
 A `MaintenanceEntry` model related to `InventoryDevice`, surfaced in the device drawer.
+
+Landed as specified, with two additions the spec did not call for:
+
+  - **`at` is separate from `createdAt`.** Work is routinely logged a day late,
+    and a log that can only say "when it was typed" is a log people stop
+    trusting for exactly the question it exists to answer.
+
+  - **Firmware changes log themselves.** It is the one maintenance event
+    visible over the network, and the one most likely to explain "it worked
+    last month". Marked `automatic` so an observed change is distinguishable
+    from someone's account of what they did, and editing one clears the mark
+    rather than letting RFDeck appear to vouch for typed-in text. The
+    condition is its own tested function: a false positive writes an entry
+    claiming work nobody did, which is worse than a missing one.
 
 ### 6.4 Stage plot view — **L**
 
@@ -683,11 +696,10 @@ The drag interaction from card reordering is a reasonable starting point.
 
 ## Stage 7 — Breadth & operations
 
-### 7.1 Test suite — **L** *(start during Stage 1)*
+### 7.1 Test suite — **L** — done
 
-*Status: 94 Vitest tests across 7 files (RF state machine, battery estimation,
-PIN hashing, secret box, ALSA parsers, AES67 sink allocation, discovery
-identification). No Playwright. No CI — see 7.5.*
+*Status: 179 Vitest tests across 11 files, 37 Playwright tests across 5 specs,
+and CI running both plus typechecks on every push (.github/workflows/ci.yml).*
 
 No test files existed when this was written, despite the README specifying Vitest and Playwright. Listed last because it
 is not user-facing, but the highest-value tests should be written **during Stage 1**: the IP

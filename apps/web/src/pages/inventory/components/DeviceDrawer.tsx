@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   X, Wifi, WifiOff, Radio, Info, Network,
-  Cpu, Trash2, Activity, Zap, Headphones, Pencil, Check, Ban, Mic, PowerOff
+  Cpu, Trash2, Activity, Zap, Headphones, Pencil, Check, Ban, Mic, PowerOff, Wrench
 } from 'lucide-react';
+import { MaintenanceLog } from './MaintenanceLog';
 import { InventoryDevice, useDeviceStore } from '../../../stores/deviceStore';
 import { useSocket } from '../../../hooks/useSocket';
 import { useAudioPatch } from '../../../hooks/useAudioPatch';
 import { channelKey } from '../../../lib/channelKey';
 import { useChannelStore } from '../../../stores/channelStore';
+import { useMaintenance } from '../../../hooks/useMaintenance';
 import './DeviceDrawer.css';
 
 interface Props {
@@ -28,6 +30,9 @@ export function DeviceDrawer({ device, onClose }: Props) {
     patch: patchAudio,
   } = useAudioPatch();
   const channels = useChannelStore((s) => s.channels.filter(c => device && c.deviceId.startsWith(device.ip)));
+  // Owned here rather than inside the section, so removing a device can say how
+  // much history goes with it.
+  const maintenance = useMaintenance(device?.id ?? null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [draftName, setDraftName] = useState('');
@@ -55,7 +60,15 @@ export function DeviceDrawer({ device, onClose }: Props) {
   }, [device?.id]);
 
   const handleRemove = () => {
-    if (device && window.confirm(`Remove "${device.name}" from inventory?`)) {
+    if (!device) return;
+    // Say what else goes. The maintenance log is the only record of work that
+    // never appears over the network, so losing it silently to a removal that
+    // was meant to tidy the list is not recoverable.
+    const n = maintenance.entries.length;
+    const warning = n > 0
+      ? `\n\nIts maintenance log (${n} ${n === 1 ? 'entry' : 'entries'}) will be deleted too.`
+      : '';
+    if (window.confirm(`Remove "${device.name}" from inventory?${warning}`)) {
       removeFromInventory(device.id);
       onClose();
     }
@@ -416,6 +429,12 @@ export function DeviceDrawer({ device, onClose }: Props) {
                     <p className="notes-text">{device.notes}</p>
                   </DrawerSection>
                 )}
+
+                {/* What has been done to this unit. Always shown, unlike the
+                    sections above: an empty log is a prompt to start one. */}
+                <DrawerSection title="Maintenance" icon={<Wrench size={14} />}>
+                  <MaintenanceLog log={maintenance} />
+                </DrawerSection>
 
                 {/* Added timestamp */}
                 <div className="drawer-added">
