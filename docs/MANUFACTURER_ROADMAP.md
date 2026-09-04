@@ -32,7 +32,7 @@ actually verified and what is inference.
 | Target | Protocol | Port | Spec | Open source | Effort | Verdict |
 |---|---|---|---|---|---|---|
 | **Shure SLX-D** | Command strings | 2202/TCP | ✅ Shure | ✅ Companion, Q-SYS | **S** | ✅ **Done** |
-| **Shure PSM1000** (IEM) | Command strings | 2202/TCP | ✅ Shure | ✅ Companion, micboard | **S–M** | **Do second** |
+| **Shure PSM1000** (IEM) | Command strings | 2202/TCP | ❌ **unreachable** | ⚠️ both incomplete | **S–M** | ⚠️ **Metering blocked** — see below |
 | **Sennheiser Digital 6000** | SSC over UDP | 6970 | ✅ Developer's Guide | ✅ Companion | **L** | **Do third** — corrects a false claim |
 | **Wisycom MRK / MCR** | Ember+ | ~9000 *(unconfirmed)* | ⚠️ partial | ❌ none for receivers | **XL** | Research first |
 | **Sennheiser Spectera** | SSC over HTTPS | 443 | ⚠️ partial | ✅ Companion (large) | **L** | Later |
@@ -172,6 +172,54 @@ protocol.
 **Effort: S for the protocol, M for the model change.** The model change is the
 real work and benefits every future IEM.
 
+### Update: the channel model is done; the metering is blocked
+
+**The model change landed** — channels carry `role: 'mic' | 'iem'`, the server
+sets it from the inventory row, and RF dropout detection refuses to arm for an
+IEM. That was the half worth having, and it fixed a live bug: an IEM channel
+read as 0% RF on both antennas with `isMuted` false, which is the exact shape
+of a dead microphone, so it armed and confirmed a dropout alert on a working
+transmitter for the length of every show.
+
+**The protocol half is blocked on evidence, not on effort.** Going to build it,
+the sources fell apart:
+
+- **Shure's PSM1000 command-strings document cannot be retrieved.** It exists
+  only as a JavaScript-rendered page at shure.com; there is no PDF at any of
+  the paths that serve the Axient, ULX-D and SLX-D documents. Every attempt
+  returns either the page shell or a redirect loop.
+- **Companion's module says it does not know the format.** Its source
+  literally reads `audioInLevelL: 0, // AUDIO_IN_LVL_L: unknown format (11)`.
+- **micboard does not parse IEM samples at all** — its IEM `parse_sample` is
+  `pass` — and its audio handling is a hardcoded ladder of magic thresholds
+  (10272, 23728, 85488, 246260, ...) mapping a raw value to 0/10/20/…/70.
+  Those are reverse-engineered from observation, not read from a specification.
+
+Audio input level is essentially the *only* live telemetry a PSM1000 offers: it
+has no RF to receive and no transmitter battery to report. So the one number
+that matters is the one number nobody can define, and implementing it would
+repeat exactly the ULX-D mistake — taking a display heuristic for a unit
+conversion — with no document to catch it.
+
+**What is well-defined**, from two agreeing implementations: port and framing
+(identical to the receivers, and confirmed by four Shure documents for sibling
+products), `DEVICE_NAME`, `CHAN_NAME`, `FREQUENCY`, `AUDIO_MUTE`, `TX_MODE`
+(mono / stereo / point-to-point) and `TX_POWER` (10/50/100 mW).
+
+**Three ways forward**, in order of preference:
+
+1. **Get the specification.** A Shure account or a request to their support
+   would likely produce the document, and then this is a small piece of work.
+2. **Build PSM1000 without metering.** Name, frequency, mute state and TX power
+   are all well-defined categorical values. An IEM on the Micboard showing who
+   is on it, at what frequency, and whether it is muted is genuinely useful
+   even with no meter — and it is honest, because the meter would simply be
+   absent rather than wrong.
+3. **Defer**, and spend the effort on Digital 6000 instead, where Sennheiser
+   publishes SSC protocol documents openly.
+
+Not started, pending that choice.
+
 ---
 
 ## Sennheiser Digital 6000 — do third
@@ -302,14 +350,13 @@ Lowest priority of everything here.
 
 ## Recommended order
 
-1. **Fix the SLX-D-shaped bug in `probe.ts` now** — the `model ? 'axtd'`
-   fallback is already wrong for any unrecognised Axient model, and will
-   silently misparse SLX-D the moment it is added.
-2. **Shure SLX-D.** Small, high install base, extends existing code.
-3. **Make RFDeck's channel model honest about IEMs**, then **Shure PSM1000**.
-   The model change is the valuable half.
+1. ~~Fix the SLX-D-shaped bug in `probe.ts`.~~ ✅ Done — unsupported and
+   unrecognised models are now refused by name rather than misidentified.
+2. ~~**Shure SLX-D.**~~ ✅ Done.
+3. ~~**Make RFDeck's channel model honest about IEMs**~~ ✅ Done.
+   **Shure PSM1000** ⚠️ blocked on evidence — see above.
 4. **Sennheiser Digital 6000**, and correct the README's claim either way —
-   immediately, not when the work lands.
+   ✅ claim corrected already; the work is next.
 5. **Wisycom**, once the Ember+ tree is documented.
 6. Spectera, Audio-Technica, UHF-R on request.
 7. Lectrosonics and Sony stay blocked until a vendor publishes something.
