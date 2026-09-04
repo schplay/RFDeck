@@ -238,12 +238,49 @@ The payload is comma-separated parenthesised fields, one of which is
 a proprietary file shipping with Wireless Workbench and the Shure Update
 Utility. micboard ships a converted copy of that map.
 
-RFDeck does not need it. The announcement's *source address* is the useful
-part; the model can be had by asking the device directly on 2202
-(`< GET DEVICE_ID >`, and `< GET MODEL >` on Axient), which is also what
-confirms the host really is a Shure receiver rather than something else that
-happened to be multicasting. That mirrors how RFDeck already handles Sennheiser
-G3/G4: a passive listener produces candidates, and a probe confirms them.
+**RFDeck does not use it.** The announcement's *source address* is the useful
+part; everything else is asked of the device directly on 2202. That avoids
+depending on a proprietary file, and it is also more honest: an announcement
+proves something is multicasting, not that it is a receiver RFDeck can talk to.
+
+So discovery is the same two-stage shape as the existing Sennheiser G3/G4 path
+— a passive listener produces candidates, and a probe confirms them:
+
+1. `slp.ts` joins the group on every local IPv4 interface (a venue machine
+   routinely has a control network and a Dante network; joining only the
+   default route misses everything on the other) and emits an address.
+2. `probe.ts` connects to 2202 and asks `< GET MODEL >`, `< GET DEVICE_ID >`,
+   `< GET FW_VER >` and `< GET n CHAN_NAME >` for n=1..4.
+
+### What the probe infers, and from what
+
+- **Is this a Shure receiver at all?** Only if it replies with a well-formed
+  `< REP ... >`. An open port is not identification — the Sennheiser discovery
+  learned that expensively, by claiming every device on a venue network that
+  answered HTTPS on 443.
+- **Which family?** Axient answers `MODEL`; ULX-D and QLX-D have no such
+  parameter and answer nothing. **The absence of a reply is the evidence**,
+  which is worth stating plainly because it is the kind of inference that
+  silently inverts.
+- **How many channels?** Whichever channel indices answered `CHAN_NAME`. A
+  two-channel receiver simply does not reply for channels 3 and 4. This is
+  preferred over the count implied by the model string, so a receiver with a
+  card pulled — or a model string this build does not recognise — is described
+  by what it does rather than by a table.
+
+Because the probe learns the model, the discovered device carries it through to
+the inventory row rather than being guessed at from its name. That matters more
+for Shure than for other manufacturers: a device called "Rack1" would otherwise
+be filed as a receiver of model "Rack1", and the model is what selects the
+command vocabulary.
+
+Announcements repeat every few seconds, so probed addresses are remembered —
+otherwise every announcement would open a TCP connection, forever. A device
+removed from inventory is forgotten again, so it can be offered a second time.
+
+The port needs opening on both deployment shapes: the Ubuntu installer adds
+`ufw allow 8427/udp` and the desktop build adds a matching Windows Firewall
+rule, alongside the ones already there for mDNS and G3/G4.
 
 **An earlier version of this document said the service type "is not in any
 document found" and that discovery "will need a capture from a real device".
@@ -258,17 +295,29 @@ was worth doing: it found a wrong RF offset for ULX-D, a wrong audio offset for
 ULX-D, a battery percentage wrongly believed not to exist, three invented
 parameter names, and the discovery error above.
 
+One part *has* been verified for real, because it is a purely local
+operation: the SLP listener binds UDP 8427, joins 239.255.254.253 on a physical
+interface, and receives and parses a multicast datagram. Confirmed by hand on
+Windows 11 and covered by tests that send an announcement to the running
+listener.
+
 What still cannot be confirmed without a receiver on the bench:
 
-- **Nothing has run against real hardware.** The simulated device believes the
-  same specification the client does, so a shared misreading of the spec passes
-  both. That is the honest limit of this approach.
+- **No command-strings exchange has run against real hardware.** The simulated
+  device believes the same specification the client does, so a shared
+  misreading of the spec passes both. That is the honest limit of this
+  approach.
 - Whether a real AD4D answers `< GET n ALL >` with the full set, rather than
   needing per-parameter GETs.
 - The actual RSSI range a working link produces in a room, and therefore
   whether the −95/−35 dBm window puts the CRITICAL threshold where an operator
   would want it.
-- Whether the ULX-D audio field really is dBFS (see above — the range is
-  documented, the units are not).
-- The SLP announcement payload beyond the `cd:` field, and whether every
-  supported model announces.
+- Whether the ULX-D audio field really is dBFS (the range is documented, the
+  units are not).
+- **The announcement payload.** The `cd:` field is the only one whose format is
+  known, from micboard's parser. What else a real announcement carries, and
+  whether every supported model announces at all, is unknown — which is exactly
+  why the probe does the identifying and the announcement only supplies an
+  address.
+- Whether a receiver answers a probe promptly enough for the 350 ms quiet
+  window and 2.5 s timeout on a loaded network.

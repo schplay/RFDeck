@@ -785,8 +785,15 @@ machine, so:
 - Nothing has been run against a real receiver. The simulated device believes
   the same specification the client does, so a shared misreading of the spec
   passes both. That is the honest limit of the approach.
-- Discovery is understood but not implemented — the SLP listener plus a probe
-  on 2202 to confirm identity, mirroring how G3/G4 discovery already works.
+- ~~Discovery is understood but not implemented.~~ Built: an SLP listener on
+  multicast 239.255.254.253:8427 produces candidate addresses, and a probe on
+  2202 confirms them — the same two-stage shape as G3/G4. The probe identifies
+  the family from whether `MODEL` is answered at all (only Axient has it) and
+  counts channels by which indices reply to `CHAN_NAME`, so a receiver is
+  described by what it does rather than by a model table. The listener itself
+  is the one part of Shure support verified against reality rather than a
+  simulation: binding, joining and receiving are local operations, confirmed on
+  Windows and covered by tests.
 - The ULX-D audio field's *units* remain inferred: the document gives the range
   (000-050) but never says dBFS. Companion reads it the same way.
 

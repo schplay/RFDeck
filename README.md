@@ -120,7 +120,7 @@ The log of problems RFDeck noticed on its own, each with the audio that proves i
 
 ### Hardware Inventory
 - Auto-discovery of supported devices via mDNS / Bonjour, passive MCP listening,
-  and active network sweep
+  Shure SLP announcements, and active network sweep
 - Manual device registration by IP + credentials
 - Per-device: make, model, firmware, serial, MAC, IP, location, status
 - **Automatic IP recovery** — devices that change address after a power cycle are
@@ -284,11 +284,15 @@ network access gate, not per-user identity.
 > prove the specification was read correctly, since the simulator believes the
 > same specification the client does.
 >
-> Receivers are added by IP; auto-discovery is not implemented yet. The model
-> must be chosen when adding one, because it selects the command vocabulary
-> (Axient and ULX-D genuinely use different parameter names) and the channel
-> count. What was verified, against how many sources, and what remains assumed
-> is written up in [`docs/SHURE_PROTOCOL.md`](docs/SHURE_PROTOCOL.md).
+> Auto-discovery works the same way as for Sennheiser G3/G4: a passive listener
+> for Shure's SLP announcements (multicast 239.255.254.253:8427) produces
+> candidate addresses, and a probe on port 2202 confirms what they are and how
+> many channels they have. Receivers can still be added by IP, in which case the
+> model must be chosen from a list — it selects the command vocabulary (Axient
+> and ULX-D genuinely use different parameter names) and the channel count.
+>
+> What was verified, against how many sources, and what remains assumed is
+> written up in [`docs/SHURE_PROTOCOL.md`](docs/SHURE_PROTOCOL.md).
 
 ### Phase 2+ (Planned)
 - Wisycom (MRK series) — Ember+ open protocol

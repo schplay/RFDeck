@@ -198,6 +198,11 @@ async function ensureWindowsFirewall(): Promise<void> {
   const portRules = [
     { name: 'RFDeck mDNS Discovery',   port: '5353'  },
     { name: 'RFDeck Sennheiser G3/G4', port: '53212' },
+    // Shure receivers announce themselves over SLP on multicast
+    // 239.255.254.253:8427. Inbound multicast needs an explicit rule the way
+    // mDNS does; without it Shure devices are simply never discovered, and
+    // nothing says why.
+    { name: 'RFDeck Shure Discovery',  port: '8427'  },
   ];
 
   for (const rule of portRules) {
