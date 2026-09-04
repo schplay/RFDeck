@@ -30,8 +30,13 @@ function getSocket(): Socket {
   // off toward 5s between tries, which is most of the "blank for half a
   // minute" a phone sees after waking. On a LAN, either the server answers
   // in a couple of seconds or it is down.
+  // The Micboard is a read-only wall display that cannot be asked to type a
+  // PIN. It announces itself so the server can admit it without one and
+  // withhold every control channel.
+  const isMicboard = window.location.hash.startsWith('#/micboard');
+
   _socket = io(SOCKET_URL, {
-    auth: { token: getToken() },
+    auth: { token: getToken(), micboard: isMicboard },
     timeout: 5_000,
     reconnectionDelayMax: 2_000,
   });

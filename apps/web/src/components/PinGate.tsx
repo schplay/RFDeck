@@ -17,7 +17,17 @@ export function PinGate({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
   const [offline, setOffline] = useState(false);
 
+  // The Micboard is read-only and PIN-exempt by design: a wall display has
+  // nobody to type a PIN, and the PIN exists to prevent changes rather than to
+  // hide telemetry. Gating it here would defeat the exemption the server
+  // already grants.
+  const isMicboard = window.location.hash.startsWith('#/micboard');
+
   useEffect(() => {
+    if (isMicboard) {
+      setChecking(false);
+      return;
+    }
     setPinRequiredHandler(() => setNeedsPin(true));
 
     // This check must never hold the app hostage. A phone waking from
@@ -50,7 +60,7 @@ export function PinGate({ children }: { children: React.ReactNode }) {
       clearTimeout(deadline);
       setPinRequiredHandler(null);
     };
-  }, []);
+  }, [isMicboard]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

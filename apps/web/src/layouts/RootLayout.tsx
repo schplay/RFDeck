@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, Menu, X } from 'lucide-react';
+import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Menu, X } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { AudioMonitor } from '../components/audio/AudioMonitor';
 import { AlertFeed } from '../components/alerts/AlertFeed';
@@ -85,6 +85,10 @@ export default function RootLayout() {
 
           <div className="nav-divider" />
 
+          <NavLink to="/micboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            <LayoutGrid size={20} />
+            Micboard
+          </NavLink>
           <NavLink to="/backstage" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             <Monitor size={20} />
             Backstage View

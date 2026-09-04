@@ -10,7 +10,22 @@ import { loadTlsConfig } from './tls';
 
 // Endpoints reachable before authentication. Everything else is gated when the
 // admin has enabled a PIN; /auth/status is how a client discovers it needs one.
-const OPEN_PATHS = new Set(['/api/auth/status', '/api/auth/login', '/health']);
+const OPEN_PATHS = new Set([
+  '/api/auth/status', '/api/auth/login', '/health',
+  // The Micboard display. A wall-mounted screen cannot type a PIN, and the PIN
+  // exists to prevent unauthorised *changes* rather than to hide telemetry —
+  // so reading is allowed without one. Scoped to what a display needs: this
+  // endpoint carries only who is on each channel, never inventory, event
+  // history, or anything that could be written.
+  '/api/micboard',
+]);
+
+// Performer headshots, for the Micboard. Same reasoning as above, and a
+// prefix rather than a fixed path because the id is in the URL. GET only —
+// the POST and DELETE that change a photo stay gated.
+function isOpenPhotoRead(method: string, path: string): boolean {
+  return method === 'GET' && /^\/api\/performers\/[\w-]+\/photo$/.test(path);
+}
 
 export async function buildApp(): Promise<FastifyInstance> {
   // Serve over HTTPS when a certificate is configured. Browsers only expose
@@ -37,6 +52,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0];
     if (OPEN_PATHS.has(path)) return;
+    if (isOpenPhotoRead(request.method, path)) return;
 
     // The header is how the app authenticates. A plain navigation — opening
     // the printable show report in a new tab — cannot set headers, so a GET
