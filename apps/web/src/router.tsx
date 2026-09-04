@@ -6,6 +6,7 @@ import RFScanner from './pages/rf/RFScanner';
 import BatteryDashboard from './pages/battery/BatteryDashboard';
 import Settings from './pages/settings/Settings';
 import BackstageView from './pages/backstage/BackstageView';
+import MicboardView from './pages/micboard/MicboardView';
 import ShowManagement from './pages/shows/ShowManagement';
 import PerformersPage from './pages/performers/PerformersPage';
 import DetectionsPage from './pages/detections/DetectionsPage';
@@ -22,6 +23,12 @@ export const router = createHashRouter([
   {
     path: '/backstage',
     element: guard('Backstage view', <BackstageView />)
+  },
+  // Full-screen wall display, no sidebar. Read-only and PIN-exempt, so a
+  // screen backstage can be pointed at this URL and left alone.
+  {
+    path: '/micboard',
+    element: guard('Micboard', <MicboardView />)
   },
   {
     path: '/',

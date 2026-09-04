@@ -112,6 +112,17 @@ export default fp(async (fastify, opts) => {
                   ?? socket.handshake.headers['x-rfdeck-token']) as string | undefined;
       const ip = socket.handshake.address;
       if (await isRequestAuthorized(ip, token)) return next();
+
+      // A Micboard display may connect without a PIN, because the PIN exists
+      // to prevent unauthorised changes rather than to hide telemetry. It is
+      // marked read-only and the control handlers below are never registered
+      // for it, so this is a structural guarantee rather than a promise that
+      // the page will not ask.
+      if (socket.handshake.auth?.micboard === true) {
+        socket.data.readOnly = true;
+        return next();
+      }
+
       next(new Error('PIN_REQUIRED'));
     } catch {
       // Never fail closed on an internal error — a database hiccup must not
@@ -163,6 +174,18 @@ export default fp(async (fastify, opts) => {
         manufacturer: inferManufacturer(device.name, device.protocol),
         model: inferModel(device.name, device.protocol),
       });
+    }
+
+    // A read-only client has now had the full state replay above and will keep
+    // receiving broadcasts. Nothing below this line is wired up for it: no
+    // control commands, and no audio signalling, since opening a capture is
+    // itself an action on the hardware.
+    if (socket.data.readOnly) {
+      fastify.log.info(`Client ${socket.id} connected read-only (Micboard)`);
+      socket.on('disconnect', () => {
+        fastify.log.info(`Read-only client disconnected: ${socket.id}`);
+      });
+      return;
     }
 
     webrtcSignaling.attach(socket);
