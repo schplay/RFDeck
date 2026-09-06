@@ -152,7 +152,11 @@ export class DeviceManagerService extends EventEmitter {
    */
   private async backfillDeviceRoles(): Promise<void> {
     const candidates = await prisma.inventoryDevice.findMany({
-      where: { deviceType: 'input' },
+      // Never a device a person has set. Inference is a convenience for the
+      // blank the add form leaves; overruling an operator would mean their
+      // correction lasted until the next restart, and naming conventions vary
+      // enough that RFDeck will not always be right.
+      where: { deviceType: 'input', deviceTypeManual: false },
     });
 
     const moved: string[] = [];

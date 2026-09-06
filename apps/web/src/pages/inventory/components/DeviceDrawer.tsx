@@ -258,10 +258,39 @@ export function DeviceDrawer({ device, onClose }: Props) {
                   ) : (
                     <>
                       <DrawerRow label="Name" value={device.name} />
-                      <DrawerRow
-                        label="Type"
-                        value={device.deviceType === 'output' ? 'Output (IEM / Monitor)' : 'Input (Mic / Instrument)'}
-                      />
+                      {/* Live, not behind the edit pencil.
+                          What this is decides which column the device appears
+                          in during soundcheck and whether RFDeck alerts on its
+                          RF at all — an IEM transmitter receives nothing, so
+                          treating one as a microphone means dropout alerts on
+                          a device that is working perfectly. RFDeck guesses it
+                          from the model, and naming conventions vary, so the
+                          correction has to be one click and it has to stick. */}
+                      <div className="drawer-row">
+                        <span className="drawer-row-label">Type</span>
+                        <div className="drawer-type-toggle">
+                          <button
+                            className={`drawer-type-btn ${device.deviceType !== 'output' ? 'active' : ''}`}
+                            onClick={() => updateInventoryDevice(device.id, { deviceType: 'input' })}
+                            title="A receiver carrying a microphone"
+                          >
+                            <Mic size={12} /> Input
+                          </button>
+                          <button
+                            className={`drawer-type-btn ${device.deviceType === 'output' ? 'active' : ''}`}
+                            onClick={() => updateInventoryDevice(device.id, { deviceType: 'output' })}
+                            title="An IEM transmitter carrying a monitor feed"
+                          >
+                            <Headphones size={12} /> Output (IEM)
+                          </button>
+                        </div>
+                      </div>
+                      {device.deviceTypeManual === false && (
+                        <p className="drawer-type-note">
+                          Detected from the model. Change it if that is wrong — your
+                          choice is kept.
+                        </p>
+                      )}
                     </>
                   )}
                   <DrawerRow label="Manufacturer" value={device.manufacturer} />

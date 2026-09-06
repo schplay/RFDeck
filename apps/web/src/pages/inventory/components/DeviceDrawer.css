@@ -494,3 +494,13 @@
 @media (max-width: 768px) {
   .drawer-content { width: 100vw; }
 }
+
+/* Why a device is filed as it is — a guess RFDeck made, or a decision someone
+   took. Quiet, because it only matters when the guess is wrong. */
+.drawer-type-note {
+  margin: 2px 0 8px;
+  padding-left: 2px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--color-outline);
+}

@@ -21,6 +21,15 @@ export interface InventoryDevice {
   // until this is fixed, so it is shown as its own condition, not as healthy.
   authFailed?: string | null;
   deviceType: DeviceType;
+  /**
+   * True when a person set the type, false when RFDeck inferred it from the
+   * model or name.
+   *
+   * Shown so an operator can tell a guess from a decision — and so they know
+   * that correcting a guess will stick rather than being undone on the next
+   * restart.
+   */
+  deviceTypeManual?: boolean;
   // Operator-controlled. Inactive = intentionally powered off / not in this show.
   // Inactive devices are untracked server-side and hidden from the dashboard.
   active: boolean;

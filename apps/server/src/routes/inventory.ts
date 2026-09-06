@@ -63,6 +63,10 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
         deviceType: data.deviceType === 'output'
           ? 'output'
           : (inferDeviceRole(data.model, data.name) ?? data.deviceType ?? 'input'),
+        // "output" from the add form is a deliberate act — the form defaults
+        // to input, so nobody selects it by accident. Plain "input" is left
+        // unmarked, so inference may still correct it later.
+        deviceTypeManual: data.deviceType === 'output',
         active: data.active ?? true,
       }
     });
@@ -135,6 +139,10 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
           ? encryptSecret(data.password ?? null)
           : undefined,
         deviceType: data.deviceType ?? undefined,
+        // Setting the type by hand makes it stick. Without this the startup
+        // backfill would move an IEM-named device back to output on the next
+        // restart, and an operator could never correct RFDeck's guess.
+        deviceTypeManual: data.deviceType ? true : undefined,
         active: typeof data.active === 'boolean' ? data.active : undefined,
       }
     });
