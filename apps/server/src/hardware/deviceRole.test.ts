@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inferDeviceRole, looksLikeIem, isSscModel } from './deviceRole';
+import { inferDeviceRole, looksLikeIem, isSscModel, isPlaceholderModel } from './deviceRole';
 
 // Filing an IEM transmitter as a microphone is not cosmetic: it has no RF to
 // receive, so it reads as a channel permanently at 0% and clutters the
@@ -97,5 +97,40 @@ describe('isSscModel — which devices may take the G3/G4 fallback', () => {
     expect(isSscModel('Unknown Model')).toBe(false);
     expect(isSscModel('')).toBe(false);
     expect(isSscModel(null)).toBe(false);
+  });
+});
+
+describe('isPlaceholderModel', () => {
+  // A model that names nothing still looks like data. Code that keys on the
+  // model — which client to build, whether the G3/G4 fallback may claim a
+  // device — is silently blinded by one, and the operator has no idea their
+  // receiver is described as "Sennheiser Device".
+
+  it('recognises what the add form writes when the field is blank', () => {
+    expect(isPlaceholderModel('Sennheiser Device', 'Sennheiser')).toBe(true);
+    expect(isPlaceholderModel('Shure Device', 'Shure')).toBe(true);
+    // Even when the manufacturer is not passed for comparison.
+    expect(isPlaceholderModel('Sennheiser Device')).toBe(true);
+  });
+
+  it('recognises the discovery fallbacks and blanks', () => {
+    expect(isPlaceholderModel('Unknown Model')).toBe(true);
+    expect(isPlaceholderModel('Unknown Shure model')).toBe(true);
+    expect(isPlaceholderModel('')).toBe(true);
+    expect(isPlaceholderModel(null)).toBe(true);
+    expect(isPlaceholderModel('   ')).toBe(true);
+  });
+
+  it('never claims a real model is a placeholder', () => {
+    // Overwriting one of these would replace something an operator typed.
+    for (const m of ['EW-DX EM 2', 'EM 6000', 'AD4D', 'ULXD4D', 'EW G3/G4',
+                     'SR 2050', 'P10T', 'IEM 2']) {
+      expect(isPlaceholderModel(m, 'Sennheiser'), m).toBe(false);
+    }
+  });
+
+  it('does not mistake a two-word model for the "<vendor> Device" pattern', () => {
+    // "Digital 6000" is two words and a real model.
+    expect(isPlaceholderModel('Digital 6000', 'Sennheiser')).toBe(false);
   });
 });

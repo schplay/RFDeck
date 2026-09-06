@@ -17,7 +17,7 @@ import {
 } from '../batteryEstimator';
 import { decryptSecret } from '../../auth/secretBox';
 import { detectFirmwareChange } from '../firmwareChange';
-import { isSscModel } from '../deviceRole';
+import { isSscModel, isPlaceholderModel } from '../deviceRole';
 import { ShureClient } from '../shure/ShureClient';
 import { Digital6000Client } from './digital6000/Digital6000Client';
 import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
@@ -40,6 +40,15 @@ export class DeviceManagerService extends EventEmitter {
   // transmitter battery, and alerting on their absence is how a working
   // monitor rig raises a dropout every few seconds all night.
   private deviceRoles: Map<string, 'mic' | 'iem'> = new Map();
+  // Devices that have successfully connected over SSCv2 at least once.
+  //
+  // The model string is a weak signal — a device added without one is stored
+  // as "Sennheiser Device", which names nothing — so the strongest evidence
+  // that something speaks SSC is that it already has. Deliberately NOT cleared
+  // on untrack: standing down and going live again must not reopen the window
+  // in which a transient disconnect could downgrade a proven SSC receiver to
+  // MCP.
+  private sscProven = new Set<string>();
   private discoveredCache: Map<string, any> = new Map(); // key → discovered device payload
   // IPs that have had at least one successful connection — used to distinguish
   // a real "went offline" from an initial SSCv2 probe failure before G3/G4 fallback.
@@ -258,6 +267,10 @@ export class DeviceManagerService extends EventEmitter {
     );
     this.setupClientListeners(client, device.ip, device.port, id);
 
+    // Proof beats inference: once this device has answered as SSCv2, no
+    // disconnect may hand it to a client that cannot speak to it.
+    client.on('connected', () => { this.sscProven.add(id); });
+
     client.on('disconnected', () => {
       // The SSCv2 -> G3/G4 fallback is a one-way door: it stops the SSC client
       // and starts an MCP one in its place. That is how a G3 is recognised at
@@ -271,11 +284,11 @@ export class DeviceManagerService extends EventEmitter {
       //
       // A device the inventory already names as an SSC receiver never takes
       // the fallback. It keeps retrying as what it is.
-      if (isSscModel(device.model)) {
-        log.debug(
-          `[DeviceManager] ${device.ip} disconnected; keeping SSC client ` +
-          `(model "${device.model}" is an SSC device, not G3/G4)`,
-        );
+      if (isSscModel(device.model) || this.sscProven.has(id)) {
+        const why = this.sscProven.has(id)
+          ? 'it has already connected as SSCv2'
+          : `model "${device.model}" is an SSC device, not G3/G4`;
+        log.debug(`[DeviceManager] ${device.ip} disconnected; keeping SSC client (${why})`);
         return;
       }
 
@@ -561,14 +574,29 @@ export class DeviceManagerService extends EventEmitter {
         if (meta.mac)      patch.mac      = meta.mac;
         if (meta.serial)   patch.serial   = meta.serial;
         if (meta.firmware) patch.firmware = meta.firmware;
-        if (Object.keys(patch).length > 0) {
-          // Read before writing, so a firmware change can be noticed. This is
-          // the one maintenance event that is visible over the network, and
-          // it is the one most likely to explain "it worked last month".
-          const before = meta.firmware
-            ? await prisma.inventoryDevice.findFirst({ where: { ip } })
-            : null;
 
+        // One read, used twice: to notice a firmware change, and to decide
+        // whether the stored model is a placeholder worth replacing. Both need
+        // the row as it was before this write.
+        const before = (meta.firmware || meta.model)
+          ? await prisma.inventoryDevice.findFirst({ where: { ip } })
+          : null;
+
+        // The device knows its own model, and RFDeck was throwing that away.
+        //
+        // A device added without one is stored as "Sennheiser Device", which
+        // tells later code nothing — including the check that decides whether
+        // the G3/G4 fallback may claim it. Recorded only over a placeholder,
+        // never over a model an operator typed.
+        if (meta.model && before && isPlaceholderModel(before.model, before.manufacturer)) {
+          patch.model = meta.model;
+          log.info(
+            `[DeviceManager] ${ip} reported its model as "${meta.model}" ` +
+            `(was "${before.model}") — recorded`,
+          );
+        }
+
+        if (Object.keys(patch).length > 0) {
           await prisma.inventoryDevice.updateMany({
             where: { ip },
             data: patch,
