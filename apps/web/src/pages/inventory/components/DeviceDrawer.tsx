@@ -285,12 +285,6 @@ export function DeviceDrawer({ device, onClose }: Props) {
                           </button>
                         </div>
                       </div>
-                      {device.deviceTypeManual === false && (
-                        <p className="drawer-type-note">
-                          Detected from the model. Change it if that is wrong — your
-                          choice is kept.
-                        </p>
-                      )}
                     </>
                   )}
                   <DrawerRow label="Manufacturer" value={device.manufacturer} />
