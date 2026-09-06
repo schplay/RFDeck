@@ -17,6 +17,7 @@ import {
 } from '../batteryEstimator';
 import { decryptSecret } from '../../auth/secretBox';
 import { detectFirmwareChange } from '../firmwareChange';
+import { inferDeviceRole, isSscModel } from '../deviceRole';
 import { ShureClient } from '../shure/ShureClient';
 import { Digital6000Client } from './digital6000/Digital6000Client';
 import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
@@ -135,6 +136,44 @@ export class DeviceManagerService extends EventEmitter {
     }
   }
 
+  /**
+   * File IEM transmitters correctly for inventory added before RFDeck could
+   * tell them apart.
+   *
+   * Every device added from the discovery list was recorded as an "input",
+   * because that is what the form defaults to and discovery never asks. An IEM
+   * transmitter filed that way sits at 0% RF — it receives nothing — and shows
+   * up in the soundcheck as a row nobody is speaking into, while the IEM
+   * column stays empty with nothing on screen to explain why.
+   *
+   * Only devices whose model or name unambiguously names an IEM are touched,
+   * and every change is logged rather than being made quietly: an operator who
+   * deliberately filed something as a microphone deserves to see it move.
+   */
+  private async backfillDeviceRoles(): Promise<void> {
+    const candidates = await prisma.inventoryDevice.findMany({
+      where: { deviceType: 'input' },
+    });
+
+    const moved: string[] = [];
+    for (const dev of candidates) {
+      if (inferDeviceRole(dev.model, dev.name) !== 'output') continue;
+      await prisma.inventoryDevice.update({
+        where: { id: dev.id },
+        data: { deviceType: 'output' },
+      });
+      moved.push(`${dev.name} (${dev.model})`);
+    }
+
+    if (moved.length > 0) {
+      log.info(
+        `[DeviceManager] Reclassified ${moved.length} device(s) as IEM transmitters ` +
+        `from their model: ${moved.join(', ')}. They will appear in the IEM column ` +
+        `rather than as microphones. Change it per device in Inventory if this is wrong.`,
+      );
+    }
+  }
+
   async start() {
     // Fix legacy G3/G4 records added via discovery before manufacturer inference was corrected.
     // MCP-discovered devices have port 53212; records with manufacturer='Unknown' got that value
@@ -143,6 +182,8 @@ export class DeviceManagerService extends EventEmitter {
       where: { port: 53212, manufacturer: 'Unknown' },
       data:  { manufacturer: 'Sennheiser', model: 'EW G3/G4' },
     });
+
+    await this.backfillDeviceRoles();
 
     // Load inventory from DB on startup and begin tracking.
     // Devices the operator marked inactive are intentionally powered off — don't
@@ -258,8 +299,26 @@ export class DeviceManagerService extends EventEmitter {
     this.setupClientListeners(client, device.ip, device.port, id);
 
     client.on('disconnected', () => {
-      // If SSCv2 fails, immediately stop it and fall back to G3/G4 MCP.
-      // Don't keep SSCClient probing while G3G4Client is running — it floods the log.
+      // The SSCv2 -> G3/G4 fallback is a one-way door: it stops the SSC client
+      // and starts an MCP one in its place. That is how a G3 is recognised at
+      // all, and it is exactly wrong for an EW-DX, which does not speak MCP.
+      //
+      // A single transient disconnect — a slow TLS handshake, a device still
+      // booting, every receiver being probed at once when the rig goes live —
+      // was enough to walk an EW-DX through that door and leave it on a client
+      // that could never reach it. Going live again just re-ran the race, so
+      // the symptom was a receiver that never came back while the G3s did.
+      //
+      // A device the inventory already names as an SSC receiver never takes
+      // the fallback. It keeps retrying as what it is.
+      if (isSscModel(device.model)) {
+        log.debug(
+          `[DeviceManager] ${device.ip} disconnected; keeping SSC client ` +
+          `(model "${device.model}" is an SSC device, not G3/G4)`,
+        );
+        return;
+      }
+
       if (!this.clients.get(`${id}-legacy`)) {
         const ssc = this.clients.get(id);
         if (ssc instanceof SSCClient) {
