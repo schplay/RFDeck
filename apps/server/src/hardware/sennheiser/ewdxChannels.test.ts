@@ -1,22 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
 import { SSCClient } from './SSCClient';
 
-// An EW-DX channel must reach the dashboard whether or not it has a name.
+// A channel exists whether or not the receiver has said what it is called.
 //
-// A previous fix withheld every channel until its name was known, to stop a
-// card going up under a fallback label and being renamed a second later. The
-// wait had no bound, and a channel reporting no name never satisfied it — so a
-// working receiver produced no channels and never reported connected, for the
-// life of the process, while the G3s beside it were unaffected. The whole test
-// suite stayed green through all of it, because nothing exercised this path.
+// The label on a channel belongs to the hardware. It is not RFDeck's, it can
+// change at any time, and it is for display — so nothing about whether a
+// channel appears, or whether a device is reported as connected, may depend on
+// it having arrived.
 //
-// These are the assertions that would have caught it. They are about the rule,
-// not the mechanism: a name may change what a channel is *called* and must
-// never decide whether it exists.
+// A previous version withheld every channel until its name was known, to stop
+// a card going up under a fallback label and being renamed a second later. The
+// wait had no bound, and a channel reporting no name never satisfied it: a
+// working receiver produced no channels and never came online, for the life of
+// the process, while the G3s beside it were unaffected. The suite stayed green
+// throughout, because nothing exercised this path.
 
-// mergeEwdxState is the accumulation point for the per-channel SSE events.
-// Reaching it directly keeps the test on the rule under test rather than on a
-// stream parser, and it is the exact function the regression lived in.
+// mergeEwdxState is where the per-channel SSE events accumulate, and where the
+// regression lived. Reaching it directly keeps the test on the rule rather than
+// on a stream parser.
 function merge(client: SSCClient, chId: number, update: Record<string, unknown>) {
   (client as any).mergeEwdxState(chId, update);
 }
@@ -30,8 +31,8 @@ function makeClient() {
   return { client, states, connects };
 }
 
-describe('an EW-DX channel that reports no name', () => {
-  it('is still announced', () => {
+describe('a channel the receiver has not named', () => {
+  it('is still reported', () => {
     const { client, states } = makeClient();
     merge(client, 0, { rf_quality: 82, af_level: -20 });
     expect(states).toHaveLength(1);
@@ -40,67 +41,47 @@ describe('an EW-DX channel that reports no name', () => {
   });
 
   it('still reports the device connected', () => {
-    // The emit that marks the device online sits on this same path. Withholding
-    // the channel withheld that too, which is why the card stayed red.
+    // The emit that marks the device online sits on this same path, so
+    // withholding the channel withheld that too — which is why the inventory
+    // card stayed red with the receiver working perfectly.
     const { client, connects } = makeClient();
     merge(client, 0, { rf_quality: 82 });
     expect(connects).toHaveBeenCalledOnce();
     expect(client.isConnected).toBe(true);
   });
 
-  it('is announced when the name is explicitly null, not merely absent', () => {
-    // How a real receiver reports an unnamed channel: the field is present and
-    // null. The merge drops nulls, so this must not be mistaken for "not yet
+  it('is reported when the name is explicitly null, not merely absent', () => {
+    // How a receiver reports an unnamed channel: the field is present and null.
+    // The accumulator drops nulls, so this must never be mistaken for "not yet
     // known" and waited on.
     const { client, states } = makeClient();
     merge(client, 0, { name: null, mute: false });
     expect(states).toHaveLength(1);
   });
+
+  it('does not borrow a sibling channel name', () => {
+    const { client, states } = makeClient();
+    merge(client, 0, { name: 'Vocal 1' });
+    merge(client, 1, { rf_quality: 40 });
+    expect(states.at(-1).rx2).toBeTruthy();
+    expect(states.at(-1).rx2.name).toBeNull();
+  });
 });
 
-describe('a name, once learned', () => {
-  it('labels the channel', () => {
+describe('a channel the receiver has named', () => {
+  it('carries the name the device reported, unchanged', () => {
     const { client, states } = makeClient();
     merge(client, 0, { name: 'Vocal 1', mute: false });
     expect(states.at(-1).rx1.name).toBe('Vocal 1');
   });
 
-  it('survives the connection dropping, so a reconnect is not a rename', () => {
-    // The flap the original fix was aimed at. Telemetry is cleared on a drop
-    // because stale readings must never show as current; the name is not a
-    // reading, and keeping it is what removes the rename entirely — with
-    // nothing to wait for.
+  it('follows the device when the device renames it', () => {
+    // The label is the hardware's and may change at any time. RFDeck reports
+    // what the receiver currently says rather than holding on to what it said
+    // before.
     const { client, states } = makeClient();
     merge(client, 0, { name: 'Vocal 1' });
-
-    // What a dropped connection does to the per-channel telemetry cache.
-    (client as any).ewdxChannelCache.clear();
-
-    // On reconnect the metrics arrive before the channel resource does.
-    merge(client, 0, { rf_quality: 77 });
-
-    const latest = states.at(-1).rx1;
-    expect(latest.rf_quality).toBe(77);
-    expect(latest.name).toBe('Vocal 1');
-  });
-
-  it('is forgotten when the device is untracked', () => {
-    // Stopping is deliberate: the next tracking session must learn the device
-    // afresh rather than inheriting a label from a receiver that may since have
-    // been reconfigured or replaced at that address.
-    const { client } = makeClient();
-    merge(client, 0, { name: 'Vocal 1' });
-    client.stopPolling();
-    expect((client as any).ewdxNames.size).toBe(0);
-  });
-
-  it('does not leak between channels', () => {
-    const { client, states } = makeClient();
-    merge(client, 0, { name: 'Vocal 1' });
-    merge(client, 1, { rf_quality: 40 });
-    // Unnamed, and normalised to null on the way out — but present, which is
-    // the whole point: it is a channel, it just has no label of its own yet.
-    expect(states.at(-1).rx2).toBeTruthy();
-    expect(states.at(-1).rx2.name).toBeNull();
+    merge(client, 0, { name: 'Vocal 2' });
+    expect(states.at(-1).rx1.name).toBe('Vocal 2');
   });
 });
