@@ -18,6 +18,15 @@ model InventoryDevice {
   notes              String?
   password           String?
   deviceType         String   @default("input")
+  // Did a person set deviceType, or did RFDeck infer it from the model?
+  //
+  // Inference exists because the add form defaults to "input" and a device
+  // added from the discovery list is never asked at all, so IEM transmitters
+  // arrive filed as microphones. But inference must never overrule a person:
+  // without this flag the startup backfill would move a device back every
+  // restart, and an operator whose naming does not match RFDeck's patterns
+  // could not make a correction stick.
+  deviceTypeManual   Boolean  @default(false)
   // Operator-controlled: inactive devices are intentionally powered off / not in
   // use for this show.  They are not tracked, not shown on the dashboard, and
   // never raise dropout or battery alerts.
