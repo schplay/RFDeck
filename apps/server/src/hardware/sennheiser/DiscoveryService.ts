@@ -61,7 +61,18 @@ const SHURE_PORT = 2202;
 // How long to wait for a bare TCP connect when sweeping a subnet. A host that
 // is present answers a LAN connect in milliseconds; this only bounds the wait
 // for addresses that swallow packets rather than refusing them.
-const HOST_PROBE_TIMEOUT_MS = 2_000;
+const HOST_PROBE_TIMEOUT_MS = 400;
+
+// How many connects are in flight at once while sweeping. Measured, not
+// guessed: 512 swept a /16 in 51s and found every host on it; 2048 exhausted
+// the socket table and reported an empty network in 15s. The failure mode of
+// too much concurrency is silence, so this stays where it was proven.
+const HOST_PROBE_CONCURRENCY = 512;
+
+// Upper bound on one sweep, so a scan can never hang forever. Well above the
+// ~51s a full /16 takes, because cutting a working sweep short is what made a
+// receiver look undiscoverable in the first place.
+const SCAN_GUARD_MS = 180_000;
 
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
@@ -201,9 +212,19 @@ export class DiscoveryService extends EventEmitter {
     const before = this.seenIps.size;
     try {
       this.runUdpProbes();
-      // Hard cap: on Windows, TCP SYN to firewalled hosts can stall far past the
-      // per-request timeout. 20s guarantees the spinner always stops.
-      const cap = new Promise<void>(resolve => setTimeout(resolve, 20_000));
+      // A guard against a sweep that never returns, not a deadline for one that
+      // is working.
+      //
+      // This was 20 seconds, chosen when a sweep was a /24 and each address
+      // cost a full TLS timeout. It then had to be exceeded by every ordinary
+      // scan, so "scan complete" was announced while the sweep was still
+      // running and a receiver reached afterwards arrived to an audience that
+      // had already been told there was nothing there.
+      //
+      // A full /16 measures at about 51 seconds; this leaves generous headroom
+      // above that. The per-address stall the original cap existed for is now
+      // handled where it belongs, by the connect timeout in hostsListeningOn.
+      const cap = new Promise<void>(resolve => setTimeout(resolve, SCAN_GUARD_MS));
       await Promise.race([this.runHttpScan(), cap]);
     } finally {
       this.scanInProgress = false;
@@ -406,24 +427,90 @@ export class DiscoveryService extends EventEmitter {
   // ── HTTP scan (EW-DX / SSCv2, active scan, on-demand only) ──────────
 
   /**
-   * Which addresses in a /24 have anything listening on a port.
+   * Every address on this interface's subnet, nearest first.
    *
-   * A bare TCP connect, all at once. It costs a socket and no bytes, and a host
-   * that is not there fails immediately on a LAN rather than waiting out a
-   * timeout, so the whole range settles in a couple of seconds.
+   * The sweep used to take the interface address, keep the first three octets
+   * and walk .1 to .254 — a /24, always, whatever the interface actually said.
+   * A venue network is routinely a /16: the one this was diagnosed on carries
+   * hosts across 10.2.0, 10.2.1, 10.2.2, 10.2.3, 10.2.5 and 10.2.25. A server
+   * on 10.2.0.x therefore never looked at 10.2.2.148, where the EW-DX was, and
+   * no amount of scanning would ever have found it.
+   *
+   * That is also why this looked like a regression with nothing in the diffs to
+   * show for it. Nothing changed in the code: a DHCP lease moved the server or
+   * the receiver into a different third octet, and EW-DX discovery stopped —
+   * while the G3s carried on, because MCP is a broadcast and reaches the whole
+   * subnet regardless of where either end sits in it.
+   *
+   * Ordered with the interface's own /24 first, so the common case still
+   * resolves in the first couple of seconds and devices appear while the rest
+   * of the range is still being swept.
    */
-  private async hostsListeningOn(base: string, port: number): Promise<string[]> {
+  private subnetAddresses(iface: { address: string; netmask: string }): string[] {
+    const hosts = this.subnetHostCount(iface.netmask);
+    const parts = iface.address.split('.').map(Number);
+    const local = `${parts[0]}.${parts[1]}.${parts[2]}`;
+
+    // Anything wider than a /16 is not a LAN worth walking address by address;
+    // 16.7m probes would take days. Sweep what is nearby and say so, rather
+    // than pretending to have covered it.
+    if (hosts > 65_536) {
+      log.warn(
+        `[Discovery] ${iface.address}/${iface.netmask} is larger than a /16 — ` +
+        `sweeping ${local}.0/24 only. Receivers elsewhere on it must be added by IP.`,
+      );
+      return Array.from({ length: 254 }, (_, i) => `${local}.${i + 1}`);
+    }
+
+    const mask = iface.netmask.split('.').map(Number);
+    const net0 = parts.map((b, i) => b & mask[i]);
+    const all: string[] = [];
+    for (let i = 1; i <= hosts; i++) {
+      const d = (net0[3] + i) & 0xff;
+      const c = (net0[2] + Math.floor((net0[3] + i) / 256)) & 0xff;
+      const b = (net0[1] + Math.floor((net0[2] + Math.floor((net0[3] + i) / 256)) / 256)) & 0xff;
+      all.push(`${net0[0]}.${b}.${c}.${d}`);
+    }
+    // Nearest first: the receiver is usually on the same /24 as the server, and
+    // when it is, the whole thing is over in two seconds.
+    const near = all.filter(a => a.startsWith(`${local}.`));
+    const far  = all.filter(a => !a.startsWith(`${local}.`));
+    return [...near, ...far];
+  }
+
+  /**
+   * Which of these addresses have anything listening on a port.
+   *
+   * A bare TCP connect: one socket, no bytes, no TLS. An address with nothing
+   * on it fails immediately on a LAN rather than waiting out a timeout, so the
+   * cost is dominated by the few that silently drop packets.
+   *
+   * Concurrency is deliberately bounded and deliberately not large. Measured on
+   * the network this was diagnosed on, 512 at a time swept a full /16 in 51
+   * seconds and found every host; 2048 at a time exhausted the socket table and
+   * every single connect failed, reporting a completely empty network in 15
+   * seconds. A sweep that finds nothing looks exactly like a sweep that found
+   * nothing, so being wrong here is silent, and faster is not better.
+   */
+  private async hostsListeningOn(
+    addresses: string[],
+    port: number,
+    onFound: (ip: string) => void,
+  ): Promise<string[]> {
     const found: string[] = [];
-    await Promise.all(
-      Array.from({ length: 254 }, (_, i) => `${base}.${i + 1}`).map(ip =>
-        new Promise<void>(resolve => {
+    let next = 0;
+
+    const worker = async (): Promise<void> => {
+      while (next < addresses.length) {
+        const ip = addresses[next++];
+        await new Promise<void>(resolve => {
           const sock = new net.Socket();
           let settled = false;
           const done = (listening: boolean) => {
             if (settled) return;
             settled = true;
             sock.destroy();
-            if (listening) found.push(ip);
+            if (listening) { found.push(ip); onFound(ip); }
             resolve();
           };
           sock.setTimeout(HOST_PROBE_TIMEOUT_MS);
@@ -431,8 +518,12 @@ export class DiscoveryService extends EventEmitter {
           sock.once('timeout', () => done(false));
           sock.once('error',   () => done(false));
           sock.connect(port, ip);
-        }),
-      ),
+        });
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(HOST_PROBE_CONCURRENCY, addresses.length) }, worker),
     );
     return found;
   }
@@ -459,18 +550,24 @@ export class DiscoveryService extends EventEmitter {
     if (ifaces.length === 0) return;
     log.debug(`[Discovery] HTTP scan across ${ifaces.length} interface(s)…`);
     for (const iface of ifaces) {
-      const parts = iface.address.split('.');
-      const base  = `${parts[0]}.${parts[1]}.${parts[2]}`;
+      const addresses = this.subnetAddresses(iface);
+      log.debug(`[Discovery] Sweeping ${addresses.length} address(es) from ${iface.address}`);
 
-      const candidates = await this.hostsListeningOn(base, SSC_PORT);
+      // Identify each host the moment the sweep reaches it, rather than
+      // collecting the whole subnet first. On a /16 the sweep takes the better
+      // part of a minute, and holding every result until the end would mean a
+      // receiver sitting in the list of found addresses, already known, waiting
+      // on 65,000 dead ones before anybody was told about it.
+      const identifying: Promise<void>[] = [];
+      const candidates = await this.hostsListeningOn(addresses, SSC_PORT, ip => {
+        identifying.push(this.httpProbeHost(ip).catch(() => {}));
+      });
+      await Promise.allSettled(identifying);
+
       log.debug(
-        `[Discovery] ${base}.0/24: ${candidates.length} host(s) answering on ` +
-        `${SSC_PORT}${candidates.length ? ` (${candidates.join(', ')})` : ''}`,
+        `[Discovery] ${candidates.length} host(s) answering on ${SSC_PORT}` +
+        `${candidates.length ? ` (${candidates.join(', ')})` : ''}`,
       );
-
-      // Few enough that identifying them all at once is not a burst worth
-      // pacing, and each one is a device someone may be waiting to see.
-      await Promise.allSettled(candidates.map(ip => this.httpProbeHost(ip)));
     }
   }
 
