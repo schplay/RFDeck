@@ -18,6 +18,12 @@ const PROBE_CANDIDATES = [
 
 type Scheme = 'https' | 'http';
 
+// How long an EW-DX channel is held back waiting to learn its own name before
+// it is announced regardless. Long enough that the initial fetch nearly always
+// wins the race and no card is ever seen being renamed; short enough that a
+// receiver which never reports a name is late, not absent.
+const EWDX_NAME_GRACE_MS = 2_000;
+
 export class SSCClient extends EventEmitter {
   public ip: string;
   public port: number;
@@ -79,6 +85,10 @@ export class SSCClient extends EventEmitter {
   private udpLoggedOnce = false;
   // EW-DX OpenAPI 1.7: per-channel state accumulated from multiple sub-path SSE events
   private ewdxChannelCache: Map<number, Record<string, any>> = new Map();
+  // Channels waiting for a name before they are first announced, and the ones
+  // that gave up waiting. See mergeEwdxState for why the wait is bounded.
+  private ewdxNameTimers:   Map<number, NodeJS.Timeout> = new Map();
+  private ewdxNameReleased: Set<number> = new Set();
   private ewdxInitialFetchDone = false;
 
   getPassword(): string | null { return this.password; }
@@ -143,6 +153,7 @@ export class SSCClient extends EventEmitter {
     this.sscv2RxMissing = false;
     this.emptyPollCount = 0;
     this.ewdxChannelCache.clear();
+    this.clearEwdxNameWaits();
     this.ewdxInitialFetchDone = false;
     this.stopUdpReceiver();
   }
@@ -254,6 +265,14 @@ export class SSCClient extends EventEmitter {
     return m ? `rx${m[1]}` : null;
   }
 
+  // Drop every pending name wait. Called wherever the channel cache is reset,
+  // so a timer cannot fire against a cache that no longer holds the channel.
+  private clearEwdxNameWaits(): void {
+    for (const timer of this.ewdxNameTimers.values()) clearTimeout(timer);
+    this.ewdxNameTimers.clear();
+    this.ewdxNameReleased.clear();
+  }
+
   // Accumulate per-channel state for EW-DX OpenAPI 1.7 devices where real-time data
   // arrives as separate SSE events from multiple sub-paths (/signalQualityIndicator, /level, etc.)
   private mergeEwdxState(chId: number, update: Record<string, any>): void {
@@ -263,13 +282,48 @@ export class SSCClient extends EventEmitter {
       if (v !== undefined && v !== null) merged[k] = v;
     }
     this.ewdxChannelCache.set(chId, merged);
-    // Hold every channel until its NAME is known, not merely a signal field.
-    // After an SSE reconnect the cache is empty and metrics arrive before the
-    // channel resource does; emitting a nameless channel put a card up under
-    // the fallback label and renamed it seconds later — which re-sorts the
-    // dashboard and reads as a channel flapping. The name arrives within a
-    // second (initial fetch requests it first), so the hold is invisible.
-    if (merged.name === undefined) return;
+
+    // Wait for the channel's NAME before announcing it — but only for a moment.
+    //
+    // After an SSE reconnect the cache is empty and metric events arrive before
+    // the channel resource does, so announcing immediately put a card up under
+    // a fallback label and renamed it a second later, re-sorting the dashboard
+    // and reading as a channel flapping. Waiting fixes that.
+    //
+    // Waiting *indefinitely* does not: the merge above drops null values, so a
+    // receiver that reports `name: null` — an unnamed channel, or firmware that
+    // omits it from /api/channel/{n} — never satisfies the condition, and the
+    // channel is withheld for the life of the process. Every emission below is
+    // withheld with it, including the one that reports the device connected at
+    // all, so a working EW-DX went silent and dark while the G3s beside it were
+    // fine. A cosmetic re-sort is not worth a receiver disappearing.
+    //
+    // So the wait is bounded. The name normally arrives well inside it (the
+    // initial fetch asks for it first), and if it never comes the channel is
+    // announced anyway under the index-derived label.
+    if (merged.name === undefined) {
+      if (!this.ewdxNameReleased.has(chId)) {
+        if (!this.ewdxNameTimers.has(chId)) {
+          this.ewdxNameTimers.set(chId, setTimeout(() => {
+            this.ewdxNameTimers.delete(chId);
+            this.ewdxNameReleased.add(chId);
+            log.debug(
+              `[SSCClient] ${this.ip} channel ${chId + 1} reported no name within ` +
+              `${EWDX_NAME_GRACE_MS}ms — announcing it unnamed`,
+            );
+            // Re-run with no new fields, which now passes the gate above.
+            this.mergeEwdxState(chId, {});
+          }, EWDX_NAME_GRACE_MS));
+        }
+        return;
+      }
+    } else {
+      // The name arrived: stop waiting, and wait again on the next reconnect.
+      const timer = this.ewdxNameTimers.get(chId);
+      if (timer) { clearTimeout(timer); this.ewdxNameTimers.delete(chId); }
+      this.ewdxNameReleased.delete(chId);
+    }
+
     {
       const norm = this.normalizeRx(this.buildEwdxRxObj(merged));
       if (norm) {
@@ -1145,6 +1199,7 @@ export class SSCClient extends EventEmitter {
         this.metadataFetched      = false;
         this.failCount            = 0;
         this.ewdxChannelCache.clear();
+    this.clearEwdxNameWaits();
         this.ewdxInitialFetchDone = false;
         this.stopUdpReceiver();
         this.disconnectSignaled = true;
