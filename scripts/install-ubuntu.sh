@@ -22,6 +22,9 @@
 #   sudo ./scripts/install-ubuntu.sh --no-aes67         skip the AES67 daemon
 #   sudo ./scripts/install-ubuntu.sh --nmos-registry 10.0.0.5   NMOS registry address
 #   sudo ./scripts/install-ubuntu.sh --uninstall
+#   sudo ./scripts/install-ubuntu.sh --accept-data-loss
+#                                       answer yes in advance to a schema change
+#                                       that drops data, for unattended installs
 #
 # Re-running upgrades in place: the database and settings are preserved.
 #
@@ -35,6 +38,9 @@ NODE_MAJOR=24
 REPO_URL=""
 BRANCH="main"
 SKIP_FIREWALL=0
+# Answer yes in advance to a schema change that drops data. For unattended
+# installs; interactively the schema step asks instead.
+ACCEPT_DATA_LOSS=0
 UNINSTALL=0
 USE_TLS=1
 FORCE_CERT=0
@@ -62,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --no-aes67)        WITH_AES67=0; shift ;;
     --nmos-registry)   NMOS_REGISTRY="$2"; shift 2 ;;
     --uninstall)     UNINSTALL=1; shift ;;
+    --accept-data-loss) ACCEPT_DATA_LOSS=1; shift ;;
     # Print the header comment, stopping at the first line of actual script.
     -h|--help)       awk 'NR>2 && /^#/ { sub(/^# ?/,""); print; next } NR>2 { exit }' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -374,14 +381,48 @@ EXISTED=0
 # reads as the install hanging with nothing on screen to explain it. Closing
 # stdin turns that into an immediate, explained failure, and dropping data stays
 # a deliberate choice rather than a side effect of running an update.
-SCHEMA_ARGS=(--filter @rfdeck/server exec prisma db push --skip-generate)
-[[ "${RFDECK_ACCEPT_DATA_LOSS:-0}" == "1" ]] && SCHEMA_ARGS+=(--accept-data-loss)
-if ! SCHEMA_OUT="$(pnpm "${SCHEMA_ARGS[@]}" </dev/null 2>&1)"; then
-  printf '%s\n' "$SCHEMA_OUT"
+# The part of prisma's output that says what would actually be lost. Taken as a
+# span rather than by matching its bullets, which are a multi-byte "•" that a
+# bracket expression cannot match — that silently printed nothing, leaving the
+# operator asked to approve a data loss with no idea what it was.
+data_loss_details() {
+  local span
+  span="$(sed -n '/[Dd]ata loss/,/^Error/p' <<<"$1" | sed '/^Error/d')"
+  [[ -n "${span//[[:space:]]/}" ]] || span="$1"
+  sed 's/^[[:space:]]*/    /' <<<"$span"
+}
+
+schema_push() {
+  pnpm --filter @rfdeck/server exec prisma db push --skip-generate "$@" </dev/null 2>&1
+}
+
+if ! SCHEMA_OUT="$(schema_push)"; then
   if grep -qiE 'accept-data-loss|cannot be executed|data will be lost' <<<"$SCHEMA_OUT"; then
-    die "This release removes something from the database schema. Review the changes above, then re-run with RFDECK_ACCEPT_DATA_LOSS=1 if that is expected."
+    # Ask here rather than letting prisma ask, so the question names what will
+    # be lost and defaults to no. Its stdin is closed so that an unattended
+    # install fails instead of waiting forever on a prompt nobody can see.
+    printf '\n  %s!%s This release needs to remove data from the database.\n\n' "$YEL" "$OFF"
+    data_loss_details "$SCHEMA_OUT"
+    printf '\n'
+    ACCEPTED=0
+    if [[ "${ACCEPT_DATA_LOSS:-0}" == "1" ]]; then
+      ACCEPTED=1
+    elif [[ -r /dev/tty ]]; then
+      read -r -p "  Apply it? [y/N] " REPLY_DL </dev/tty || REPLY_DL=""
+      [[ "$REPLY_DL" =~ ^[Yy]([Ee][Ss])?$ ]] && ACCEPTED=1
+    else
+      warn "Not running interactively - refusing."
+    fi
+    [[ "$ACCEPTED" == "1" ]] \
+      || die "Schema change declined. Nothing was changed. Re-run with --accept-data-loss to allow it."
+    if ! SCHEMA_OUT="$(schema_push --accept-data-loss)"; then
+      printf '%s\n' "$SCHEMA_OUT"
+      die "Applying the database schema failed"
+    fi
+  else
+    printf '%s\n' "$SCHEMA_OUT"
+    die "Applying the database schema failed"
   fi
-  die "Applying the database schema failed"
 fi
 chown "$SERVICE_USER:$SERVICE_USER" "$DB_PATH"
 [[ "$EXISTED" == "1" ]] && ok "Existing database at $DB_PATH updated" \
