@@ -27,7 +27,10 @@ param(
     [int]    $Port = 3000,
     [string] $DataDir,
     [switch] $NoStart,
-    [switch] $Check
+    [switch] $Check,
+    # Answer yes in advance to a schema change that drops data. Interactively
+    # the schema step asks instead.
+    [switch] $AcceptDataLoss
 )
 
 $ErrorActionPreference = 'Stop'
@@ -132,18 +135,37 @@ if ($existed) {
 # Usually additive — new tables and columns, nothing touched — so re-running
 # after a schema change is the intended upgrade path. A release that also
 # REMOVES one makes prisma stop and ask for confirmation, which in a script
-# reads as a hang. Dropping data stays a deliberate choice: set
-# RFDECK_ACCEPT_DATA_LOSS=1 to allow it.
+# reads as a hang. The output is captured and the question asked here instead,
+# naming what would be lost and defaulting to no.
 $schemaArgs = @('--filter', '@rfdeck/server', 'exec', 'prisma', 'db', 'push', '--skip-generate')
-if ($env:RFDECK_ACCEPT_DATA_LOSS -eq '1') { $schemaArgs += '--accept-data-loss' }
-Invoke-Native -Quiet -FailureMessage @'
-Applying the database schema failed.
-
-If it reports a change that cannot be executed, this release removes something
-from the schema. Re-run with RFDECK_ACCEPT_DATA_LOSS=1 if that is expected:
-
-    $env:RFDECK_ACCEPT_DATA_LOSS = '1'
-'@ -Arguments $schemaArgs
+$pushOutput = & pnpm @schemaArgs 2>&1 | ForEach-Object { "$_" }
+if ($LASTEXITCODE -ne 0) {
+    if ($pushOutput -match 'accept-data-loss|cannot be executed|data will be lost') {
+        Write-Host ""
+        Write-Host "!   This release needs to remove data from the database." -ForegroundColor Yellow
+        Write-Host ""
+        $pushOutput | Where-Object { $_ -match '^\s*[•*-]\s' } | ForEach-Object { Write-Host "    $($_.Trim())" }
+        Write-Host ""
+        $accepted = $AcceptDataLoss.IsPresent
+        if (-not $accepted) {
+            # A non-interactive host has nobody to ask, and must not decide on
+            # its own that data is expendable.
+            if ([Environment]::UserInteractive) {
+                $accepted = (Read-Host "  Apply it? [y/N]") -match '^(y|yes)$'
+            } else {
+                Write-Host "!   Not running interactively - refusing." -ForegroundColor Yellow
+            }
+        }
+        if (-not $accepted) {
+            Write-Fail "Schema change declined. Nothing was changed. Re-run with -AcceptDataLoss to allow it."
+        }
+        Invoke-Native -Quiet -FailureMessage "Applying the database schema failed" `
+            -Arguments ($schemaArgs + '--accept-data-loss')
+    } else {
+        $pushOutput | ForEach-Object { Write-Host $_ }
+        Write-Fail "Applying the database schema failed"
+    }
+}
 Write-Ok $(if ($existed) { "Schema up to date" } else { "Database created" })
 
 # ── Firewall ─────────────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@
 #   ./scripts/deploy-server.sh --port 8080     serve on a different port
 #   ./scripts/deploy-server.sh --data /srv/rf  keep the database elsewhere
 #   ./scripts/deploy-server.sh --check         verify prerequisites and exit
+#   ./scripts/deploy-server.sh --accept-data-loss   allow a schema change that drops data
 #
 set -euo pipefail
 
@@ -20,6 +21,9 @@ PORT=3000
 DATA_DIR="$SERVER_DIR"
 START=1
 CHECK_ONLY=0
+# Answer yes in advance to a schema change that drops data; interactively the
+# schema step asks instead.
+ACCEPT_DATA_LOSS=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,6 +31,7 @@ while [[ $# -gt 0 ]]; do
     --data)     DATA_DIR="$2"; shift 2 ;;
     --no-start) START=0; shift ;;
     --check)    CHECK_ONLY=1; shift ;;
+    --accept-data-loss) ACCEPT_DATA_LOSS=1; shift ;;
     -h|--help)  sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
@@ -87,12 +92,21 @@ export DATABASE_URL="file:${DB_PATH//\\//}"
 # Usually additive — new tables and columns, nothing touched. A release that
 # also REMOVES one makes prisma stop and ask for confirmation on stdin, and with
 # stdin attached and the output redirected that reads as the deploy hanging with
-# nothing on screen. Closing stdin turns that into an immediate, explained
-# failure; dropping data stays an explicit choice.
+# nothing on screen. Its stdin is closed so that can never happen, and the
+# question is asked here instead, naming what would be lost.
+# The part of prisma's output that says what would actually be lost. Taken as a
+# span rather than by matching its bullets, which are a multi-byte "•" that a
+# bracket expression cannot match — that silently printed nothing, leaving the
+# operator asked to approve a data loss with no idea what it was.
+data_loss_details() {
+  local span
+  span="$(sed -n '/[Dd]ata loss/,/^Error/p' <<<"$1" | sed '/^Error/d')"
+  [[ -n "${span//[[:space:]]/}" ]] || span="$1"
+  sed 's/^[[:space:]]*/    /' <<<"$span"
+}
+
 schema_push() {
-  local args=(--filter @rfdeck/server exec prisma db push --skip-generate)
-  [[ "${RFDECK_ACCEPT_DATA_LOSS:-0}" == "1" ]] && args+=(--accept-data-loss)
-  pnpm "${args[@]}" </dev/null 2>&1
+  pnpm --filter @rfdeck/server exec prisma db push --skip-generate "$@" </dev/null 2>&1
 }
 
 # Recorded before the push, which creates the file either way.
@@ -105,11 +119,29 @@ else
 fi
 
 if ! push_output="$(schema_push)"; then
-  printf '%s\n' "$push_output"
   if grep -qiE 'accept-data-loss|cannot be executed|data will be lost' <<<"$push_output"; then
-    fail "This release removes something from the database schema. Review the changes above, then re-run with RFDECK_ACCEPT_DATA_LOSS=1 if that is expected."
+    printf '\n\033[33m!  \033[0mThis release needs to remove data from the database.\n\n'
+    data_loss_details "$push_output"
+    printf '\n'
+    accepted=0
+    if [[ "$ACCEPT_DATA_LOSS" == "1" ]]; then
+      accepted=1
+    elif [[ -r /dev/tty ]]; then
+      read -r -p "  Apply it? [y/N] " reply </dev/tty || reply=""
+      [[ "$reply" =~ ^[Yy]([Ee][Ss])?$ ]] && accepted=1
+    else
+      warn "Not running interactively - refusing."
+    fi
+    [[ "$accepted" == "1" ]] \
+      || fail "Schema change declined. Nothing was changed. Re-run with --accept-data-loss to allow it."
+    if ! push_output="$(schema_push --accept-data-loss)"; then
+      printf '%s\n' "$push_output"
+      fail "Applying the database schema failed"
+    fi
+  else
+    printf '%s\n' "$push_output"
+    fail "Applying the database schema failed"
   fi
-  fail "Applying the database schema failed"
 fi
 [[ "$DB_EXISTED" == "1" ]] && ok "Schema up to date" || ok "Database created"
 

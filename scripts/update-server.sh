@@ -14,6 +14,10 @@
 #   sudo ./scripts/update-server.sh --pull          git pull first, then update
 #   sudo ./scripts/update-server.sh --rollback      undo the last update
 #   sudo ./scripts/update-server.sh --no-restart    build without restarting
+#   sudo ./scripts/update-server.sh --accept-data-loss
+#                                                   answer yes in advance to a
+#                                                   schema change that drops
+#                                                   data, for unattended runs
 #
 # Use install-ubuntu.sh instead when changing configuration — port, TLS, AES67 —
 # since those live in the systemd unit this script deliberately leaves alone.
@@ -26,12 +30,16 @@ SNAPSHOT_DIR=/var/backups/rfdeck
 DO_PULL=0
 DO_ROLLBACK=0
 RESTART=1
+# Answered by the operator when the update reaches the schema step. The flag is
+# for runs with nobody watching, where there is no one to ask.
+ACCEPT_DATA_LOSS=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --pull)        DO_PULL=1; shift ;;
     --rollback)    DO_ROLLBACK=1; shift ;;
     --no-restart)  RESTART=0; shift ;;
+    --accept-data-loss) ACCEPT_DATA_LOSS=1; shift ;;
     --install-dir) INSTALL_DIR="$2"; shift 2 ;;
     -h|--help)     awk 'NR>2 && /^#/ { sub(/^# ?/,""); print; next } NR>2 { exit }' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -276,28 +284,68 @@ step "Applying schema changes"
 # script: dropping a column is irreversible and the data may matter. It is
 # reported, with the release notes to check, and taken only when asked for.
 schema_push() {
-  local args=(--filter @rfdeck/server exec prisma db push --skip-generate)
-  [[ "${RFDECK_ACCEPT_DATA_LOSS:-0}" == "1" ]] && args+=(--accept-data-loss)
-  pnpm "${args[@]}" </dev/null 2>&1
+  pnpm --filter @rfdeck/server exec prisma db push --skip-generate "$@" </dev/null 2>&1
+}
+
+# Does this failure mean the change is destructive rather than broken?
+is_data_loss() {
+  grep -qiE 'accept-data-loss|cannot be executed|data will be lost' <<<"$1"
+}
+
+# The part of prisma's output that says what would actually be lost.
+#
+# Taken as the span between its warning heading and the error line that follows
+# it, rather than by matching the bullets: prisma marks them with a multi-byte
+# "•", which cannot be matched inside a bracket expression and silently matched
+# nothing — leaving the operator asked to approve a data loss with no idea what
+# it was. Falls back to the whole output, which is verbose but never empty.
+data_loss_details() {
+  local span
+  span="$(sed -n '/[Dd]ata loss/,/^Error/p' <<<"$1" | sed '/^Error/d')"
+  [[ -n "${span//[[:space:]]/}" ]] || span="$1"
+  sed 's/^[[:space:]]*/    /' <<<"$span"
+}
+
+# Ask, in the terminal the operator is already standing in front of.
+#
+# Prisma would ask this itself, but only in its own words, and only when it can
+# see a terminal — which it cannot here, because its stdin is closed to stop it
+# blocking an unattended run. So the question is asked properly instead: what
+# will be lost, where the backup is, and a default of no.
+confirm_data_loss() {
+  printf '\n  %s!%s %sThis update needs to remove data from the database.%s\n\n' \
+    "$YEL" "$OFF" "$BOLD" "$OFF"
+  printf '%s\n' "$(data_loss_details "$1")"
+  printf '\n    Backup taken before this step:\n      %s%s%s\n' \
+    "$DIM" "${DB_BACKUP:-none - no database found}" "$OFF"
+  printf '    Undo with:  sudo ./scripts/update-server.sh --rollback\n\n'
+
+  # No terminal means nobody to ask. Refusing is the only safe answer: an
+  # unattended run must not decide on its own that data is expendable.
+  if [[ ! -r /dev/tty ]]; then
+    warn "Not running interactively - refusing. Re-run with --accept-data-loss to allow it."
+    return 1
+  fi
+
+  local reply=''
+  read -r -p "  Apply it? [y/N] " reply </dev/tty || return 1
+  [[ "$reply" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 
 if ! push_output="$(schema_push)"; then
-  printf '%s\n' "$push_output"
-  if grep -qiE 'accept-data-loss|cannot be executed|data will be lost' <<<"$push_output"; then
-    build_failed "$(cat <<EOF
-This update removes something from the database schema, so it needs a decision.
-
-Read what is listed above. If losing it is expected for this release, re-run
-the same command with RFDECK_ACCEPT_DATA_LOSS=1, for example:
-
-    sudo RFDECK_ACCEPT_DATA_LOSS=1 ./scripts/update-server.sh --pull
-
-Nothing has been changed. The database was backed up at the start of this run:
-    ${DB_BACKUP:-none taken}
-EOF
-)"
+  if is_data_loss "$push_output"; then
+    if [[ "$ACCEPT_DATA_LOSS" == "1" ]] || confirm_data_loss "$push_output"; then
+      if ! push_output="$(schema_push --accept-data-loss)"; then
+        printf '%s\n' "$push_output"
+        build_failed "Applying the database schema failed"
+      fi
+    else
+      build_failed "Schema change declined - nothing was changed, and the previous build has been restored."
+    fi
+  else
+    printf '%s\n' "$push_output"
+    build_failed "Applying the database schema failed"
   fi
-  build_failed "Applying the database schema failed"
 fi
 ok "Schema up to date"
 
