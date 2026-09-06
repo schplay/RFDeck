@@ -730,8 +730,11 @@ Full reference including troubleshooting: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT
 # 1. Install dependencies
 pnpm install
 
-# 2. Generate the Prisma client (first time only)
+# 2. Generate the Prisma client and create the local database (first time only)
+#    The database is not in the repository — it would carry whoever's inventory
+#    and show history happened to be committed — so a fresh clone makes its own.
 pnpm --filter @rfdeck/server prisma:generate
+pnpm --filter @rfdeck/server prisma:push
 
 # 3. Start the Desktop App (Recommended)
 # Builds the server + frontend, then opens the Electron window.
