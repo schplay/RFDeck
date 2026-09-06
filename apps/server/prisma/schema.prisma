@@ -37,10 +37,6 @@ model InventoryDevice {
   mac                String?
   serial             String?
   firmware           String?
-  // The name stored on the hardware itself (a G3's channel label). Recorded at
-  // first connect and used to re-identify the device after an IP change even
-  // when the operator has renamed the inventory row and no MAC is on record.
-  hardwareLabel      String?
   addedAt            DateTime @default(now())
 
   maintenance        MaintenanceEntry[]
@@ -131,8 +127,12 @@ model Settings {
 model Detection {
   id          String   @id @default(uuid())
   timestamp   DateTime @default(now())
-  // Channel NAME — survives a device IP change, as everywhere else.
+  // Stable channel id: the inventory row's uuid and the receiver slot. Never a
+  // name — a channel relabelled on the hardware must not orphan the incidents
+  // already filed against it.
   channelKey  String
+  // What it was called at the time, for display in the history. A snapshot,
+  // never a key.
   channelName String?
   deviceId    String?
   // What raised it: RF_DROPOUT for now; audio-signature triggers later.
@@ -165,8 +165,9 @@ model Detection {
 // every client should see the same mapping. Any device, any input: nothing here
 // assumes a channel count or a single interface.
 model ChannelAudioMap {
-  // Channel NAME, matching the rest of the app — ids embed the device IP and
-  // would break on DHCP reassignment.
+  // Stable channel id: the inventory row's uuid and the receiver slot. RFDeck
+  // owns the uuid and the slot is physical, so the patch survives a DHCP
+  // reassignment, a rename on the hardware, and a rename of the row.
   channelKey   String @id
   // ALSA device on the server, e.g. "hw:1,0".
   deviceId     String
@@ -243,12 +244,13 @@ model Player {
   realName           String
   characterName      String     @default("")
   notes              String     @default("")
-  // Channel NAME, not channel id — ids embed the device IP, which changes on
-  // DHCP reassignment. A show must survive a power cycle that moves receivers.
+  // Stable channel id: the inventory row's uuid and the receiver slot. A show
+  // must survive a power cycle that moves receivers, and equally a channel
+  // being relabelled at the rack — neither may cost a performer their mic
+  // assignment.
   assignedChannelKey String?
-  // The performer's IEM, by channel name, on the same terms as the mic. Kept
-  // separate because the soundcheck is about mics only; IEMs are assigned
-  // but not checked there.
+  // The performer's IEM, on the same terms as the mic. Kept separate because
+  // the soundcheck is about mics only; IEMs are assigned but not checked there.
   iemChannelKey      String?
   sortIndex          Int        @default(0)
 
@@ -270,8 +272,9 @@ model Event {
   // INFO | WARNING | CRITICAL
   severity       String   @default("INFO")
   message        String
-  // Channel NAME — survives a device IP change, unlike the channel id.
+  // Stable channel id: the inventory row's uuid and the receiver slot.
   channelKey     String?
+  // What it was called at the time. A snapshot for display, never a key.
   channelName    String?
   deviceId       String?
   rfLevelA       Int?

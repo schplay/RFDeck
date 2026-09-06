@@ -44,6 +44,16 @@ export class DeviceManagerService extends EventEmitter {
   private io: Server;
   private clients: Map<string, ClientType> = new Map();
   private channelCache: Map<string, Channel> = new Map();
+  // ip:port → the inventory row that address belongs to.
+  //
+  // The row id is RFDeck's own uuid: it is assigned when the device is added
+  // and never changes, for any reason. "ip:port" is merely where the device
+  // answers today. Everything that has to outlive a power cycle keys on the
+  // row id; only live routing keys on the address.
+  private deviceRowIds: Map<string, string> = new Map();
+  // Channels whose persisted records have already been checked for keys left
+  // over from when a channel was identified by its name.
+  private keysMigrated: Set<string> = new Set();
   private deviceNames: Map<string, string> = new Map(); // base id → user-assigned name
   // base id → what the device is for. An IEM transmitter has no RF and no
   // transmitter battery, and alerting on their absence is how a working
@@ -69,8 +79,6 @@ export class DeviceManagerService extends EventEmitter {
   private lostIps = new Set<string>();
   // Scans on a cadence while any tracked device is unreachable. See start().
   private recoveryTimer: NodeJS.Timeout | null = null;
-  // One hardware-label write per tracking session; cleared on untrack.
-  private labelRecorded = new Set<string>();
   // Recent disconnect timestamps per ip. A device that reconnects inside the
   // loss debounce never reaches the event log, so rapid churn was invisible —
   // exactly the failure an operator watching a flapping card needs named.
@@ -220,11 +228,15 @@ export class DeviceManagerService extends EventEmitter {
   // Called via REST API when user adds a device
   public trackDevice(
     device: {
+      id?: string;
       ip: string; port: number; name?: string;
       manufacturer?: string; model?: string; deviceType?: string;
     },
   ) {
     const id = `${device.ip}:${device.port}`;
+    // Callers pass the inventory row, so this is present in practice. It is
+    // what every durable record about this device's channels is keyed on.
+    if (device.id) this.deviceRowIds.set(id, device.id);
     log.debug(`[DeviceManager] trackDevice called for ${device.name ?? id} at ${id}`);
     if (this.clients.has(id)) {
       log.debug(`[DeviceManager] Already tracking ${id}, skipping`);
@@ -380,8 +392,9 @@ export class DeviceManagerService extends EventEmitter {
       log.info(`[DeviceManager] Deactivating "${device.name ?? id}" — stopping tracking`);
       // Cancel any pending dropout timers for this device's channels so a
       // deactivation mid-dropout can't fire an alert after the fact.
+      const prefix = this.channelIdPrefix(id);
       for (const [channelId, timer] of this.pendingDropouts) {
-        if (channelId.startsWith(id)) {
+        if (channelId.startsWith(prefix)) {
           clearTimeout(timer);
           this.pendingDropouts.delete(channelId);
         }
@@ -407,24 +420,23 @@ export class DeviceManagerService extends EventEmitter {
     this.clearChannelsForDevice(id);
     // Drop RF state and any pending dropout timers for this device — a device
     // we stop tracking must not fire an alert after the fact.
+    const prefix = this.channelIdPrefix(id);
     for (const key of [...this.rfStates.keys()]) {
-      if (key.startsWith(id)) this.rfStates.delete(key);
+      if (key.startsWith(prefix)) this.rfStates.delete(key);
     }
     for (const [key, timer] of this.pendingDropouts) {
-      if (key.startsWith(id)) { clearTimeout(timer); this.pendingDropouts.delete(key); }
+      if (key.startsWith(prefix)) { clearTimeout(timer); this.pendingDropouts.delete(key); }
     }
     // Discard battery history — a device that comes back after being off has a
     // discontinuous curve, and projecting across the gap would be wrong.
     for (const key of [...this.batteryHistory.keys()]) {
-      if (key.startsWith(id)) {
+      if (key.startsWith(prefix)) {
         this.batteryHistory.delete(key);
         this.batteryEstimates.delete(key);
         this.lastBatterySampleAt.delete(key);
       }
     }
     this.genuinelyOnlineIps.delete(ip);
-    this.labelRecorded.delete(id);
-    this.labelRecorded.delete(`${id}-legacy`);
     this.orphanAlerted.delete(ip);
     // A fresh client will re-evaluate the password; do not carry the verdict.
     if (this.authFailed.delete(id)) {
@@ -446,21 +458,6 @@ export class DeviceManagerService extends EventEmitter {
   private setupClientListeners(client: ClientType, ip: string, port: number, id: string) {
     client.on('state', (stateTree: any) => {
       this.lastSeen.set(id, Date.now());
-
-      // Record the device's own label once per tracking session. It is the
-      // durable identity for hardware with no readable serial or MAC — set on
-      // the unit, it survives IP changes and inventory renames, and it is what
-      // discovery reports, so reconciliation can match on it later.
-      if (!this.labelRecorded.has(id)) {
-        const label = stateTree?.rx1?.name;
-        if (typeof label === 'string' && label.trim()) {
-          this.labelRecorded.add(id);
-          prisma.inventoryDevice.updateMany({
-            where: { ip },
-            data:  { hardwareLabel: label.trim() },
-          }).catch(() => { this.labelRecorded.delete(id); });
-        }
-      }
 
       this.normalizeAndEmit(id, stateTree);
     });
@@ -756,11 +753,106 @@ export class DeviceManagerService extends EventEmitter {
     });
   }
 
-  private clearChannelsForDevice(deviceId: string) {
+  // Move records that were filed under a channel's NAME onto its stable id.
+  //
+  // Every durable record used to be keyed on the name, so an existing install
+  // has patches, mic-check ticks, detections and events filed under strings
+  // like "Vocal 1". Those must not be stranded: an operator who upgrades
+  // between shows would find the audio patch silently unassigned and a
+  // season's mic-check history detached.
+  //
+  // Runs once per channel, the first time it is seen, rather than as a
+  // migration over the whole database — the mapping from name to stable id
+  // only exists while the device is connected and reporting that channel, and
+  // devices come online at different times. Nothing is overwritten: a record
+  // already under the stable id means this channel has been migrated, or the
+  // operator has set it since, and either way the new key wins.
+  private async adoptLegacyChannelKeys(stableId: string, name: string | null): Promise<void> {
+    if (this.keysMigrated.has(stableId)) return;
+    this.keysMigrated.add(stableId);
+
+    const legacyKey = (name ?? '').trim();
+    if (!legacyKey || legacyKey === stableId) return;
+
+    try {
+      // The audio patch, whose key is the primary key, so it is moved rather
+      // than updated. Skipped entirely if this channel already has a patch.
+      const [existing, legacy] = await Promise.all([
+        prisma.channelAudioMap.findUnique({ where: { channelKey: stableId } }),
+        prisma.channelAudioMap.findUnique({ where: { channelKey: legacyKey } }),
+      ]);
+      if (!existing && legacy) {
+        await prisma.channelAudioMap.create({
+          data: {
+            channelKey:   stableId,
+            deviceId:     legacy.deviceId,
+            inputChannel: legacy.inputChannel,
+          },
+        });
+        await prisma.channelAudioMap.delete({ where: { channelKey: legacyKey } });
+        log.info(`[DeviceManager] Audio patch for "${legacyKey}" moved onto its stable channel id`);
+      }
+
+      // History. Re-keyed in place, since none of these have the key as their
+      // primary key and a name collision between two channels would only
+      // affect which incidents are grouped, not whether they survive.
+      const [ticks, detections, events, mics, iems] = await Promise.all([
+        prisma.micCheckEntry.updateMany({ where: { channelKey: legacyKey }, data: { channelKey: stableId } }),
+        prisma.detection.updateMany({    where: { channelKey: legacyKey }, data: { channelKey: stableId } }),
+        prisma.event.updateMany({        where: { channelKey: legacyKey }, data: { channelKey: stableId } }),
+        // Cast assignments, so nobody loses their mic to a relabel.
+        prisma.player.updateMany({ where: { assignedChannelKey: legacyKey }, data: { assignedChannelKey: stableId } }),
+        prisma.player.updateMany({ where: { iemChannelKey:      legacyKey }, data: { iemChannelKey:      stableId } }),
+      ]);
+      const moved = ticks.count + detections.count + events.count + mics.count + iems.count;
+      if (moved > 0) {
+        log.info(
+          `[DeviceManager] Re-keyed ${moved} record(s) from channel name "${legacyKey}" ` +
+          `onto its stable id — a rename can no longer orphan them`,
+        );
+      }
+    } catch (err: any) {
+      // Never fatal: this is housekeeping, and a channel must still appear.
+      this.keysMigrated.delete(stableId);
+      log.warn(`[DeviceManager] Could not re-key records for "${legacyKey}": ${err?.message}`);
+    }
+  }
+
+  // The identifier a channel keeps for as long as it exists.
+  //
+  // Built from the inventory row's uuid and the receiver slot, because those
+  // are the only two things about a channel that cannot change underneath it.
+  // Not the address, which DHCP reassigns; not the name, which belongs to the
+  // hardware, is not RFDeck's to rely on, and can be edited at the rack in the
+  // middle of a show.
+  //
+  // Everything durable keys on this: the audio patch, mic-check ticks,
+  // detections, the event log, the operator's card order. Before it existed
+  // they keyed on the channel name, so relabelling a channel silently detached
+  // its patch and orphaned its history.
+  //
+  // Falls back to the old address-based form only while the row id is unknown,
+  // which in practice means a device tracked from something other than an
+  // inventory row.
+  private stableChannelId(deviceId: string, slot: number): string {
     const baseId = deviceId.replace(/-legacy$/, '');
+    const rowId  = this.deviceRowIds.get(baseId);
+    return rowId ? `${rowId}:${slot}` : `${deviceId}-rx${slot}`;
+  }
+
+  // The prefix every channel id for this device starts with, for the maps that
+  // are scoped per device rather than per channel.
+  private channelIdPrefix(deviceId: string): string {
+    const baseId = deviceId.replace(/-legacy$/, '');
+    const rowId  = this.deviceRowIds.get(baseId);
+    return rowId ? `${rowId}:` : `${deviceId}-rx`;
+  }
+
+  private clearChannelsForDevice(deviceId: string) {
+    const prefix = this.channelIdPrefix(deviceId);
     const toDelete: string[] = [];
     for (const channelId of this.channelCache.keys()) {
-      if (channelId.startsWith(baseId)) toDelete.push(channelId);
+      if (channelId.startsWith(prefix)) toDelete.push(channelId);
     }
     for (const channelId of toDelete) {
       this.channelCache.delete(channelId);
@@ -924,41 +1016,28 @@ export class DeviceManagerService extends EventEmitter {
         // Warn, not debug: this being invisible hid a lookup that failed on
         // every headless server (`arp` is not installed on modern Ubuntu), and
         // with it the whole G3 recovery path.
-        log.warn(`[DeviceManager] No MAC for ${ip} from the neighbour table — matching by name only`);
+        log.warn(
+          `[DeviceManager] No MAC for ${ip} from the neighbour table — this ` +
+          `device cannot be matched to an inventory row automatically`,
+        );
       }
 
-      let stale = mac
+      // The MAC is the only key trusted here, because it is the only one the
+      // hardware cannot be talked out of.
+      //
+      // This used to fall back to matching the label the unit reports over
+      // MCP, on the reasoning that it is set on the device and survives an
+      // address change. Both halves are true and it is still the wrong key: a
+      // label is not ours, carries no guarantee of being unique, and is edited
+      // at the rack by whoever is holding the receiver. Matching on it meant a
+      // relabelled G3 could be adopted as a different unit's record — silently
+      // moving that unit's history, patch and mic-check ticks onto the wrong
+      // hardware. A device RFDeck cannot identify is reported as unmatched,
+      // below, and the operator points it at the right row. Being asked is a
+      // far better outcome than being wrong.
+      const stale = mac
         ? await prisma.inventoryDevice.findFirst({ where: { mac, active: true, NOT: { ip } } })
         : null;
-
-      // MAC match is the strong key, but many G3 rows have none recorded —
-      // the lookup was broken on headless servers for months, so their MACs
-      // were never learned. The device NAME is the fallback: MCP discovery
-      // reports the unit's own label, which is set on the hardware and
-      // survives any address change. Only trusted when it matches exactly one
-      // G3 row, so two units sharing a label cannot be cross-migrated.
-      if (!stale && discoveredName?.trim()) {
-        // Discovery reports the label stored ON the hardware. Match it against
-        // the recorded hardware label first — inventory renames do not touch
-        // that — and against the row name as well, for rows that predate label
-        // recording and were never renamed. Only a unique match is trusted.
-        const label = discoveredName.trim();
-        const byName = await prisma.inventoryDevice.findMany({
-          where: {
-            port: 53212, active: true, NOT: { ip },
-            OR: [{ hardwareLabel: label }, { name: label }],
-          },
-        });
-        if (byName.length === 1) {
-          stale = byName[0];
-          log.warn(`[DeviceManager] tryAutoReconcile: matched "${label}" by hardware label (no MAC on record)`);
-        } else if (byName.length > 1) {
-          log.warn(
-            `[DeviceManager] ${byName.length} G3 devices labelled "${label}" — ` +
-            `cannot tell which one moved to ${ip}; not reconciling`,
-          );
-        }
-      }
 
       if (!stale) {
         // A discovered G3 that matches nothing, while G3 rows sit unreachable,
@@ -1054,7 +1133,7 @@ export class DeviceManagerService extends EventEmitter {
       if (sscState[rx] && typeof sscState[rx] === 'object') {
         const rxData = sscState[rx];
 
-        const channelId = `${deviceId}-${rx}`;
+        const channelId = this.stableChannelId(deviceId, index + 1);
 
         // RF quality: G3/G4 sends 0-100 directly; SSCv2 also 0-100.
         // rf_quality may be undefined for IEM/output devices that don't receive RF —
@@ -1080,7 +1159,7 @@ export class DeviceManagerService extends EventEmitter {
         // rx2 identically to rx1. The rx index itself, and any cached
         // siblings, are what actually establish a multi-channel device.
         const hasSiblings = [...this.channelCache.keys()]
-          .some(k => k.startsWith(`${deviceId}-`) && k !== channelId);
+          .some(k => k.startsWith(this.channelIdPrefix(deviceId)) && k !== channelId);
         const fallbackName = (channelCount > 1 || index > 0 || hasSiblings)
           ? `${deviceLabel} CH${index + 1}`
           : deviceLabel;
@@ -1136,6 +1215,11 @@ export class DeviceManagerService extends EventEmitter {
           status,
         };
 
+
+        // Anything filed against this channel under its name, before channels
+        // had an id that could not change, is moved across the first time the
+        // channel is seen.
+        void this.adoptLegacyChannelKeys(channelId, newChannel.name);
 
         // Check if anything changed
         const oldChannel = this.channelCache.get(channelId);
@@ -1297,7 +1381,7 @@ export class DeviceManagerService extends EventEmitter {
     // stays independent of whether recording exists at all.
     if (type === 'DROPOUT') {
       this.emit('rf:detection', {
-        channelKey:  channel.name,
+        channelKey:  channelId,
         channelName: channel.name,
         deviceId,
         trigger:     'RF_DROPOUT',
@@ -1318,7 +1402,7 @@ export class DeviceManagerService extends EventEmitter {
         type,
         severity: type === 'DROPOUT' ? 'CRITICAL' : 'INFO',
         message: type === 'DROPOUT' ? 'Signal dropout' : 'Signal recovered',
-        channelKey: channel.name,
+        channelKey: channelId,
         channelName: channel.name,
         deviceId,
         rfLevelA: Math.round(channel.rfLevelA),
@@ -1463,7 +1547,9 @@ export class DeviceManagerService extends EventEmitter {
         type: String(params.type),
         severity: String(params.severity),
         message: params.message,
-        channelKey: params.channelName ?? null,
+        // The id, never the name: an alert must stay attached to the channel
+        // that raised it even after someone relabels that channel at the rack.
+        channelKey: params.channelId ?? null,
         channelName: params.channelName ?? null,
         deviceId: params.deviceId ?? null,
       },
