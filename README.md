@@ -600,6 +600,7 @@ installed on `PATH` by `install-ubuntu.sh`.
 rfdeck status              # access and audio configuration at a glance
 rfdeck set-pin 4821        # require a PIN from remote devices
 rfdeck disable-pin         # network becomes open again
+rfdeck devices             # inventory, and how RFDeck reads each row
 rfdeck audio-devices       # capture devices and the current channel patch
 rfdeck audio-level hw:2,0  # capture a second and report the level on each
                            # input — is signal reaching this machine at all?

@@ -23,6 +23,8 @@ RFDeck server administration
   rfdeck set-pin <pin> [--reauth-hours N]
                                       Set the remote-access PIN and enable it
   rfdeck disable-pin                  Turn off the PIN (network becomes open)
+  rfdeck devices                      List inventory devices and how RFDeck
+                                      reads each one
   rfdeck audio-devices                List capture devices on this machine
   rfdeck audio-level <device> [input ...]
                                       Capture one second and report the level
@@ -57,6 +59,55 @@ async function cmdStatus(): Promise<void> {
   const patches = await prisma.channelAudioMap.count();
   console.log('\nAudio');
   console.log(`  Channels patched : ${patches}`);
+}
+
+/**
+ * What the inventory actually holds, and how RFDeck reads each row.
+ *
+ * The model string is not decoration: it decides which client is built, and
+ * whether the SSCv2 -> G3/G4 fallback may claim a device. A receiver added
+ * without one is stored as "Sennheiser Device", which names nothing — and on a
+ * headless server there was no way to see that short of opening the database.
+ * Diagnosing a device that will not connect started with a guess about data
+ * nobody could read.
+ */
+async function cmdDevices(): Promise<void> {
+  const { isSscModel, isPlaceholderModel, inferDeviceRole } =
+    await import('./hardware/deviceRole');
+
+  const devices = await prisma.inventoryDevice.findMany({ orderBy: { name: 'asc' } });
+  if (devices.length === 0) {
+    console.log('No devices in inventory.');
+    return;
+  }
+
+  const w = (v: string, n: number) => v.padEnd(n).slice(0, n);
+  console.log(
+    `${w('NAME', 16)} ${w('MODEL', 22)} ${w('ADDRESS', 21)} ${w('TYPE', 7)} ${w('ACTIVE', 7)} NOTES`,
+  );
+
+  for (const d of devices) {
+    const notes: string[] = [];
+    if (isPlaceholderModel(d.model, d.manufacturer)) {
+      notes.push('model is a placeholder — RFDeck cannot tell what this is');
+    } else if (isSscModel(d.model)) {
+      notes.push('SSC receiver: never downgraded to G3/G4');
+    }
+    if (!d.deviceTypeManual && inferDeviceRole(d.model, d.name)) {
+      notes.push('type was detected, not set');
+    }
+
+    console.log(
+      `${w(d.name, 16)} ${w(d.model, 22)} ${w(`${d.ip}:${d.port}`, 21)} ` +
+      `${w(d.deviceType, 7)} ${w(d.active ? 'yes' : 'no', 7)} ${notes.join('; ')}`,
+    );
+  }
+
+  console.log(
+    '\nA placeholder model is worth fixing: it is what decides whether a\n' +
+    'transient disconnect can hand an EW-DX to the G3/G4 client. RFDeck records\n' +
+    'the real model itself once the device connects and reports one.',
+  );
 }
 
 async function cmdSetPin(argv: string[]): Promise<void> {
@@ -263,6 +314,7 @@ async function main(): Promise<void> {
     case 'set-pin':        await cmdSetPin(rest); break;
     case 'disable-pin':    await cmdDisablePin(); break;
     case 'audio-devices':  await cmdAudioDevices(); break;
+    case 'devices':        await cmdDevices(); break;
     case 'audio-level':    await cmdAudioLevel(rest); break;
     case undefined:
     case '-h':

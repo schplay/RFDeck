@@ -30,6 +30,15 @@ import { log } from '../../logger';
 // shared `state` / `connected` / `disconnected` contract.
 type ClientType = SSCClient | G3G4Client | ShureClient | Digital6000Client;
 
+/**
+ * How often an SSC client keeps trying while an MCP stand-in is running.
+ *
+ * Slow, not stopped. A device that turns out to be an EW-DX after all is then
+ * still found, and a device that really is a G3 costs one failed request every
+ * fifteen seconds instead of four a second.
+ */
+const SSC_RETRY_WHILE_LEGACY_MS = 15_000;
+
 export class DeviceManagerService extends EventEmitter {
   private discovery: DiscoveryService;
   private io: Server;
@@ -269,7 +278,23 @@ export class DeviceManagerService extends EventEmitter {
 
     // Proof beats inference: once this device has answered as SSCv2, no
     // disconnect may hand it to a client that cannot speak to it.
-    client.on('connected', () => { this.sscProven.add(id); });
+    client.on('connected', () => {
+      this.sscProven.add(id);
+
+      // It speaks SSC after all, so retire the MCP stand-in if one was started.
+      // Without this the fallback stayed forever even once the device proved
+      // the fallback was unnecessary.
+      const legacy = this.clients.get(`${id}-legacy`);
+      if (legacy) {
+        legacy.stopPolling();
+        this.clients.delete(`${id}-legacy`);
+        this.clearChannelsForDevice(`${id}-legacy`);
+        log.info(
+          `[DeviceManager] ${device.ip} answered as SSCv2 — dropping the G3/G4 ` +
+          `client that was standing in for it`,
+        );
+      }
+    });
 
     client.on('disconnected', () => {
       // The SSCv2 -> G3/G4 fallback is a one-way door: it stops the SSC client
@@ -293,11 +318,23 @@ export class DeviceManagerService extends EventEmitter {
       }
 
       if (!this.clients.get(`${id}-legacy`)) {
+        // Slow the SSC client down; do NOT stop it.
+        //
+        // Stopping it was the one-way door. SSCClient polls on an interval and
+        // recovers on its own — it never gives up — so stopping it threw away
+        // the only thing that could bring an EW-DX back, and the MCP client
+        // put in its place can never reach one. The original reason was log
+        // noise from probing a G3 that will never answer on 443, and slowing
+        // the retry solves that without the door.
         const ssc = this.clients.get(id);
         if (ssc instanceof SSCClient) {
           ssc.stopPolling();
+          ssc.startPolling(SSC_RETRY_WHILE_LEGACY_MS);
         }
-        log.debug(`[DeviceManager] SSCv2 failed for ${device.ip}, falling back to G3/G4 MCP`);
+        log.info(
+          `[DeviceManager] ${device.ip} did not answer as SSCv2 — trying G3/G4 MCP. ` +
+          `SSC keeps retrying every ${SSC_RETRY_WHILE_LEGACY_MS / 1000}s in case it is one.`,
+        );
         const legacyClient = new G3G4Client(device.ip, device.port);
         this.clients.set(`${id}-legacy`, legacyClient);
         this.setupClientListeners(legacyClient, device.ip, device.port, `${id}-legacy`);
