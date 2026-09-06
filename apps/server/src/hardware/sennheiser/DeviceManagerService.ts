@@ -841,12 +841,25 @@ export class DeviceManagerService extends EventEmitter {
   // devices come online at different times. Nothing is overwritten: a record
   // already under the stable id means this channel has been migrated, or the
   // operator has set it since, and either way the new key wins.
-  private async adoptLegacyChannelKeys(stableId: string, name: string | null): Promise<void> {
+  private async adoptLegacyChannelKeys(stableId: string, reportedName: string | null): Promise<void> {
     if (this.keysMigrated.has(stableId)) return;
-    this.keysMigrated.add(stableId);
 
-    const legacyKey = (name ?? '').trim();
-    if (!legacyKey || legacyKey === stableId) return;
+    // Only the name the DEVICE reported can be matched against, and only once
+    // it has actually arrived.
+    //
+    // This used to take whatever the channel was currently called, which is the
+    // hardware name or, before it arrives, a fallback like "Rack 1 CH2". Metric
+    // events routinely reach RFDeck before the channel resource does, so the
+    // first frame after a reconnect ran this against the fallback, matched
+    // nothing, and marked the channel migrated for good — stranding the rows
+    // filed under the real name. The patch, the mic-check ticks and the cast
+    // assignments were all still in the database, and nothing would ever look
+    // for them again.
+    const legacyKey = (reportedName ?? '').trim();
+    if (!legacyKey) return;
+
+    this.keysMigrated.add(stableId);
+    if (legacyKey === stableId) return;
 
     try {
       // The audio patch, whose key is the primary key, so it is moved rather
@@ -1318,9 +1331,13 @@ export class DeviceManagerService extends EventEmitter {
 
 
         // Anything filed against this channel under its name, before channels
-        // had an id that could not change, is moved across the first time the
-        // channel is seen.
-        void this.adoptLegacyChannelKeys(channelId, newChannel.name);
+        // had an id that could not change, is moved across once the device has
+        // said what the channel is called. The fallback label is deliberately
+        // not passed: it matches nothing, and passing it would end the search.
+        void this.adoptLegacyChannelKeys(
+          channelId,
+          typeof rxData.name === 'string' && rxData.name.trim() ? rxData.name : null,
+        );
 
         // Check if anything changed
         const oldChannel = this.channelCache.get(channelId);

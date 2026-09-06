@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Channel } from '@rfdeck/shared-types';
+import { Channel, Show, ENVIRONMENTS } from '@rfdeck/shared-types';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import { useDeviceStore } from '../../stores/deviceStore';
@@ -27,7 +27,10 @@ interface Assignment {
 
 interface MicboardData {
   live: boolean;
-  show: { id: string; name: string; currentAct: number } | null;
+  show: {
+    id: string; name: string; currentAct: number;
+    environmentMode: Show['environmentMode'];
+  } | null;
   assignments: Record<string, Assignment>;
 }
 
@@ -106,12 +109,28 @@ export default function MicboardView() {
     return m;
   }, [inventory]);
 
-  // Alphabetical: a wall display has no operator to reorder it, and a stable
-  // order is what lets someone find a name in the same place every time.
-  const tiles = useMemo(
-    () => [...channels].sort((a, b) => (a.name || '').localeCompare(b.name || '')),
-    [channels],
-  );
+  // Only channels somebody is actually on.
+  //
+  // The Micboard answers "who is live and are they working" for the people in
+  // the room — a spare receiver on a shelf and an unassigned IEM feed are not
+  // part of that question, and a wall of them buries the names that matter.
+  // Backstage is the view that shows the whole rack, for the operator who
+  // needs it.
+  //
+  // Falls back to showing everything only when no show is running, since a
+  // rehearsal with no cast list would otherwise be a blank wall with nothing to
+  // explain it.
+  const tiles = useMemo(() => {
+    const assigned = data.show
+      ? channels.filter(ch => data.assignments[channelKey(ch)])
+      : channels;
+    // Alphabetical, comparing numbers as numbers, so "Vocal 10" does not sit
+    // between "Vocal 1" and "Vocal 2". A wall display has no operator to
+    // reorder it: a name has to be in the same place every night.
+    return [...assigned].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }),
+    );
+  }, [channels, data.assignments, data.show]);
 
   return (
     <div className="mb-root">
@@ -123,7 +142,11 @@ export default function MicboardView() {
         <div className="mb-title">
           {data.show ? data.show.name : 'RFDeck'}
           {!data.live && <span className="mb-standby">Standing by</span>}
-          {data.show && <span className="mb-act">Act {data.show.currentAct}</span>}
+          {data.show && (
+            <span className="mb-act">
+              {ENVIRONMENTS[data.show.environmentMode]?.periodLabel ?? 'Act'} {data.show.currentAct}
+            </span>
+          )}
         </div>
         <div className="mb-header-right">
           <span className="mb-count">{tiles.length} channels</span>
@@ -133,11 +156,16 @@ export default function MicboardView() {
 
       {tiles.length === 0 ? (
         <div className="mb-empty">
-          <p>No active channels.</p>
+          <p>{data.show && channels.length > 0 ? 'Nobody is assigned to a channel yet.' : 'No active channels.'}</p>
           <p className="mb-empty-hint">
-            {data.live
-              ? 'Channels appear here as receivers come online. Photos come from the cast list of the running show.'
-              : 'RFDeck is standing by. An operator starts the rig with Go Live.'}
+            {/* Channels being online but unassigned is a different problem from
+                no channels at all, and says something the operator can act on:
+                the receivers are working, the cast list is not filled in. */}
+            {data.show && channels.length > 0
+              ? `${channels.length} channel(s) are online. This board shows the cast — assign them to people on the show's cast list and they appear here. Backstage shows every channel.`
+              : data.live
+                ? 'Channels appear here as receivers come online. Photos come from the cast list of the running show.'
+                : 'RFDeck is standing by. An operator starts the rig with Go Live.'}
           </p>
         </div>
       ) : (

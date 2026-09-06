@@ -256,6 +256,14 @@
   width: 100%;
 }
 
+/* A patch pointing at an interface that is not connected right now. The wiring
+   is still correct and is deliberately kept; this says so rather than letting
+   it read as unpatched. */
+.audio-patch-row .sm-select-warn {
+  border-color: var(--warn, #d08a2c);
+  color: var(--warn, #d08a2c);
+}
+
 /* Inline command, for recovery steps that have to be run on the server. */
 .settings-code {
   font-family: var(--font-mono);

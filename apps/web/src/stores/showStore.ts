@@ -21,10 +21,12 @@ interface ShowStore {
   applyServerShow: (show: Show) => void;
   applyServerDelete: (id: string) => void;
 
-  createShow: (name: string, mode: Show['environmentMode']) => Promise<Show | null>;
+  createShow: (name: string, mode: Show['environmentMode'], periodCount?: number) => Promise<Show | null>;
   deleteShow: (id: string) => Promise<void>;
   setActiveShow: (id: string | null) => void;
   setShowArchived: (id: string, archived: boolean) => Promise<void>;
+  /** Edit a show's own configuration: name, environment, period count, date, venue. */
+  updateShowSettings: (id: string, partial: Partial<Pick<Show, 'name' | 'environmentMode' | 'periodCount' | 'date' | 'venue' | 'notes'>>) => Promise<void>;
 
   /** Cast an existing performer (by id) or a typed name, which joins the roster. */
   addPlayer: (
@@ -82,11 +84,11 @@ export const useShowStore = create<ShowStore>()(
         activeShowId: s.activeShowId === id ? null : s.activeShowId,
       })),
 
-      createShow: async (name, mode) => {
+      createShow: async (name, mode, periodCount) => {
         try {
           const show = await apiFetch<Show>('/shows', {
             method: 'POST',
-            body: JSON.stringify({ name, environmentMode: mode }),
+            body: JSON.stringify({ name, environmentMode: mode, periodCount }),
           });
           set(s => ({ shows: upsert(s.shows, show), activeShowId: show.id }));
           return show;
@@ -123,6 +125,25 @@ export const useShowStore = create<ShowStore>()(
         } catch (err) {
           console.error('Failed to archive show:', err);
           set(s => ({ shows: patchShow(s.shows, id, sh => ({ ...sh, archived: !archived })) }));
+        }
+      },
+
+      updateShowSettings: async (id, partial) => {
+        // Optimistic, and reverted from the server's answer rather than from a
+        // remembered copy: the server clamps the period count, so what it
+        // returns is the truth even when the request succeeded.
+        const before = get().shows.find(sh => sh.id === id);
+        set(s => ({ shows: patchShow(s.shows, id, sh => ({ ...sh, ...partial })) }));
+        try {
+          const saved = await apiFetch<Show>(`/shows/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(partial),
+          });
+          set(s => ({ shows: upsert(s.shows, saved) }));
+        } catch (err) {
+          console.error('Failed to update show settings:', err);
+          if (before) set(s => ({ shows: upsert(s.shows, before) }));
+          set({ error: 'Could not save the show settings' });
         }
       },
 

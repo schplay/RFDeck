@@ -36,6 +36,31 @@ export function useActiveChannels(): Channel[] {
  * permanently at 0% and armed a dropout alert on a transmitter that was
  * working perfectly.
  */
+/**
+ * Order channels the way a person reading a list expects.
+ *
+ * By name, comparing embedded numbers as numbers, so "Vocal 2" comes before
+ * "Vocal 10" rather than after it. Channels with no name of their own fall to
+ * the end, ordered by receiver and slot so they are at least stable.
+ *
+ * Worth doing centrally: the mic check listed channels in whatever order
+ * telemetry happened to arrive in, which changes on every restart and every
+ * reconnect. Working down a soundcheck list under time pressure is hard enough
+ * without the list being in a different order than it was last night.
+ */
+export function compareChannels(a: Channel, b: Channel): number {
+  const an = (a.name ?? '').trim();
+  const bn = (b.name ?? '').trim();
+  if (an && bn) {
+    const byName = an.localeCompare(bn, undefined, { numeric: true, sensitivity: 'base' });
+    if (byName !== 0) return byName;
+  } else if (an !== bn) {
+    return an ? -1 : 1;   // named channels first
+  }
+  const byDevice = a.deviceId.localeCompare(b.deviceId, undefined, { numeric: true });
+  return byDevice !== 0 ? byDevice : a.channelIndex - b.channelIndex;
+}
+
 export function useChannelsByRole(): { mics: Channel[]; iems: Channel[] } {
   const channels = useActiveChannels();
 
@@ -47,6 +72,8 @@ export function useChannelsByRole(): { mics: Channel[]; iems: Channel[] } {
       // channel is worse than one listing an extra.
       (ch.role === 'iem' ? iems : mics).push(ch);
     }
+    mics.sort(compareChannels);
+    iems.sort(compareChannels);
     return { mics, iems };
   }, [channels]);
 }

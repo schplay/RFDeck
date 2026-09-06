@@ -58,7 +58,12 @@ export const micboardRoutes: FastifyPluginAsync = async (fastify) => {
 
     return {
       live,
-      show: show ? { id: show.id, name: show.name, currentAct: show.currentAct } : null,
+      // environmentMode travels with it: the wall display has to call a period
+      // by the right name, and "Act 1" on a Sunday morning is wrong.
+      show: show
+        ? { id: show.id, name: show.name, currentAct: show.currentAct,
+            environmentMode: show.environmentMode }
+        : null,
       assignments,
     };
   });

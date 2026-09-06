@@ -7,6 +7,15 @@ export interface Show {
   date?: string;
   venue?: string;
   notes?: string;
+  /**
+   * How many acts, services, sets or segments this production runs to.
+   *
+   * Was fixed at four everywhere, which is a theatre assumption: a worship
+   * service is usually one, a festival set list is however many bands are
+   * booked. The mic check is per period, so a wrong count is either tabs that
+   * can never be filled in or periods that cannot be checked at all.
+   */
+  periodCount: number;
   /** Archived shows stay in the database and remain readable; they are just
    *  filtered out of the default list. Shows may equally live indefinitely. */
   archived: boolean;
@@ -28,17 +37,24 @@ export interface Player {
   realName: string;
   characterName: string;
   notes: string;
-  /** Channel NAME, not channel id — see apps/web/src/lib/channelKey.ts.
-   *  Channel ids embed the device IP and break on DHCP reassignment. */
+  /** Stable channel id — see apps/web/src/lib/channelKey.ts. Survives a DHCP
+   *  reassignment and a rename of the channel on the hardware. */
   assignedChannelKey: string | null;
-  /** The performer's IEM channel, by name. Assigned here; never part of the
-   *  soundcheck, which is about mics only. */
+  /** The performer's IEM channel, by stable id, on the same terms as the mic.
+   *  Assigned here; never part of the soundcheck, which is about mics only. */
   iemChannelKey: string | null;
   /** Costume changes that take the pack off, for this show. */
   quickChanges: QuickChange[];
 }
 
-export type MicCheckAct = 1 | 2 | 3 | 4;
+/**
+ * Which act, service or set. One-based.
+ *
+ * A plain number rather than a fixed union: the count is a property of the
+ * production, not of RFDeck, and it was 1 | 2 | 3 | 4 only because the UI
+ * happened to render four buttons.
+ */
+export type MicCheckAct = number;
 
 export interface ShowMicCheck {
   currentAct: MicCheckAct;

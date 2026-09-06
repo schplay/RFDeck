@@ -85,16 +85,31 @@ export function AudioPatchSettings() {
               const key = keyFor(ch);
               const current = assignments[key];
               const device = devices.find(d => d.id === current?.deviceId);
-              // Build the input list from the selected device's real width.
-              const inputCount = device?.channels ?? 0;
+              // A patch to an interface that is not currently listed — unplugged,
+              // still enumerating after a rescan, or renamed by the OS.
+              //
+              // The patch is not wrong just because the interface is absent, and
+              // a <select> whose value matches no option silently displays the
+              // first one instead: every row read as "— not patched —" the
+              // moment a rescan came back short, and the next click on any row
+              // wrote that back. The wiring is the operator's, so it is shown as
+              // it is, marked as unavailable, and only they can clear it.
+              const missing = !!current && !device;
+              // The stored input stays selectable while the device is away, so
+              // reconnecting it does not require re-patching.
+              const inputCount = device?.channels ?? (current?.inputChannel ?? 0);
 
               return (
                 <div key={ch.id} className="audio-patch-row">
                   <span className="audio-patch-name">{ch.name || `CH ${ch.channelIndex}`}</span>
 
                   <select
-                    className="sm-select"
+                    className={`sm-select${missing ? ' sm-select-warn' : ''}`}
                     value={current?.deviceId ?? ''}
+                    title={missing
+                      ? `${current!.deviceId} is not connected to this machine right now. ` +
+                        'The patch is kept and will work again when it returns.'
+                      : undefined}
                     onChange={e => {
                       const id = e.target.value || null;
                       // Default to input 1 so choosing a device is one action.
@@ -102,6 +117,11 @@ export function AudioPatchSettings() {
                     }}
                   >
                     <option value="">— not patched —</option>
+                    {missing && (
+                      <option value={current!.deviceId}>
+                        {current!.deviceId} — not connected
+                      </option>
+                    )}
                     {devices.map(d => (
                       <option key={d.id} value={d.id}>{d.label}</option>
                     ))}

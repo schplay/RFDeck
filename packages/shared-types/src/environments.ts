@@ -13,6 +13,16 @@ import { Show } from './shows';
 // the printed report describe a production the same way.
 
 export interface EnvironmentProfile {
+  /**
+   * What this kind of production is called, for display.
+   *
+   * The mode is stored as an enum-ish string, and the pages that showed it were
+   * un-prettifying it themselves with replace('_', ' ') — which handles one
+   * underscore, so HOUSE_OF_WORSHIP came out as "HOUSE OF_WORSHIP". Naming it
+   * once here means every page says the same thing and none of them has to
+   * know the storage format.
+   */
+  label: string;
   periodLabel: string;   // Act / Service / Set / Session / Segment
   rosterLabel: string;   // Players / Roster / Performers / Presenters / Talent
   personLabel: string;   // Player / Musician / Performer / Presenter
@@ -38,6 +48,7 @@ export interface EnvironmentProfile {
 
 export const ENVIRONMENTS: Record<Show['environmentMode'], EnvironmentProfile> = {
   THEATER: {
+    label:          'Theatre',
     periodLabel:    'Act',
     rosterLabel:    'Players',
     personLabel:    'Player',
@@ -50,6 +61,7 @@ export const ENVIRONMENTS: Record<Show['environmentMode'], EnvironmentProfile> =
     photos:         true,
   },
   CONCERT: {
+    label:          'Concert',
     periodLabel:    'Set',
     rosterLabel:    'Performers',
     personLabel:    'Performer',
@@ -62,6 +74,7 @@ export const ENVIRONMENTS: Record<Show['environmentMode'], EnvironmentProfile> =
     photos:         true,
   },
   CORPORATE: {
+    label:          'Corporate',
     periodLabel:    'Session',
     rosterLabel:    'Presenters',
     personLabel:    'Presenter',
@@ -74,6 +87,7 @@ export const ENVIRONMENTS: Record<Show['environmentMode'], EnvironmentProfile> =
     photos:         true,
   },
   BROADCAST: {
+    label:          'Broadcast',
     periodLabel:    'Segment',
     rosterLabel:    'Talent',
     personLabel:    'Talent',
@@ -86,6 +100,7 @@ export const ENVIRONMENTS: Record<Show['environmentMode'], EnvironmentProfile> =
     photos:         true,
   },
   HOUSE_OF_WORSHIP: {
+    label:          'House of Worship',
     periodLabel:    'Service',
     rosterLabel:    'Roster',
     personLabel:    'Musician',
