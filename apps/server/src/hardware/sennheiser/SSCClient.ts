@@ -79,14 +79,6 @@ export class SSCClient extends EventEmitter {
   private udpLoggedOnce = false;
   // EW-DX OpenAPI 1.7: per-channel state accumulated from multiple sub-path SSE events
   private ewdxChannelCache: Map<number, Record<string, any>> = new Map();
-  // The last name each EW-DX channel reported, kept across reconnects.
-  //
-  // ewdxChannelCache is emptied whenever the connection drops, which is correct
-  // for telemetry — stale RF and audio levels must never be shown as current.
-  // A channel's name is not telemetry: it is configuration, it does not decay,
-  // and discarding it was what made a reconnect look like a channel appearing
-  // for the first time. Cleared only when the device is untracked.
-  private ewdxNames: Map<number, string> = new Map();
   private ewdxInitialFetchDone = false;
 
   getPassword(): string | null { return this.password; }
@@ -151,8 +143,6 @@ export class SSCClient extends EventEmitter {
     this.sscv2RxMissing = false;
     this.emptyPollCount = 0;
     this.ewdxChannelCache.clear();
-    // Untracked, so nothing about this device is remembered any more.
-    this.ewdxNames.clear();
     this.ewdxInitialFetchDone = false;
     this.stopUdpReceiver();
   }
@@ -272,32 +262,20 @@ export class SSCClient extends EventEmitter {
     for (const [k, v] of Object.entries(update)) {
       if (v !== undefined && v !== null) merged[k] = v;
     }
-    // A name, once learned, is remembered — and a channel is never withheld.
-    //
-    // The flapping this replaces was real but was described one step short of
-    // its cause: after an SSE reconnect the per-channel cache is empty, metric
-    // events arrive before the channel resource, and the channel went up under
-    // a fallback label and was renamed a second later — which re-sorts an
-    // alphabetically ordered dashboard. The fix was to hold the channel back
-    // until it had a name.
-    //
-    // That made the client's own memory the casualty. The name had been known
-    // seconds earlier and was thrown away with the telemetry, so a reconnect
-    // was treated as a channel nobody had ever seen. Remembering it removes the
-    // rename outright, with nothing to wait for and no window to lose.
-    //
-    // Holding was also unbounded, and the merge above drops nulls, so a channel
-    // reporting `name: null` could never satisfy it: every emission below was
-    // withheld for the life of the process, including the one that reports the
-    // device connected at all. Nothing here may depend on a name arriving.
-    if (typeof merged.name === 'string' && merged.name.length > 0) {
-      this.ewdxNames.set(chId, merged.name);
-    } else {
-      const remembered = this.ewdxNames.get(chId);
-      if (remembered !== undefined) merged.name = remembered;
-    }
     this.ewdxChannelCache.set(chId, merged);
 
+    // A channel is reported as soon as there is anything to report, named or
+    // not. This client's job is to say what the receiver said; what a channel
+    // is *called* when the receiver has not said yet is a question about the
+    // device's identity, which is answered where identity lives — see
+    // DeviceManagerService.labelFor.
+    //
+    // An earlier version held every channel back until a name arrived. The
+    // wait had no bound and the merge above drops nulls, so a channel
+    // reporting `name: null` never satisfied it: everything below was withheld
+    // for the life of the process, including the emit that reports the device
+    // connected at all. A name may decide what a channel is called. It may
+    // never decide whether one exists.
     {
       const norm = this.normalizeRx(this.buildEwdxRxObj(merged));
       if (norm) {
