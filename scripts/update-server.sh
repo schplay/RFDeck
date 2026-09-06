@@ -193,6 +193,47 @@ else
   warn "No existing build found to snapshot - rollback will not be available"
 fi
 
+# The database, separately and every time.
+#
+# The build snapshot above is the code, and restoring it is enough to undo a
+# bad release — but only while a release cannot touch the data. Schema updates
+# can now remove a column, and rolling the code back would not bring back what
+# the schema step dropped. An install's real value is in here: the inventory,
+# the shows, the mic-check history, a season of detections.
+#
+# The service is still running at this point — the restart comes at the end of
+# the update — so the file is being written to while it is read. `cp` alone can
+# catch a transaction half-written. sqlite3's own backup takes a consistent
+# snapshot of a live database, which is what it is for; where it is not
+# installed, the file and its write-ahead log are copied together, which is
+# recoverable in all but the narrowest race.
+#
+# Kept per run rather than overwritten, so a fault noticed a day later is still
+# recoverable.
+DB_FILE="${DB_URL#file:}"
+if [[ -f "$DB_FILE" ]]; then
+  DB_BACKUP="$SNAPSHOT_DIR/db/rfdeck-$(date +%Y%m%d-%H%M%S).db"
+  mkdir -p "$(dirname "$DB_BACKUP")"
+  if command -v sqlite3 >/dev/null 2>&1 \
+     && sqlite3 "$DB_FILE" ".backup '$DB_BACKUP'" 2>/dev/null; then
+    :
+  else
+    cp -a "$DB_FILE" "$DB_BACKUP"
+    # SQLite keeps recent commits in a side file until they are checkpointed.
+    for side in wal shm; do
+      [[ -f "$DB_FILE-$side" ]] && cp -a "$DB_FILE-$side" "$DB_BACKUP-$side"
+    done
+  fi
+  ok "Database backed up to $DB_BACKUP"
+  # Keep the ten most recent. A show season of updates should not quietly fill
+  # the disk, and ten is far more history than a rollback ever reaches for.
+  ls -1t "$SNAPSHOT_DIR/db/"rfdeck-*.db 2>/dev/null | tail -n +11 | while read -r old; do
+    rm -f "$old" "$old-wal" "$old-shm"
+  done
+else
+  warn "No database found at $DB_FILE - nothing to back up"
+fi
+
 # ── Build ────────────────────────────────────────────────────────────────────
 
 cd "$INSTALL_DIR"
@@ -220,9 +261,44 @@ pnpm --filter @rfdeck/server build >/dev/null || build_failed "server build fail
 ok "Application built"
 
 step "Applying schema changes"
-# Additive - adds tables and columns without dropping data.
-pnpm --filter @rfdeck/server exec prisma db push --skip-generate >/dev/null \
-  || build_failed "Applying the database schema failed"
+#
+# Usually additive — new tables and columns, no data touched. When a release
+# also REMOVES one, `prisma db push` will not do it silently: it reports the
+# destructive change and asks for confirmation on stdin.
+#
+# That question has no one to answer it here. With stdin left attached to the
+# terminal the update simply stopped, mid-deploy, with its output swallowed by
+# the redirect and nothing on screen to say what it was waiting for. So stdin
+# is closed, which turns a hang into an immediate failure, and the output is
+# captured so it can be shown rather than discarded.
+#
+# The decision itself belongs to whoever is running the update, not to the
+# script: dropping a column is irreversible and the data may matter. It is
+# reported, with the release notes to check, and taken only when asked for.
+schema_push() {
+  local args=(--filter @rfdeck/server exec prisma db push --skip-generate)
+  [[ "${RFDECK_ACCEPT_DATA_LOSS:-0}" == "1" ]] && args+=(--accept-data-loss)
+  pnpm "${args[@]}" </dev/null 2>&1
+}
+
+if ! push_output="$(schema_push)"; then
+  printf '%s\n' "$push_output"
+  if grep -qiE 'accept-data-loss|cannot be executed|data will be lost' <<<"$push_output"; then
+    build_failed "$(cat <<EOF
+This update removes something from the database schema, so it needs a decision.
+
+Read what is listed above. If losing it is expected for this release, re-run
+the same command with RFDECK_ACCEPT_DATA_LOSS=1, for example:
+
+    sudo RFDECK_ACCEPT_DATA_LOSS=1 ./scripts/update-server.sh --pull
+
+Nothing has been changed. The database was backed up at the start of this run:
+    ${DB_BACKUP:-none taken}
+EOF
+)"
+  fi
+  build_failed "Applying the database schema failed"
+fi
 ok "Schema up to date"
 
 # Refresh the admin CLI alongside the code it launches. Omitting this left

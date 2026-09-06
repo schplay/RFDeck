@@ -129,10 +129,21 @@ if ($existed) {
     Write-Info "Creating database at $DbPath"
 }
 
-# db push is additive: it adds new tables and columns without dropping data, so
-# re-running after a schema change is the intended upgrade path.
-Invoke-Native -Quiet -FailureMessage "Applying the database schema failed" `
-    -Arguments @('--filter', '@rfdeck/server', 'exec', 'prisma', 'db', 'push', '--skip-generate')
+# Usually additive — new tables and columns, nothing touched — so re-running
+# after a schema change is the intended upgrade path. A release that also
+# REMOVES one makes prisma stop and ask for confirmation, which in a script
+# reads as a hang. Dropping data stays a deliberate choice: set
+# RFDECK_ACCEPT_DATA_LOSS=1 to allow it.
+$schemaArgs = @('--filter', '@rfdeck/server', 'exec', 'prisma', 'db', 'push', '--skip-generate')
+if ($env:RFDECK_ACCEPT_DATA_LOSS -eq '1') { $schemaArgs += '--accept-data-loss' }
+Invoke-Native -Quiet -FailureMessage @'
+Applying the database schema failed.
+
+If it reports a change that cannot be executed, this release removes something
+from the schema. Re-run with RFDECK_ACCEPT_DATA_LOSS=1 if that is expected:
+
+    $env:RFDECK_ACCEPT_DATA_LOSS = '1'
+'@ -Arguments $schemaArgs
 Write-Ok $(if ($existed) { "Schema up to date" } else { "Database created" })
 
 # ── Firewall ─────────────────────────────────────────────────────────────────

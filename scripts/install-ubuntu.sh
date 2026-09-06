@@ -368,9 +368,21 @@ export DATABASE_URL="file:$DB_PATH"
 EXISTED=0
 [[ -f "$DB_PATH" ]] && EXISTED=1
 
-# Additive: adds new tables and columns without dropping data, so this doubles
-# as the upgrade path.
-pnpm --filter @rfdeck/server exec prisma db push --skip-generate >/dev/null
+# Usually additive — new tables and columns, nothing touched — so this doubles
+# as the upgrade path. A release that also REMOVES one makes prisma stop and ask
+# for confirmation on stdin; with stdin attached and the output redirected, that
+# reads as the install hanging with nothing on screen to explain it. Closing
+# stdin turns that into an immediate, explained failure, and dropping data stays
+# a deliberate choice rather than a side effect of running an update.
+SCHEMA_ARGS=(--filter @rfdeck/server exec prisma db push --skip-generate)
+[[ "${RFDECK_ACCEPT_DATA_LOSS:-0}" == "1" ]] && SCHEMA_ARGS+=(--accept-data-loss)
+if ! SCHEMA_OUT="$(pnpm "${SCHEMA_ARGS[@]}" </dev/null 2>&1)"; then
+  printf '%s\n' "$SCHEMA_OUT"
+  if grep -qiE 'accept-data-loss|cannot be executed|data will be lost' <<<"$SCHEMA_OUT"; then
+    die "This release removes something from the database schema. Review the changes above, then re-run with RFDECK_ACCEPT_DATA_LOSS=1 if that is expected."
+  fi
+  die "Applying the database schema failed"
+fi
 chown "$SERVICE_USER:$SERVICE_USER" "$DB_PATH"
 [[ "$EXISTED" == "1" ]] && ok "Existing database at $DB_PATH updated" \
                         || ok "Database created at $DB_PATH"

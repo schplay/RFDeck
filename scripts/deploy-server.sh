@@ -84,17 +84,34 @@ DB_PATH="$(cd "$DATA_DIR" && pwd)/rfdeck.db"
 # Prisma wants a URL, and Windows backslashes are not valid in one.
 export DATABASE_URL="file:${DB_PATH//\\//}"
 
+# Usually additive — new tables and columns, nothing touched. A release that
+# also REMOVES one makes prisma stop and ask for confirmation on stdin, and with
+# stdin attached and the output redirected that reads as the deploy hanging with
+# nothing on screen. Closing stdin turns that into an immediate, explained
+# failure; dropping data stays an explicit choice.
+schema_push() {
+  local args=(--filter @rfdeck/server exec prisma db push --skip-generate)
+  [[ "${RFDECK_ACCEPT_DATA_LOSS:-0}" == "1" ]] && args+=(--accept-data-loss)
+  pnpm "${args[@]}" </dev/null 2>&1
+}
+
+# Recorded before the push, which creates the file either way.
 if [[ -f "$DB_PATH" ]]; then
+  DB_EXISTED=1
   info "Using existing database at $DB_PATH"
-  # db push is additive here: it adds new tables and columns without dropping
-  # data. Re-running after a schema change is the intended upgrade path.
-  pnpm --filter @rfdeck/server exec prisma db push --skip-generate >/dev/null \
-    && ok "Schema up to date"
 else
+  DB_EXISTED=0
   info "Creating database at $DB_PATH"
-  pnpm --filter @rfdeck/server exec prisma db push --skip-generate >/dev/null
-  ok "Database created"
 fi
+
+if ! push_output="$(schema_push)"; then
+  printf '%s\n' "$push_output"
+  if grep -qiE 'accept-data-loss|cannot be executed|data will be lost' <<<"$push_output"; then
+    fail "This release removes something from the database schema. Review the changes above, then re-run with RFDECK_ACCEPT_DATA_LOSS=1 if that is expected."
+  fi
+  fail "Applying the database schema failed"
+fi
+[[ "$DB_EXISTED" == "1" ]] && ok "Schema up to date" || ok "Database created"
 
 # ── Firewall reminder ────────────────────────────────────────────────────────
 #
