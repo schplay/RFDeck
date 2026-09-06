@@ -17,7 +17,7 @@ import {
 } from '../batteryEstimator';
 import { decryptSecret } from '../../auth/secretBox';
 import { detectFirmwareChange } from '../firmwareChange';
-import { inferDeviceRole, isSscModel } from '../deviceRole';
+import { isSscModel } from '../deviceRole';
 import { ShureClient } from '../shure/ShureClient';
 import { Digital6000Client } from './digital6000/Digital6000Client';
 import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
@@ -136,48 +136,6 @@ export class DeviceManagerService extends EventEmitter {
     }
   }
 
-  /**
-   * File IEM transmitters correctly for inventory added before RFDeck could
-   * tell them apart.
-   *
-   * Every device added from the discovery list was recorded as an "input",
-   * because that is what the form defaults to and discovery never asks. An IEM
-   * transmitter filed that way sits at 0% RF — it receives nothing — and shows
-   * up in the soundcheck as a row nobody is speaking into, while the IEM
-   * column stays empty with nothing on screen to explain why.
-   *
-   * Only devices whose model or name unambiguously names an IEM are touched,
-   * and every change is logged rather than being made quietly: an operator who
-   * deliberately filed something as a microphone deserves to see it move.
-   */
-  private async backfillDeviceRoles(): Promise<void> {
-    const candidates = await prisma.inventoryDevice.findMany({
-      // Never a device a person has set. Inference is a convenience for the
-      // blank the add form leaves; overruling an operator would mean their
-      // correction lasted until the next restart, and naming conventions vary
-      // enough that RFDeck will not always be right.
-      where: { deviceType: 'input', deviceTypeManual: false },
-    });
-
-    const moved: string[] = [];
-    for (const dev of candidates) {
-      if (inferDeviceRole(dev.model, dev.name) !== 'output') continue;
-      await prisma.inventoryDevice.update({
-        where: { id: dev.id },
-        data: { deviceType: 'output' },
-      });
-      moved.push(`${dev.name} (${dev.model})`);
-    }
-
-    if (moved.length > 0) {
-      log.info(
-        `[DeviceManager] Reclassified ${moved.length} device(s) as IEM transmitters ` +
-        `from their model: ${moved.join(', ')}. They will appear in the IEM column ` +
-        `rather than as microphones. Change it per device in Inventory if this is wrong.`,
-      );
-    }
-  }
-
   async start() {
     // Fix legacy G3/G4 records added via discovery before manufacturer inference was corrected.
     // MCP-discovered devices have port 53212; records with manufacturer='Unknown' got that value
@@ -186,8 +144,6 @@ export class DeviceManagerService extends EventEmitter {
       where: { port: 53212, manufacturer: 'Unknown' },
       data:  { manufacturer: 'Sennheiser', model: 'EW G3/G4' },
     });
-
-    await this.backfillDeviceRoles();
 
     // Load inventory from DB on startup and begin tracking.
     // Devices the operator marked inactive are intentionally powered off — don't

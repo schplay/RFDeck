@@ -18,14 +18,17 @@ model InventoryDevice {
   notes              String?
   password           String?
   deviceType         String   @default("input")
-  // Did a person set deviceType, or did RFDeck infer it from the model?
+  // Did a person set deviceType, or did RFDeck infer it when the device was
+  // added?
   //
-  // Inference exists because the add form defaults to "input" and a device
-  // added from the discovery list is never asked at all, so IEM transmitters
-  // arrive filed as microphones. But inference must never overrule a person:
-  // without this flag the startup backfill would move a device back every
-  // restart, and an operator whose naming does not match RFDeck's patterns
-  // could not make a correction stick.
+  // RFDeck guesses from the model and name at *add* time only, because the add
+  // form defaults to "input" and a device added from the discovery list is
+  // never asked at all — so IEM transmitters would arrive filed as microphones.
+  //
+  // Nothing re-runs that guess afterwards. An existing device's type is the
+  // operator's, and rewriting it on a restart would mean a correction never
+  // stuck. This flag records provenance so that any future automatic
+  // classification cannot overrule a person either.
   deviceTypeManual   Boolean  @default(false)
   // Operator-controlled: inactive devices are intentionally powered off / not in
   // use for this show.  They are not tracked, not shown on the dashboard, and

@@ -6,10 +6,11 @@ import { test, expect, APIRequestContext } from '@playwright/test';
 // RFDeck alerts on its RF at all — an IEM receives nothing, so treating one as
 // a microphone means dropout alerts on a device that is working perfectly.
 //
-// RFDeck infers it from the model and name, because the add form defaults to
-// "input" and a device added from the discovery list is never asked. Inference
-// is a guess, and the invariant that matters is that a person can overrule it
-// and have that stick.
+// RFDeck infers it from the model and name **when a device is added**, because
+// the add form defaults to "input" and a device added from the discovery list
+// is never asked at all. Nothing re-runs that guess afterwards: an existing
+// device's type belongs to the operator, and a restart that rewrote it would
+// mean a correction never stuck.
 
 async function add(request: APIRequestContext, fields: Record<string, unknown>) {
   const res = await request.post('/api/inventory', {
@@ -33,7 +34,7 @@ test.describe('device type inference', () => {
     const d = await add(request, { name: 'Wedge Rack', model: 'SR 2050' });
     try {
       expect(d.deviceType).toBe('output');
-      // Flagged as a guess, so the UI can say so and the backfill may revisit.
+      // Recorded as RFDeck's guess rather than a person's decision.
       expect(d.deviceTypeManual).toBe(false);
     } finally { await remove(request, d.id); }
   });
@@ -73,10 +74,11 @@ test.describe('device type inference', () => {
 });
 
 test.describe('the operator overrules the guess', () => {
-  test('a correction is recorded as deliberate, so inference cannot undo it', async ({ request }) => {
-    // The invariant. Without it the startup backfill would move this device
-    // back to output on the next restart, and an operator whose naming does
-    // not match RFDeck's patterns could never make a correction stick.
+  test('a correction is recorded as deliberate, and survives', async ({ request }) => {
+    // The invariant: inference runs once, at add time, and a person's decision
+    // outranks it permanently. Naming conventions vary between users, so
+    // RFDeck will not always guess right — and being wrong permanently is not
+    // acceptable.
     const d = await add(request, { name: 'IEM 1', model: 'EW G3/G4' });
     try {
       expect(d.deviceType).toBe('output');
@@ -106,8 +108,9 @@ test.describe('the operator overrules the guess', () => {
     } finally { await remove(request, d.id); }
   });
 
-  test('an unedited device stays open to inference', async ({ request }) => {
-    // Editing something else must not silently freeze the type.
+  test('editing another field does not claim the type was chosen', async ({ request }) => {
+    // Provenance stays honest: renaming a device is not a statement about
+    // what kind of device it is.
     const d = await add(request, { name: 'Rack 4', model: 'Unknown Model' });
     try {
       const renamed = await (await request.put(`/api/inventory/${d.id}`, {
