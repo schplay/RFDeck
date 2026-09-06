@@ -19,6 +19,13 @@ export interface RfContext {
   marginal: boolean;
   /** Muted at the transmitter or the receiver — silence here is deliberate. */
   muted: boolean;
+  /**
+   * What the channel is called right now, for display on the detection.
+   *
+   * Resolved through the channel id rather than being the key itself: the key
+   * is an identifier and is not meant to be read by anyone.
+   */
+  name?: string | null;
 }
 
 // Rolling capture and incident clips.
@@ -197,7 +204,7 @@ export class RecordingManager {
 
     void this.record({
       channelKey,
-      channelName: channelKey,
+      channelName: ctx?.name ?? null,
       deviceId,
       trigger: event.kind,
       severity: event.confidence >= 0.8 ? 'CRITICAL' : 'WARNING',

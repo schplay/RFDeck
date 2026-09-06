@@ -26,9 +26,13 @@ export default fp(async (fastify, opts) => {
   // The audio detectors ask the RF side what it knows before reporting
   // anything ambiguous — see docs/AUDIO_DETECTION.md.
   const recordingManager = new RecordingManager(captureManager, io, (channelKey) => {
-    const ch = deviceManager.getChannelSnapshot().find(c => c.name === channelKey);
-    if (!ch) return { marginal: false, muted: false };
+    // The patch is keyed on the stable channel id, so this matches on the id.
+    // Matching on the name meant a relabelled channel stopped resolving and
+    // its audio detections quietly lost their RF context.
+    const ch = deviceManager.getChannelSnapshot().find(c => c.id === channelKey);
+    if (!ch) return { marginal: false, muted: false, name: null };
     return {
+      name: ch.name,
       // Below the healthy band, or already in dropout.
       marginal: ch.rfLevelA < 35 || ch.status === 'CRITICAL',
       // Silence on a muted channel is deliberate, not a fault.
