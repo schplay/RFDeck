@@ -945,3 +945,25 @@
   .sm-qc-row > .sm-input:nth-child(4) { grid-column: 1 / -1; }
   .sm-qc-header > span:nth-child(4) { display: none; }
 }
+
+/* ── Show settings ───────────────────────────────────────────────────────── */
+/* What the production is: its name, what kind of thing it is, and how many
+   acts / services / sets it runs to. Configurable after creation, because a
+   show that was set up wrongly on a Tuesday should not stay that way. */
+.sm-settings-tab {
+  padding: 20px;
+  max-width: 460px;
+}
+
+.sm-form-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-on-surface-variant);
+  margin: 0;
+}
+
+/* Reducing the period count hides ticks rather than deleting them. Saying so
+   is what makes the change safe to attempt mid-run. */
+.sm-form-warn {
+  color: var(--warn, #d08a2c);
+}

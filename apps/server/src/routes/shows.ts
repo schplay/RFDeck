@@ -6,6 +6,23 @@ import { findOrCreatePerformer, listPerformers } from '../performers/roster';
 // mic-check tick made backstage must appear at FOH immediately. Every mutation
 // broadcasts over the socket rather than relying on clients to refetch.
 
+/**
+ * How many acts, services or sets a show runs to.
+ *
+ * Clamped rather than trusted. Zero would leave a production with no period to
+ * check a microphone in, and an unbounded number is a wall of tabs nobody can
+ * use — both are easy to type by accident and neither is recoverable from
+ * without editing the database.
+ */
+export const MIN_PERIODS = 1;
+export const MAX_PERIODS = 12;
+
+function clampPeriods(value: unknown): number {
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return 4;
+  return Math.min(MAX_PERIODS, Math.max(MIN_PERIODS, n));
+}
+
 export const showInclude = {
   players: {
     orderBy: { sortIndex: 'asc' },
@@ -34,6 +51,7 @@ export function serializeShow(row: any) {
     id:              row.id,
     name:            row.name,
     environmentMode: row.environmentMode,
+    periodCount:     row.periodCount,
     date:            row.date  ?? undefined,
     venue:           row.venue ?? undefined,
     notes:           row.notes ?? undefined,
@@ -91,6 +109,9 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
       data: {
         name:            String(d.name ?? '').trim() || 'Untitled Show',
         environmentMode: d.environmentMode ?? 'THEATER',
+        // Clamped rather than trusted: a show with zero periods has no mic
+        // check at all, and an absurd count is a wall of empty tabs.
+        periodCount:     clampPeriods(d.periodCount),
         date:            d.date  ?? null,
         venue:           d.venue ?? null,
         notes:           d.notes ?? null,
@@ -124,6 +145,8 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
         date:  Object.prototype.hasOwnProperty.call(d, 'date')  ? (d.date  ?? null) : undefined,
         venue: Object.prototype.hasOwnProperty.call(d, 'venue') ? (d.venue ?? null) : undefined,
         notes: Object.prototype.hasOwnProperty.call(d, 'notes') ? (d.notes ?? null) : undefined,
+        periodCount: Object.prototype.hasOwnProperty.call(d, 'periodCount')
+                       ? clampPeriods(d.periodCount) : undefined,
         currentAct: typeof d.currentAct === 'number' ? d.currentAct : undefined,
         archived:   typeof d.archived   === 'boolean' ? d.archived  : undefined,
         archivedAt,

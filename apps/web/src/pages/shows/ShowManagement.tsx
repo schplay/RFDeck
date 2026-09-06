@@ -11,8 +11,9 @@ import { API_BASE, getToken } from '../../lib/api';
 import {
   Plus, Trash2, CheckCircle2, Circle, ChevronRight,
   ClipboardList, MessageSquare, RotateCcw, Users, Radio, Archive, ArchiveRestore,
-  FileText, Download, BookOpen, ChevronDown,
+  FileText, Download, BookOpen, ChevronDown, SlidersHorizontal,
 } from 'lucide-react';
+import { ShowSettingsTab } from './ShowSettingsTab';
 import './ShowManagement.css';
 
 function formatTime(iso: string) {
@@ -88,7 +89,7 @@ function ShowListPanel({
                 {sh.archived && <span className="sm-archived-dot" title="Archived" />}
               </div>
               <div className="sm-show-item-meta">
-                <span className="sm-show-mode">{sh.environmentMode.replace('_', ' ')}</span>
+                <span className="sm-show-mode">{ENVIRONMENTS[sh.environmentMode].label}</span>
                 {totalChecked > 0 && (
                   <span className="sm-show-progress">{totalChecked} checked</span>
                 )}
@@ -107,6 +108,10 @@ function NewShowDialog({ onDone }: { onDone: () => void }) {
   const createShow = useShowStore(s => s.createShow);
   const [name, setName] = useState('');
   const [mode, setMode] = useState<Show['environmentMode']>('THEATER');
+  // How many acts / services / sets. Asked for here because it is a property of
+  // the production and changing it later means re-checking what is already
+  // ticked; four was hard-coded, which suits a play and nothing else.
+  const [periods, setPeriods] = useState(4);
   const [saving, setSaving] = useState(false);
 
   // Creation round-trips to the server, so guard against a double submit
@@ -115,7 +120,7 @@ function NewShowDialog({ onDone }: { onDone: () => void }) {
     e.preventDefault();
     if (!name.trim() || saving) return;
     setSaving(true);
-    const sh = await createShow(name.trim(), mode);
+    const sh = await createShow(name.trim(), mode, periods);
     setSaving(false);
     if (sh) onDone();
   };
@@ -137,12 +142,27 @@ function NewShowDialog({ onDone }: { onDone: () => void }) {
       <div className="sm-form-group">
         <label>Environment</label>
         <select className="sm-select" value={mode} onChange={e => setMode(e.target.value as Show['environmentMode'])}>
-          <option value="THEATER">Theater</option>
-          <option value="CONCERT">Concert</option>
-          <option value="CORPORATE">Corporate</option>
-          <option value="BROADCAST">Broadcast</option>
-          <option value="HOUSE_OF_WORSHIP">House of Worship</option>
+          {(Object.keys(ENVIRONMENTS) as Show['environmentMode'][]).map(m => (
+            <option key={m} value={m}>{ENVIRONMENTS[m].label}</option>
+          ))}
         </select>
+      </div>
+      <div className="sm-form-group">
+        {/* Named for the environment: a worship service does not have acts, and
+            being asked how many it has is the kind of small wrongness that makes
+            software feel like it was built for somebody else. */}
+        <label>{ENVIRONMENTS[mode].periodLabel}s</label>
+        <input
+          type="number"
+          className="sm-input"
+          min={1}
+          max={12}
+          value={periods}
+          onChange={e => setPeriods(Math.min(12, Math.max(1, Number(e.target.value) || 1)))}
+        />
+        <p className="sm-form-hint">
+          How many {ENVIRONMENTS[mode].periodLabel.toLowerCase()}s the mic check covers. Changeable later.
+        </p>
       </div>
       <div className="sm-form-actions">
         <button type="button" className="btn-ghost" onClick={onDone}>Cancel</button>
@@ -218,7 +238,7 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvironmentProfile })
     <div className="sm-miccheck-tab">
       <div className="sm-act-bar">
         <div className="sm-act-selector">
-          {([1, 2, 3, 4] as MicCheckAct[]).map(act => (
+          {Array.from({ length: show.periodCount ?? 4 }, (_, i) => (i + 1) as MicCheckAct).map(act => (
             <button
               key={act}
               className={`sm-act-btn ${currentAct === act ? 'active' : ''}`}
@@ -689,7 +709,7 @@ function DevicesTab() {
 // ── ShowDetail ───────────────────────────────────────────────────
 function ShowDetail({ show }: { show: Show }) {
   const { deleteShow, setActiveShow, setShowArchived } = useShowStore();
-  const [activeTab, setActiveTab] = useState<'miccheck' | 'players' | 'devices'>('miccheck');
+  const [activeTab, setActiveTab] = useState<'miccheck' | 'players' | 'devices' | 'settings'>('miccheck');
   const terms = ENVIRONMENTS[show.environmentMode];
   const inactiveCount = useDeviceStore(
     s => s.inventory.filter(d => d.active === false).length
@@ -703,7 +723,7 @@ function ShowDetail({ show }: { show: Show }) {
             {show.name}
             {show.archived && <span className="sm-archived-tag">Archived</span>}
           </h1>
-          <span className="sm-detail-mode">{show.environmentMode.replace('_', ' ')}</span>
+          <span className="sm-detail-mode">{ENVIRONMENTS[show.environmentMode].label}</span>
         </div>
         <div className="sm-detail-actions">
           {/* The report opens as a plain page so the browser's print dialog
@@ -788,14 +808,23 @@ function ShowDetail({ show }: { show: Show }) {
             <span className="sm-tab-badge muted">{inactiveCount} off</span>
           )}
         </button>
+        <button
+          className={`sm-tab ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('settings')}
+        >
+          <SlidersHorizontal size={13} />
+          Settings
+        </button>
       </div>
 
       {activeTab === 'miccheck' ? (
         <MicCheckTab show={show} terms={terms} />
       ) : activeTab === 'players' ? (
         <PlayersTab show={show} terms={terms} />
-      ) : (
+      ) : activeTab === 'devices' ? (
         <DevicesTab />
+      ) : (
+        <ShowSettingsTab show={show} />
       )}
     </div>
   );

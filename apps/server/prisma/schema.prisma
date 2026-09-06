@@ -187,6 +187,10 @@ model Show {
   venue           String?
   notes           String?
   currentAct      Int       @default(1)
+  // How many acts, services, sets or segments this production runs to. Four was
+  // hard-coded, which is a theatre assumption — a worship service is usually
+  // one, a festival is however many bands are booked.
+  periodCount     Int       @default(4)
   archived        Boolean   @default(false)
   archivedAt      DateTime?
   createdAt       DateTime  @default(now())
