@@ -28,6 +28,31 @@ export interface DiscoveredDevice {
   model?: string;
 }
 
+/**
+ * Whether discovery should be suppressed, decided once at startup.
+ *
+ * Only the end-to-end harness ever wants this, and a deployment must never be
+ * able to end up in that state — not through a stray variable inherited from a
+ * parent process, not through a copied service file, not through someone
+ * exporting it in a shell to debug something else. So the switch is refused
+ * outright in production and says loudly that it was refused.
+ *
+ * A silent global off-switch for the product's core function is not a feature.
+ */
+export function resolveDiscoveryDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.RFDECK_DISABLE_DISCOVERY !== '1') return false;
+  if (env.NODE_ENV === 'production') {
+    log.error(
+      '[Discovery] RFDECK_DISABLE_DISCOVERY is set on a production server and ' +
+      'is being IGNORED. It exists for the test harness. Discovery stays on — ' +
+      'a deployment that cannot find receivers is not something to switch on by accident.',
+    );
+    return false;
+  }
+  log.warn('[Discovery] Disabled for testing — no devices will be found');
+  return true;
+}
+
 const MCP_PORT = 53212;
 const SSC_PORT  = 443;
 const SHURE_PORT = 2202;
@@ -122,19 +147,28 @@ export class DiscoveryService extends EventEmitter {
   private seenSerials  = new Map<string, string>();
   private scanInProgress = false;
 
-  constructor() { super(); }
+  private readonly disabled: boolean;
 
-  // Off by default; set only by the end-to-end harness. Discovery broadcasts
-  // on the network and sweeps the subnet, which makes a test run slow, noisy,
-  // and dependent on whatever else is plugged in — none of which the tests are
-  // about. Nothing in a deployment sets this.
-  private get disabled(): boolean {
-    return process.env.RFDECK_DISABLE_DISCOVERY === '1';
+  /**
+   * @param disabled Suppress all discovery. For the end-to-end harness only,
+   *   which must not broadcast and sweep a real subnet on every run.
+   *
+   * Passed in rather than read from the environment here. It used to be an
+   * ambient `process.env.RFDECK_DISABLE_DISCOVERY` check in the middle of this
+   * class, which meant a single stray variable in a service environment could
+   * turn off the one thing RFDeck exists to do, anywhere, with nothing but a
+   * log line to say so. Finding devices is not something that should be
+   * switchable by accident. The decision is now made once, at startup, by code
+   * that knows whether this is a deployment — see resolveDiscoveryDisabled.
+   */
+  constructor(disabled = false) {
+    super();
+    this.disabled = disabled;
   }
 
   start() {
     if (this.disabled) {
-      log.warn('[Discovery] Disabled by RFDECK_DISABLE_DISCOVERY — no devices will be found');
+      log.warn('[Discovery] Suppressed by the test harness — no devices will be found');
       return;
     }
     log.debug('[Discovery] Starting passive listeners (mDNS + MCP + Shure SLP)...');

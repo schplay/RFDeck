@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { DiscoveryService, DiscoveredDevice } from './DiscoveryService';
+import { DiscoveryService, DiscoveredDevice, resolveDiscoveryDisabled } from './DiscoveryService';
 import { SSCClient } from './SSCClient';
 import { G3G4Client } from './G3G4Client';
 import { EventEmitter } from 'events';
@@ -139,7 +139,7 @@ export class DeviceManagerService extends EventEmitter {
   constructor(io: Server) {
     super();
     this.io = io;
-    this.discovery = new DiscoveryService();
+    this.discovery = new DiscoveryService(resolveDiscoveryDisabled());
 
     this.discovery.on('discovered', (device: DiscoveredDevice) => {
       this.handleDiscovered(device);
