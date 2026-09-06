@@ -138,6 +138,9 @@ export class DiscoveryService extends EventEmitter {
   // Announcements repeat every few seconds. Probing on each one would mean a
   // TCP connection per device per announcement, forever.
   private shureProbed  = new Set<string>();
+  // Addresses already reported as found-but-not-offered, so the repeating
+  // scans do not repeat the warning.
+  private notOfferedReported = new Set<string>();
   private seenIps      = new Set<string>();        // IPs that have already been emitted
   private deviceNames  = new Map<string, string>(); // ip → real name from MCP Name response
   private anyHandler:  ((raw: string, fromIp: string) => void) | null = null;
@@ -189,6 +192,7 @@ export class DiscoveryService extends EventEmitter {
     this.scanInProgress = true;
     this.emit('scan:start');
     log.debug('[Discovery] On-demand scan started');
+    const before = this.seenIps.size;
     try {
       this.runUdpProbes();
       // Hard cap: on Windows, TCP SYN to firewalled hosts can stall far past the
@@ -198,7 +202,29 @@ export class DiscoveryService extends EventEmitter {
     } finally {
       this.scanInProgress = false;
       this.emit('scan:complete');
-      log.debug('[Discovery] On-demand scan complete');
+      // What a scan actually did, at a level a deployed server prints.
+      //
+      // Silence here was the root of an unfalsifiable question: with nothing in
+      // the journal, "discovery found nothing" and "discovery was never asked"
+      // and "discovery found it and withheld it" all look identical. One line
+      // per scan is a price worth paying to tell them apart — and a scan that
+      // sweeps every subnet and finds not one device is worth saying out loud,
+      // because on a rig with receivers plugged in it is almost always a
+      // blocked port rather than an empty network.
+      const found = this.seenIps.size - before;
+      const nets  = this.getLocalIpv4Addresses();
+      if (found > 0) {
+        log.warn(`[Discovery] Scan complete — ${found} new device(s) found`);
+      } else if (this.seenIps.size === 0) {
+        log.warn(
+          `[Discovery] Scan complete — no devices found on any interface ` +
+          `(${nets.join(', ') || 'none detected'}). If receivers are on this ` +
+          `network, check that UDP 5353 and 53212 are open and that the server ` +
+          `is on the same subnet or VLAN as the rack.`,
+        );
+      } else {
+        log.debug('[Discovery] Scan complete — nothing new');
+      }
     }
   }
 
@@ -209,6 +235,21 @@ export class DiscoveryService extends EventEmitter {
   private startMdns() {
     const interfaces = this.getLocalIpv4Addresses();
     const targets = interfaces.length > 0 ? interfaces : [undefined as any];
+
+    // Which interfaces are being listened on, once, at startup.
+    //
+    // An EW-DX is found over mDNS; a G3 is found over the MCP broadcast. When
+    // the first fails and the second works, the first question is whether mDNS
+    // was ever listening on the subnet the receiver is on — and there was no
+    // way to answer it from a deployed server, because this was silent.
+    if (interfaces.length > 0) {
+      log.warn(`[Discovery] Listening for EW-DX (mDNS) on ${interfaces.join(', ')}`);
+    } else {
+      log.warn(
+        '[Discovery] No usable network interface found — listening for EW-DX on ' +
+        'the default route only. Receivers on another subnet will not be found.',
+      );
+    }
 
     for (const iface of targets) {
       const opts = iface ? { interface: iface } : {};
@@ -472,9 +513,14 @@ export class DiscoveryService extends EventEmitter {
       // appliance might return. The certificate is the remaining evidence.
       if (!(await this.certificateIdentifiesSennheiser(ip))) {
         const summary = bodies.length > 0
-          ? `response is not SSC (${JSON.stringify(bodies[0].data).slice(0, 120)})`
-          : 'HTTPS 401 on every path';
-        log.debug(`[Discovery] ${ip}: ${summary} and the certificate does not identify Sennheiser — skipping`);
+          ? `answered on 443 but the response is not SSC (${JSON.stringify(bodies[0].data).slice(0, 120)})`
+          : 'answered on 443 with HTTPS 401 on every path';
+        this.reportNotOffered(
+          `http:${ip}`,
+          `${ip} ${summary}, and its TLS certificate does not name Sennheiser — ` +
+          `not offering it. If this is a receiver, add it by IP; a password-protected ` +
+          `unit cannot be identified by an unauthenticated probe.`,
+        );
         return;
       }
       log.debug(`[Discovery] ${ip}: TLS certificate identifies Sennheiser`);
@@ -520,12 +566,34 @@ export class DiscoveryService extends EventEmitter {
     const key = `${ip}:${port}`;
     if (this.seenIps.has(key)) return;
     this.seenIps.add(key);
-    log.debug(`[Discovery] Found: ${name} at ${ip}:${port} (${protocol})`);
+    // Finding a device is the event this whole subsystem exists to produce, and
+    // it was logged where a deployed server would never print it.
+    log.warn(`[Discovery] Found ${name} at ${ip}:${port} (${protocol})`);
     this.emit('discovered', { ip, port, name, protocol, ...known } as DiscoveredDevice);
   }
 
   private getLocalIpv4Addresses(): string[] {
     return mcpBus.getActiveInterfaces().map(i => i.address);
+  }
+
+  /**
+   * Say, once, that a device was found and then not offered.
+   *
+   * Discovery logged every one of its decisions at `debug`, and a deployed
+   * server runs at `warn` — so a receiver that RFDeck saw, examined and
+   * rejected produced no output at all. From the outside that is
+   * indistinguishable from the device never having been on the network, which
+   * is the hardest possible thing to diagnose and cost days of it.
+   *
+   * Refusing to offer a device the operator can see on their own network is
+   * degraded behaviour, so it is a warning. Once per address per run, because
+   * the scans repeat and this must not become the noise it is trying to cut
+   * through.
+   */
+  private reportNotOffered(key: string, message: string): void {
+    if (this.notOfferedReported.has(key)) return;
+    this.notOfferedReported.add(key);
+    log.warn(`[Discovery] ${message}`);
   }
 
   private subnetHostCount(netmask: string): number {

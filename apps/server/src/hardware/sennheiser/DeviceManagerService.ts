@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { DiscoveryService, DiscoveredDevice, resolveDiscoveryDisabled } from './DiscoveryService';
 import { SSCClient } from './SSCClient';
 import { G3G4Client } from './G3G4Client';
+import { mcpBus } from './McpBus';
 import { EventEmitter } from 'events';
 import { Server } from 'socket.io';
 import { Device, Channel } from '@rfdeck/shared-types';
@@ -91,6 +92,9 @@ export class DeviceManagerService extends EventEmitter {
   // Channels whose persisted records have already been checked for keys left
   // over from when a channel was identified by its name.
   private keysMigrated: Set<string> = new Set();
+  // Addresses already reported as found-but-withheld, so repeating scans do
+  // not repeat the warning.
+  private suppressionReported: Set<string> = new Set();
   private deviceNames: Map<string, string> = new Map(); // base id → user-assigned name
   // base id → what the device is for. An IEM transmitter has no RF and no
   // transmitter battery, and alerting on their absence is how a working
@@ -191,6 +195,36 @@ export class DeviceManagerService extends EventEmitter {
     });
   }
 
+  /**
+   * Read the interface chosen in Settings and put it into effect.
+   *
+   * Called at startup and again whenever the setting is saved, so choosing an
+   * interface takes effect on the next scan rather than at the next restart —
+   * an operator changing it is usually doing so because discovery is not
+   * finding something right now.
+   */
+  async applyBindInterface(): Promise<void> {
+    try {
+      const settings = await prisma.settings.findFirst();
+      mcpBus.setBindAddress(settings?.bindInterface);
+    } catch (err: any) {
+      log.warn(`[DeviceManager] Could not read the network interface setting: ${err?.message}`);
+    }
+  }
+
+  /** Re-read the interface setting and restart the passive listeners on it. */
+  async rebindNetworkInterface(): Promise<void> {
+    const before = mcpBus.getBindAddress();
+    await this.applyBindInterface();
+    if (mcpBus.getBindAddress() === before) return;
+    // The mDNS browsers and the Shure listener are bound per interface, so they
+    // have to be rebuilt rather than reconfigured.
+    this.discovery.stop();
+    this.discovery.start();
+    log.info('[DeviceManager] Discovery restarted on the newly selected interface');
+    this.discovery.scan().catch(() => {});
+  }
+
   private async reconcileUntrackedDiscoveries(): Promise<void> {
     for (const device of this.discoveredCache.values()) {
       const id = `${device.ip}:${device.port}`;
@@ -200,6 +234,9 @@ export class DeviceManagerService extends EventEmitter {
   }
 
   async start() {
+    // Apply the operator's interface choice before anything binds or scans.
+    await this.applyBindInterface();
+
     // Fix legacy G3/G4 records added via discovery before manufacturer inference was corrected.
     // MCP-discovered devices have port 53212; records with manufacturer='Unknown' got that value
     // because the old heuristic couldn't match a channel label like "Vocal 1".
@@ -925,7 +962,7 @@ export class DeviceManagerService extends EventEmitter {
   private handleDiscovered(device: DiscoveredDevice) {
     // Known secondary interface of a tracked device — never surface it.
     if (this.secondaryIps.has(device.ip)) {
-      log.debug(`[DeviceManager] Discovery hit on ${device.ip} — known secondary of ${this.secondaryIps.get(device.ip)}, suppressing`);
+      this.reportSuppressed(device.ip, `found on the network, but it is recorded as the second interface of the device at ${this.secondaryIps.get(device.ip)} — not offering it`);
       this.suppressDiscovered(device.ip, device.port);
       return;
     }
@@ -1007,7 +1044,7 @@ export class DeviceManagerService extends EventEmitter {
               log.debug(`[DeviceManager] Healing "${known.name}": record at ${known.ip}, device reports control IP ${trueControl}`);
               await this.migrateDeviceIp(known, trueControl, port);
             }
-            log.debug(`[DeviceManager] ${ip} is the Dante interface of "${known.name}" — suppressing`);
+            this.reportSuppressed(ip, `is the Dante interface of "${known.name}" — not offering it`);
             this.suppressDiscovered(ip, port);
             return;
           }
@@ -1019,7 +1056,7 @@ export class DeviceManagerService extends EventEmitter {
         const arpMac = await getMacByIp(ip);
         const storedMac = known.mac?.toLowerCase() ?? null;
         if (storedMac && arpMac && arpMac !== storedMac) {
-          log.debug(`[DeviceManager] ${ip} has different MAC than "${known.name}" control NIC — secondary interface, suppressing`);
+          this.reportSuppressed(ip, `has a different MAC from the control NIC of "${known.name}", so it is treated as that unit second interface — not offering it`);
           this.suppressDiscovered(ip, port);
           return;
         }
@@ -1027,13 +1064,13 @@ export class DeviceManagerService extends EventEmitter {
         // Fallback 2: reachability. Never steal the record from a live connection,
         // and never migrate while the recorded IP still answers with the same serial.
         if (this.clients.get(`${known.ip}:${known.port}`)?.isConnected) {
-          log.debug(`[DeviceManager] ${ip} matches connected "${known.name}" (${known.ip}) — suppressing`);
+          this.reportSuppressed(ip, `matches "${known.name}", which is already connected at ${known.ip} — not offering it`);
           this.suppressDiscovered(ip, port);
           return;
         }
         const atOldIp = await SSCClient.fetchIdentity(known.ip, known.port, password);
         if (atOldIp?.serial && atOldIp.serial === identity.serial) {
-          log.debug(`[DeviceManager] "${known.name}" still answers at ${known.ip}; ${ip} is its secondary interface — suppressing`);
+          this.reportSuppressed(ip, `shares a serial with "${known.name}", which still answers at ${known.ip}, so it is treated as that unit second interface — not offering it`);
           this.suppressDiscovered(ip, port);
           return;
         }
@@ -1142,6 +1179,27 @@ export class DeviceManagerService extends EventEmitter {
 
   // Remove a discovered entry that turned out to be a secondary interface of an
   // already-tracked device (e.g. the Dante NIC of a connected EW-DX).
+  /**
+   * Say, once, that a device was found and deliberately not offered.
+   *
+   * These decisions were all logged at `debug`, and a deployed server runs at
+   * `warn` — so RFDeck could see a receiver, decide it was a duplicate or a
+   * second interface, and hide it, leaving nothing in the journal at all. To
+   * an operator looking at a receiver that is plainly on the network and
+   * plainly not in the list, that is indistinguishable from discovery being
+   * broken, and there was no way to tell the two apart from the outside.
+   *
+   * Every one of these judgements can be wrong — they rest on MACs, serials
+   * and addresses reported by the hardware — so each one says what it decided
+   * and why, at a level the operator actually sees. Once per address per run,
+   * since the scans repeat.
+   */
+  private reportSuppressed(ip: string, why: string): void {
+    if (this.suppressionReported.has(ip)) return;
+    this.suppressionReported.add(ip);
+    log.warn(`[DeviceManager] ${ip} ${why}. If that is wrong, add it by IP from the inventory.`);
+  }
+
   private suppressDiscovered(ip: string, port: number) {
     this.discoveredCache.delete(`${ip}:${port}`);
     this.io.emit('device:undiscovered', { ip, port });
