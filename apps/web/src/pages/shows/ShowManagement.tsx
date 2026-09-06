@@ -537,6 +537,14 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvironmentProfile }) 
                 title="In-ear monitor channel — assigned here, never part of the soundcheck"
               >
                 <option value="">— no IEM —</option>
+                {/* An empty list is not the same as "this performer has no
+                    IEM", and silently offering nothing gave an operator no way
+                    to tell which they were looking at. */}
+                {iems.length === 0 && (
+                  <option value="" disabled>
+                    No IEM channels — mark a device as Output in Inventory
+                  </option>
+                )}
                 {iems.map(ch => (
                   <option key={ch.id} value={channelKey(ch)}>
                     {ch.name || `CH ${ch.channelIndex}`}

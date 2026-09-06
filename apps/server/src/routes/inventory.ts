@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
 import { DeviceManagerService } from '../hardware/sennheiser/DeviceManagerService';
 import { encryptSecret } from '../auth/secretBox';
+import { inferDeviceRole } from '../hardware/deviceRole';
 
 // Device passwords unlock the wireless hardware itself and must never reach a
 // client. Every response goes through this — the client learns only whether a
@@ -55,7 +56,13 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
         location: data.location,
         notes: data.notes,
         password: storedPassword,
-        deviceType: data.deviceType ?? 'input',
+        // The add form defaults this to "input", and a device added straight
+        // from the discovery list is never asked at all — so an IEM
+        // transmitter arrives filed as a microphone unless the model says
+        // otherwise. An explicit "output" from the client always wins.
+        deviceType: data.deviceType === 'output'
+          ? 'output'
+          : (inferDeviceRole(data.model, data.name) ?? data.deviceType ?? 'input'),
         active: data.active ?? true,
       }
     });
