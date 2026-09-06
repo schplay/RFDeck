@@ -2,6 +2,7 @@ import Bonjour from 'bonjour-service';
 import os from 'os';
 import https from 'https';
 import tls from 'tls';
+import net from 'net';
 import axios from 'axios';
 import { EventEmitter } from 'events';
 import { mcpBus } from './McpBus';
@@ -57,13 +58,18 @@ const MCP_PORT = 53212;
 const SSC_PORT  = 443;
 const SHURE_PORT = 2202;
 
+// How long to wait for a bare TCP connect when sweeping a subnet. A host that
+// is present answers a LAN connect in milliseconds; this only bounds the wait
+// for addresses that swallow packets rather than refusing them.
+const HOST_PROBE_TIMEOUT_MS = 2_000;
+
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
 
 // Shared HTTPS client for probing EW-DX devices (self-signed certs, legacy TLS).
 // 2500ms gives embedded firmware enough time to complete the TLS handshake.
-// Batch size (12) × timeout (2.5s) ≈ 2.5s per batch × 22 batches ≈ 55s worst-case,
-// but the 20s hard cap kicks in well before that.
+// Only ever aimed at addresses already known to be listening on 443, so this
+// timeout is paid a handful of times per scan rather than 254 times.
 const sscProbeClient = axios.create({
   timeout: 2500,
   httpsAgent: new https.Agent({
@@ -399,6 +405,55 @@ export class DiscoveryService extends EventEmitter {
 
   // ── HTTP scan (EW-DX / SSCv2, active scan, on-demand only) ──────────
 
+  /**
+   * Which addresses in a /24 have anything listening on a port.
+   *
+   * A bare TCP connect, all at once. It costs a socket and no bytes, and a host
+   * that is not there fails immediately on a LAN rather than waiting out a
+   * timeout, so the whole range settles in a couple of seconds.
+   */
+  private async hostsListeningOn(base: string, port: number): Promise<string[]> {
+    const found: string[] = [];
+    await Promise.all(
+      Array.from({ length: 254 }, (_, i) => `${base}.${i + 1}`).map(ip =>
+        new Promise<void>(resolve => {
+          const sock = new net.Socket();
+          let settled = false;
+          const done = (listening: boolean) => {
+            if (settled) return;
+            settled = true;
+            sock.destroy();
+            if (listening) found.push(ip);
+            resolve();
+          };
+          sock.setTimeout(HOST_PROBE_TIMEOUT_MS);
+          sock.once('connect', () => done(true));
+          sock.once('timeout', () => done(false));
+          sock.once('error',   () => done(false));
+          sock.connect(port, ip);
+        }),
+      ),
+    );
+    return found;
+  }
+
+  // Find the EW-DX receivers on each attached subnet.
+  //
+  // Two stages, because the expensive part is only worth spending on addresses
+  // that exist. This used to open an HTTPS request to all 254 addresses, twelve
+  // at a time, and every empty address cost the full 2.5-second TLS timeout —
+  // about 55 seconds to cross a /24. The scan is capped at 20 seconds, so it
+  // was routinely cut off less than half way, and a receiver in the upper half
+  // of the range was reported as "scan complete, nothing found". On the network
+  // this was diagnosed on, the EW-DX at .148 was reached 31 seconds in: found,
+  // reliably, eleven seconds after RFDeck had already said there was nothing
+  // there.
+  //
+  // A TCP connect first narrows 254 addresses to the handful that answer on
+  // 443, in about three seconds, and only those get identified. The whole sweep
+  // now finishes well inside the cap, which is the difference between a cap
+  // that guards against a pathological network and one that silently truncates
+  // every normal scan.
   private async runHttpScan() {
     const ifaces = mcpBus.getActiveInterfaces();
     if (ifaces.length === 0) return;
@@ -406,14 +461,16 @@ export class DiscoveryService extends EventEmitter {
     for (const iface of ifaces) {
       const parts = iface.address.split('.');
       const base  = `${parts[0]}.${parts[1]}.${parts[2]}`;
-      const batch: Promise<void>[] = [];
-      for (let host = 1; host <= 254; host++) {
-        batch.push(this.httpProbeHost(`${base}.${host}`));
-        if (batch.length >= 12) {
-          await Promise.allSettled(batch.splice(0));
-        }
-      }
-      if (batch.length > 0) await Promise.allSettled(batch);
+
+      const candidates = await this.hostsListeningOn(base, SSC_PORT);
+      log.debug(
+        `[Discovery] ${base}.0/24: ${candidates.length} host(s) answering on ` +
+        `${SSC_PORT}${candidates.length ? ` (${candidates.join(', ')})` : ''}`,
+      );
+
+      // Few enough that identifying them all at once is not a burst worth
+      // pacing, and each one is a device someone may be waiting to see.
+      await Promise.allSettled(candidates.map(ip => this.httpProbeHost(ip)));
     }
   }
 
