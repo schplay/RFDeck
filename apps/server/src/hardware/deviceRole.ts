@@ -99,3 +99,28 @@ export function isSscModel(model?: string | null): boolean {
   return false;
 }
 
+
+/**
+ * Is this model string a stand-in rather than a real model?
+ *
+ * The add form fills in `"<Manufacturer> Device"` when the field is left
+ * blank, and discovery falls back to labels like "Unknown Model". Those look
+ * like data and are not: they tell RFDeck nothing about what the device is,
+ * and code that keys on the model — which client to build, whether the G3/G4
+ * fallback applies — is quietly blinded by them.
+ *
+ * Devices report their own model once connected. Where the stored value is one
+ * of these placeholders, the device's answer is better and replaces it. A
+ * model an operator actually typed is never touched.
+ */
+export function isPlaceholderModel(model?: string | null, manufacturer?: string | null): boolean {
+  const m = (model ?? '').trim();
+  if (!m) return true;
+  if (/^unknown\b/i.test(m)) return true;
+  // "Sennheiser Device", "Shure Device" — what the add form generates from the
+  // manufacturer when no model is given.
+  if (/^\s*\S+\s+device\s*$/i.test(m)) return true;
+  const vendor = (manufacturer ?? '').trim();
+  if (vendor && m.toLowerCase() === `${vendor.toLowerCase()} device`) return true;
+  return false;
+}
