@@ -68,6 +68,15 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
       (fastify as any).recordingManager?.reload().catch(() => {});
     }
 
+    // The mDNS browsers and the MCP probes are bound per interface, so changing
+    // which interface RFDeck uses only means anything if discovery is rebuilt
+    // on it. Someone changing this is usually doing it because a receiver is
+    // not being found right now, and telling them to restart the server would
+    // be a poor answer.
+    if (Object.prototype.hasOwnProperty.call(data, 'bindInterface')) {
+      (fastify as any).deviceManager?.rebindNetworkInterface().catch(() => {});
+    }
+
     const { defaultPassword, authPinHash, ...safe } = settings;
     return { ...safe, hasDefaultPassword: !!defaultPassword, pinIsSet: !!authPinHash };
   });

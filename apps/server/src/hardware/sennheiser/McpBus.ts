@@ -100,29 +100,74 @@ class McpBus {
   addAnyHandler(handler: MsgHandler): void   { this.anyHandlers.add(handler); }
   removeAnyHandler(handler: MsgHandler): void { this.anyHandlers.delete(handler); }
 
-  getBroadcastAddresses(): string[] {
-    const list: string[] = ['255.255.255.255'];
+  /**
+   * The interface the operator chose in Settings, or 0.0.0.0 for all of them.
+   *
+   * Settings has offered this choice, described as "used for mDNS discovery and
+   * hardware communication", since before any of the discovery code was
+   * written — and nothing ever read it. The value was stored, redisplayed, and
+   * ignored. Every interface was used regardless.
+   *
+   * That is not a cosmetic gap on a real rig. A venue server is routinely on
+   * two networks, control and Dante, and an EW-DX answers on both with the same
+   * serial number. Discovery running across both sees one receiver twice and
+   * then has to guess which address is the control interface — a guess that,
+   * when it goes wrong, withholds the address that actually works. Honouring
+   * the choice removes the ambiguity instead of arbitrating it.
+   */
+  private bindAddress = '0.0.0.0';
+
+  setBindAddress(address: string | null | undefined): void {
+    const next = (address ?? '').trim() || '0.0.0.0';
+    if (next === this.bindAddress) return;
+    this.bindAddress = next;
+    log.info(`[McpBus] Network interface set to ${next === '0.0.0.0' ? 'all interfaces' : next}`);
+  }
+
+  getBindAddress(): string { return this.bindAddress; }
+
+  private usable(addr: os.NetworkInterfaceInfo): boolean {
+    return addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.');
+  }
+
+  private allInterfaces(): Array<{ address: string; netmask: string }> {
+    const result: Array<{ address: string; netmask: string }> = [];
     for (const addrs of Object.values(os.networkInterfaces())) {
       for (const addr of addrs ?? []) {
-        if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.')) {
-          const b = this.computeBroadcast(addr.address, addr.netmask);
-          if (b) list.push(b);
-        }
+        if (this.usable(addr)) result.push({ address: addr.address, netmask: addr.netmask });
       }
+    }
+    return result;
+  }
+
+  getBroadcastAddresses(): string[] {
+    const list: string[] = ['255.255.255.255'];
+    for (const iface of this.getActiveInterfaces()) {
+      const b = this.computeBroadcast(iface.address, iface.netmask);
+      if (b) list.push(b);
     }
     return [...new Set(list)];
   }
 
   getActiveInterfaces(): Array<{ address: string; netmask: string }> {
-    const result: Array<{ address: string; netmask: string }> = [];
-    for (const addrs of Object.values(os.networkInterfaces())) {
-      for (const addr of addrs ?? []) {
-        if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.')) {
-          result.push({ address: addr.address, netmask: addr.netmask });
-        }
-      }
-    }
-    return result;
+    const all = this.allInterfaces();
+    if (this.bindAddress === '0.0.0.0') return all;
+
+    const chosen = all.filter(i => i.address === this.bindAddress);
+    if (chosen.length > 0) return chosen;
+
+    // The chosen address is not on this machine any more — a NIC replaced, a
+    // DHCP lease changed, a config copied between servers. Falling back to
+    // every interface keeps RFDeck able to find hardware, which matters more
+    // than honouring a setting that no longer describes anything; going deaf
+    // instead would be the worse failure. Said loudly, because the setting on
+    // screen no longer matches what is happening.
+    log.warn(
+      `[McpBus] The selected network interface ${this.bindAddress} is not present ` +
+      `on this machine (available: ${all.map(i => i.address).join(', ') || 'none'}). ` +
+      `Using all interfaces. Update it in Settings -> Network.`,
+    );
+    return all;
   }
 
   private computeBroadcast(ip: string, mask: string): string | null {
