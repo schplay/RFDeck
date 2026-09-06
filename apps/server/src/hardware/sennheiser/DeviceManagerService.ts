@@ -39,6 +39,43 @@ type ClientType = SSCClient | G3G4Client | ShureClient | Digital6000Client;
  */
 const SSC_RETRY_WHILE_LEGACY_MS = 15_000;
 
+/**
+ * Which of a receiver's addresses are its secondary (Dante) interface.
+ *
+ * Registering one of these hides that address from discovery permanently, so
+ * that an EW-DX's second NIC is not offered as a second device. That is a
+ * destructive decision — a hidden address cannot be added, and nothing on
+ * screen says why — so it may only be made on evidence.
+ *
+ * It used to be made on a guess. `danteAll` is every IPv4 string found
+ * anywhere in the response, at any depth, under any key: on firmware that does
+ * not name its fields `address`/`ip`/`ipv4`, the properly-keyed list came back
+ * empty and the code fell back to that scrape. A receiver's own GATEWAY and
+ * DNS server were then registered as its "secondary interfaces", and any real
+ * device sitting at one of those addresses disappeared from discovery for the
+ * life of the process.
+ *
+ * So: only addresses the device itself labelled as addresses, and never one it
+ * also calls a control address. If the firmware names its fields in a way
+ * RFDeck does not recognise, nothing is suppressed and the operator sees one
+ * extra entry — which is a far smaller problem than a device that cannot be
+ * found and gives no reason.
+ */
+export function secondaryAddresses(
+  net: { controlAll: string[]; danteAddrs: string[] },
+  connectedIp: string,
+): string[] {
+  return net.danteAddrs.filter(a =>
+    a !== connectedIp &&
+    a !== '0.0.0.0' &&
+    !a.startsWith('255.') &&
+    !a.startsWith('127.') &&
+    // A control address is how RFDeck reaches a device. It is never a
+    // secondary, whatever else the device reports it as.
+    !net.controlAll.includes(a)
+  );
+}
+
 export class DeviceManagerService extends EventEmitter {
   private discovery: DiscoveryService;
   private io: Server;
@@ -861,16 +898,14 @@ export class DeviceManagerService extends EventEmitter {
 
   // Query a connected SSC device for its network config and register its
   // secondary (Dante) addresses so discovery never shows them as new devices.
+  //
+  // See secondaryAddresses for why this trusts only what the device labels as
+  // an address.
   private async registerSecondaryIps(client: SSCClient, ip: string, port: number): Promise<void> {
     const net = await SSCClient.fetchNetworkAddresses(ip, port, client.getPassword());
     if (!net) return;
 
-    // Prefer address-named keys; fall back to all IPv4s in the Dante payload
-    // minus obvious non-host values (netmasks, unconfigured 0.0.0.0).
-    const candidates = net.danteAddrs.length > 0 ? net.danteAddrs : net.danteAll;
-    const secondaries = candidates.filter(a =>
-      a !== ip && a !== '0.0.0.0' && !a.startsWith('255.') && !a.startsWith('127.')
-    );
+    const secondaries = secondaryAddresses(net, ip);
 
     for (const sIp of secondaries) {
       if (this.secondaryIps.get(sIp) !== ip) {
@@ -955,7 +990,15 @@ export class DeviceManagerService extends EventEmitter {
             await this.migrateDeviceIp(known, ip, port);
             return;
           }
-          if (net.danteAll.includes(ip)) {
+          // The labelled Dante addresses, never the scrape of every IPv4 in the
+          // payload. This branch hides the address from discovery, and the two
+          // directions are not symmetrical: reading a control address wrongly
+          // migrates a record, which is visible and correctable, while reading
+          // a Dante address wrongly makes a real receiver impossible to add and
+          // says nothing about why. When neither list names this address the
+          // code falls through to the weaker heuristics below rather than
+          // guessing.
+          if (net.danteAddrs.includes(ip)) {
             // Secondary (Dante) interface. If the inventory record itself is sitting
             // on a non-control IP (earlier mis-migration), heal it using the control
             // address the device just reported.
