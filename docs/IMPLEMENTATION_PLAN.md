@@ -1008,17 +1008,26 @@ RFDeck's alerts exist only in an open tab. A dropout during a show nobody is
 watching, or overnight on a resident install, tells nobody. Extends 5.3, which
 covers the browser half.
 
-Two tiers, decided by what each costs to run:
+Two tiers — see `docs/EDITIONS.md` for the line and why it sits there:
 
 - **Free — browser push and webhooks.** Both are self-contained: a service
   worker, and an HTTP POST to a URL the operator supplies. A webhook reaches
   Slack, Teams, a home automation box or anything else without RFDeck taking on
   an account or a bill, and it is the honest primitive to build the rest on.
-- **Paid — email and SMS.** These need a third-party service and carry a
-  per-message cost, so they cannot sit in a build anyone can run for nothing.
+- **Paid cloud — email and SMS.** A hosted service RFDeck runs on the customer's
+  behalf, not a feature switched off in the application. It belongs beside
+  regional data in the cloud tier.
+
+An earlier draft of this item justified the split by what each delivery method
+costs to run. That was a second principle competing with the real one, and it
+reaches the same answer less honestly: what makes email and SMS paid is that
+RFDeck operates them for you, not that Twilio invoices per message.
 
 Routed by severity and role, per 5.3. A webhook that fires on every channel mute
 is one an operator switches off within a night.
+
+Build only the free half until licensing exists. Nothing here should assume an
+enforcement mechanism that has not been designed.
 
 ### C.3 Spectrum scanning integration — **XL** — *to explore*
 
@@ -1149,3 +1158,66 @@ room. Nothing new to learn, only made findable.
 not fit on one surface. RFDeck has no equivalent division — channels group by
 device, role and show, all of which already mean something. A bank would be an
 invented boundary; the dense grid (C.8) is the real answer to the same problem.
+
+### C.13 Frequency coordination — **L** — *free tier, deliberately*
+
+Assign every transmitter in the rig a frequency that clears the others: minimum
+spacing respected, no third-order product landing on a carrier, inside each
+device's tuning range, avoiding whatever the operator has marked unusable. Then
+offer to tune the hardware to it.
+
+**This is not the hard problem it is assumed to be.** The physics is textbook —
+C.6 already contains all of it — and the assignment itself is a constraint
+satisfaction problem that is NP-hard in general and trivial at the sizes RFDeck
+sees: twenty to a hundred carriers, 25 kHz steps, a few hundred megahertz. Most
+of a candidate list, most-constrained-first, and backtracking on conflict solves
+it in well under a second. There is no proprietary algorithm to be beaten.
+
+What the manufacturers actually have is data and reach, not cleverness:
+per-model tuning ranges, IF and image frequencies, recommended spacings, factory
+group tables their receivers ship with, and regional TV occupancy. That is the
+real work here, and it is compilation and verification rather than invention.
+
+**Where RFDeck wins is the part their tools cannot do.** Wireless Workbench
+coordinates Shure; Wireless Systems Manager coordinates Sennheiser. A mixed rig
+is coordinated by hand today. RFDeck already speaks to all three families and
+already implements `setFrequency` on every one of them, so the expensive half is
+built: it can coordinate across vendors and then *deploy* the result. Their
+tools plan once from a document; RFDeck knows the live rig continuously, so it
+can also say when the plan has drifted — somebody re-tuned a pack, a receiver
+came up on a factory default — which is a different product and C.6 is its first
+piece.
+
+Three parts, in this order:
+
+1. **Device profiles — research first.** Tuning ranges, step sizes, minimum
+   spacings, and whatever is published about IF and image frequencies for the
+   families already supported. This is the item that could invalidate the
+   estimate, so it goes first. Some of it is published and some is not; that is
+   knowable only by looking.
+2. **The solver.** Pure, offline, unit-testable in the same shape as
+   `intermod.ts`. Scored by worst-case intermod margin so a plan can be compared
+   against the one already on the air.
+3. **Deployment.** Push the plan to the hardware over the existing
+   `setFrequency`, behind the surface lock (C.5) and with a confirmation naming
+   what will move. Retuning a live rig is the single most disruptive thing
+   RFDeck can be asked to do.
+
+**Free, and worth saying why.** Coordination is one operator doing their craft,
+so it fails the paid-tier test in `docs/EDITIONS.md` outright. It is also the
+worst possible candidate for an exception: Wireless Workbench and Wireless
+Systems Manager are both free, so charging for coordination would mean charging
+for the thing the manufacturers give away while giving away the organisational
+features they do not have.
+
+The trap to avoid is inside the feature rather than around it. C.6 already warns
+that the rig is landing on itself. Detection must never be free while the remedy
+is paid — that is the one shape users are right to resent. The recurring cost
+that does exist here, maintaining device profiles and regional TV data, is met
+by the paid cloud tier: the solver is free and works offline against whatever
+profiles shipped with the build, and the maintained feed is the subscription.
+
+**One caveat to carry into the design.** Coordination that puts a transmitter on
+a licensed channel is a regulatory problem, not merely a noisy one. RFDeck
+coordinates *within a band the operator declares usable* and should say so
+plainly, rather than implying it knows what is legal where you are standing.

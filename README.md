@@ -809,3 +809,12 @@ firewall requirements, and verification procedures are in
 ## License
 
 Private / Proprietary — All rights reserved.
+
+That is the state today, not the intended one. RFDeck is planned to ship as a
+free, open-source desktop application, with a paid edition and cloud services
+aimed at organisations and venues. The editions, and the reasoning behind where
+the line falls, are in [`docs/EDITIONS.md`](docs/EDITIONS.md).
+
+None of it is implemented: paid functionality is blocked on separating the
+repository and building licence enforcement, and no feature should assume an
+enforcement mechanism that does not exist yet.
