@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSurfaceLocked, LOCKED_REASON } from '../../stores/uiStore';
 import { Radio } from 'lucide-react';
 import { useLiveStore } from '../../stores/liveStore';
 import { useShowStore } from '../../stores/showStore';
@@ -13,6 +14,7 @@ import './GoLivePanel.css';
 // the answer to "why is nothing here".
 
 export function GoLivePanel() {
+  const surfaceLocked = useSurfaceLocked();
   const { goLive, busy, error } = useLiveStore();
   const { shows, fetchShows, loaded } = useShowStore();
   const inventory = useDeviceStore(s => s.inventory);
@@ -62,7 +64,8 @@ export function GoLivePanel() {
         <button
           className="gl-button"
           onClick={() => goLive(showId || null)}
-          disabled={busy}
+          disabled={busy || surfaceLocked}
+          title={surfaceLocked ? LOCKED_REASON : undefined}
         >
           <Radio size={22} />
           {busy ? 'Going live…' : 'Go Live'}

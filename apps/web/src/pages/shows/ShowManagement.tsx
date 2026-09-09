@@ -14,6 +14,7 @@ import {
   FileText, Download, BookOpen, ChevronDown, SlidersHorizontal,
 } from 'lucide-react';
 import { useShortcuts, plainKey } from '../../lib/shortcuts';
+import { useSurfaceLocked, LOCKED_REASON } from '../../stores/uiStore';
 import { ShowSettingsTab } from './ShowSettingsTab';
 import './ShowManagement.css';
 
@@ -183,6 +184,10 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvironmentProfile })
   // the operator has to work through under time pressure.
   const { mics: channels } = useChannelsByRole();
 
+  // A tick records what was verified, so a stray one is a false statement
+  // about the rig rather than a cosmetic slip.
+  const surfaceLocked = useSurfaceLocked();
+
   const [focusedIdx, setFocusedIdx] = useState(-1);
   const [editingNotesFor, setEditingNotesFor] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState('');
@@ -242,7 +247,7 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvironmentProfile })
         setFocusedIdx(i => Math.max(i - 1, 0));
       },
     },
-  ], [focusedIdx, channels, show.id, currentAct, actData, setChannelChecked]));
+  ], [focusedIdx, channels, show.id, currentAct, actData, setChannelChecked]), !surfaceLocked);
 
   const startEditNotes = (key: string) => {
     setEditingNotesFor(key);
@@ -274,8 +279,9 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvironmentProfile })
           </span>
           <button
             className="btn-ghost sm-reset-btn"
+            disabled={Object.keys(actData).length === 0 || surfaceLocked}
+            title={surfaceLocked ? LOCKED_REASON : undefined}
             onClick={() => { if (window.confirm(`Reset ${terms.periodLabel} ${currentAct} mic check?`)) resetAct(show.id, currentAct); }}
-            disabled={Object.keys(actData).length === 0}
           >
             <RotateCcw size={12} /> Reset
           </button>
@@ -305,8 +311,11 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvironmentProfile })
                 >
                   <button
                     className="sm-check-toggle"
+                    disabled={surfaceLocked}
                     onClick={e => { e.stopPropagation(); setChannelChecked(show.id, currentAct, key, !isChecked); }}
-                    title={isChecked ? 'Mark unchecked' : 'Mark checked'}
+                    title={surfaceLocked
+                      ? LOCKED_REASON
+                      : (isChecked ? 'Mark unchecked' : 'Mark checked')}
                   >
                     {isChecked
                       ? <CheckCircle2 size={22} className="check-icon-on" />

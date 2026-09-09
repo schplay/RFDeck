@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import { useAudioPatch } from '../../hooks/useAudioPatch';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { channelKey as keyFor } from '../../lib/channelKey';
+import { useSurfaceLocked, LOCKED_REASON } from '../../stores/uiStore';
 
 // Patch RF channels to audio inputs on the machine running RFDeck.
 //
@@ -13,6 +14,7 @@ import { channelKey as keyFor } from '../../lib/channelKey';
 // RAVENNA device the AES67 daemon creates, or several at once.
 
 export function AudioPatchSettings() {
+  const surfaceLocked = useSurfaceLocked();
   const channels = useActiveChannels();
   const { devices, assignments, hint, accessProblem, loading, error, patch, reload } =
     useAudioPatch();
@@ -105,11 +107,14 @@ export function AudioPatchSettings() {
 
                   <select
                     className={`sm-select${missing ? ' sm-select-warn' : ''}`}
+                    disabled={surfaceLocked}
                     value={current?.deviceId ?? ''}
-                    title={missing
-                      ? `${current!.deviceId} is not connected to this machine right now. ` +
-                        'The patch is kept and will work again when it returns.'
-                      : undefined}
+                    title={surfaceLocked
+                      ? LOCKED_REASON
+                      : missing
+                        ? `${current!.deviceId} is not connected to this machine right now. ` +
+                          'The patch is kept and will work again when it returns.'
+                        : undefined}
                     onChange={e => {
                       const id = e.target.value || null;
                       // Default to input 1 so choosing a device is one action.
@@ -130,7 +135,7 @@ export function AudioPatchSettings() {
                   <select
                     className="sm-select"
                     value={current?.inputChannel ?? ''}
-                    disabled={!current}
+                    disabled={!current || surfaceLocked}
                     onChange={e => patch(key, current!.deviceId, Number(e.target.value))}
                   >
                     {!current && <option value="">—</option>}

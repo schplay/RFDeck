@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Search, Grid, List, Wifi, WifiOff, ChevronDown, Power, PowerOff, ArrowUpDown } from 'lucide-react';
 import { useDeviceStore, InventoryDevice } from '../../stores/deviceStore';
+import { useSurfaceLocked } from '../../stores/uiStore';
 import { HardwareCard } from './components/HardwareCard';
 import { DeviceDrawer } from './components/DeviceDrawer';
 import { AddDeviceDialog } from './components/AddDeviceDialog';
@@ -39,6 +40,7 @@ const SORTERS: Record<SortKey, (a: InventoryDevice, b: InventoryDevice) => numbe
 
 export default function InventoryManager() {
   const { inventory, setDeviceActive, setAllDevicesActive } = useDeviceStore();
+  const surfaceLocked = useSurfaceLocked();
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [search, setSearch] = useState('');
@@ -109,6 +111,7 @@ export default function InventoryManager() {
             activeDevices.length > 0 ? (
               <button
                 className="btn-secondary"
+                disabled={surfaceLocked}
                 onClick={() => {
                   if (window.confirm(
                     `Disable all ${activeDevices.length} active device(s)?\n\n` +
@@ -124,6 +127,7 @@ export default function InventoryManager() {
             ) : (
               <button
                 className="btn-secondary"
+                disabled={surfaceLocked}
                 onClick={() => setAllDevicesActive(true)}
                 title="Start of day: resume monitoring every device"
               >
