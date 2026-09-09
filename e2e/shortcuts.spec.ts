@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 // Keyboard shortcuts have to be findable.
 //
@@ -7,9 +7,18 @@ import { test, expect } from '@playwright/test';
 // it lists what is registered right now rather than a hand-maintained table —
 // so a key that changes cannot leave the documentation behind.
 
+// Every test that presses a key waits for the view to mount first. A shortcut
+// cannot fire before React has bound it, and a test that races that passes or
+// fails on machine speed rather than on the code — which is exactly what
+// happened the first time these were written.
+async function ready(page: Page) {
+  await expect(page.getByRole('button', { name: /Unlocked|^Locked/ })).toBeVisible();
+}
+
 test.describe('the shortcut overlay', () => {
   test('opens on ? and closes on Escape', async ({ page }) => {
     await page.goto('/#/');
+    await ready(page);
     await page.keyboard.press('?');
     const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
     await expect(dialog).toBeVisible();

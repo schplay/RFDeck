@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Menu, X, Keyboard } from 'lucide-react';
+import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Menu, X, Keyboard, Lock, Unlock } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { AudioMonitor } from '../components/audio/AudioMonitor';
 import { AlertFeed } from '../components/alerts/AlertFeed';
 import { LiveIndicator } from '../components/live/LiveIndicator';
-import { useShortcutRegistry } from '../lib/shortcuts';
+import { useShortcutRegistry, useShortcuts, plainKey } from '../lib/shortcuts';
+import { useUiStore } from '../stores/uiStore';
 // Bundled import so the path survives base './' and the Electron file:// build.
 import logoMark from '../assets/logo-mark.png';
 import './RootLayout.css';
@@ -15,6 +16,25 @@ export default function RootLayout() {
   // Mobile only: the sidebar becomes an off-canvas drawer behind a hamburger.
   // Desktop ignores this state entirely — the sidebar is always visible there.
   const [navOpen, setNavOpen] = useState(false);
+
+  const surfaceLocked = useUiStore(s => s.surfaceLocked);
+  const setSurfaceLocked = useUiStore(s => s.setSurfaceLocked);
+
+  // L locks, and only locks.
+  //
+  // Locking wants to be fast — the house is opening, someone is already holding
+  // something. Unlocking does not: it is the act that makes every dangerous
+  // control live again, and a key that could do it by accident would defeat the
+  // point of having a lock. The header button is the way back.
+  // Scoped to the operator shell rather than announced as global, because that
+  // is the truth: the full-screen views do not mount this layout, so L does
+  // nothing there. They also have nothing dangerous to lock.
+  useShortcuts('Operator view', useMemo(() => [{
+    keys: 'L',
+    label: 'Lock the surface (unlock from the header)',
+    match: plainKey('l'),
+    run: () => setSurfaceLocked(true),
+  }], [setSurfaceLocked]));
 
   const statusDot = (
     <div
@@ -103,6 +123,20 @@ export default function RootLayout() {
           <AudioMonitor />
           <div className="topbar-divider" />
           <AlertFeed />
+          {/* Locked state belongs in the chrome, not on the page that happens
+              to own the control: an operator needs to know why a button did
+              nothing, wherever they were when they pressed it. */}
+          <button
+            className={`topbar-lock ${surfaceLocked ? 'is-locked' : ''}`}
+            onClick={() => setSurfaceLocked(!surfaceLocked)}
+            aria-pressed={surfaceLocked}
+            title={surfaceLocked
+              ? 'The surface is locked: nothing that changes the rig can be operated. Click to unlock.'
+              : 'Lock the surface so nothing that changes the rig can be operated. Press L to lock.'}
+          >
+            {surfaceLocked ? <Lock size={15} /> : <Unlock size={15} />}
+            <span className="topbar-lock-label">{surfaceLocked ? 'Locked' : 'Unlocked'}</span>
+          </button>
           {/* An entry point, because "?" only helps somebody who already knows
               to press it — which was the whole problem with the shortcuts that
               existed before. */}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSurfaceLocked, LOCKED_REASON } from '../../stores/uiStore';
 import { useLiveStore } from '../../stores/liveStore';
 import './GoLivePanel.css';
 
@@ -10,6 +11,9 @@ import './GoLivePanel.css';
 
 export function LiveIndicator() {
   const { live, show, startedAt, standDown, busy } = useLiveStore();
+  // Standing down stops tracking, recording and detection for the whole rig.
+  // If anything belongs behind the lock, this does.
+  const surfaceLocked = useSurfaceLocked();
   if (!live) return null;
 
   const since = startedAt
@@ -38,7 +42,12 @@ export function LiveIndicator() {
           </span>
         </div>
       </div>
-      <button className="live-stand-down" onClick={confirm} disabled={busy}>
+      <button
+        className="live-stand-down"
+        onClick={confirm}
+        disabled={busy || surfaceLocked}
+        title={surfaceLocked ? LOCKED_REASON : undefined}
+      >
         {busy ? 'Standing down…' : 'Stand Down'}
       </button>
     </div>

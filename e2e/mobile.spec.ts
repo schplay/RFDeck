@@ -41,7 +41,15 @@ test.describe('on a phone', () => {
     await page.getByRole('button', { name: /Open navigation/i }).click();
     await expect(page.locator('.nav-backdrop')).toBeVisible();
 
-    await page.locator('.nav-backdrop').click();
+    // Clicked near the right edge rather than at the centre. The backdrop
+    // spans the viewport and the open drawer sits on top of its left-hand
+    // side, so a centre click intermittently landed on a nav link instead —
+    // which navigates rather than closing, and reads as the drawer being
+    // stuck. Tapping the exposed part is also what a person actually does.
+    const box = await page.locator('.nav-backdrop').boundingBox();
+    await page.locator('.nav-backdrop').click({
+      position: { x: (box?.width ?? 320) - 12, y: 80 },
+    });
     await expect(page.locator('.sidebar')).not.toHaveClass(/open/);
   });
 

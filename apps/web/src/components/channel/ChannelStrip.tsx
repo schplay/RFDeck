@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
 import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff } from 'lucide-react';
-import { useUiStore } from '../../stores/uiStore';
+import { useUiStore, LOCKED_REASON } from '../../stores/uiStore';
 import { useSocket } from '../../hooks/useSocket';
 import { useChannelAudio } from '../../hooks/useChannelAudio';
 import { channelKey } from '../../lib/channelKey';
@@ -23,7 +23,10 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   const isListening = listeningTo === audioKey;
   // Global safety switch from the dashboard toolbar; applies on every view
   // that renders a strip, Backstage included.
-  const mutesLocked = useUiStore(s => s.mutesLocked);
+  // Either lock is enough. The mute lock is the narrow, always-on one; the
+  // surface lock is the show-time one that covers everything.
+  const mutesLocked = useUiStore(s => s.mutesLocked) || useUiStore(s => s.surfaceLocked);
+  const surfaceLocked = useUiStore(s => s.surfaceLocked);
 
   // Outcome of the last control command for THIS channel. A refused command
   // otherwise leaves the button looking inert, with the reason only in the
@@ -202,7 +205,7 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
           onClick={handleMuteToggle}
           disabled={mutesLocked}
           title={mutesLocked
-            ? 'Mute controls are locked — unlock them from the dashboard toolbar'
+            ? (surfaceLocked ? LOCKED_REASON : 'Mute controls are locked — unlock them from the dashboard toolbar')
             : (channel.isMuted ? 'Unmute this channel' : 'Mute this channel')}
         >
           <VolumeX size={14} /> {channel.isMuted ? 'Unmute' : 'Mute'}

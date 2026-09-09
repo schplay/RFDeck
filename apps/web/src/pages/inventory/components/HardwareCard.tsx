@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle, XCircle, PowerOff, Ban } from 'lucide-react';
 import { InventoryDevice } from '../../../stores/deviceStore';
+import { useSurfaceLocked, LOCKED_REASON } from '../../../stores/uiStore';
 import './HardwareCard.css';
 
 
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Props) {
+  const surfaceLocked = useSurfaceLocked();
   // Inactive devices are intentionally powered off — show them as dimmed/neutral
   // rather than as an error state, so real offline faults still stand out.
   const isInactive = device.active === false;
