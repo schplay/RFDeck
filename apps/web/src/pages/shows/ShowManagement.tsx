@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Show, Player, MicCheckAct, EnvironmentProfile, ENVIRONMENTS } from '@rfdeck/shared-types';
 import { useShowStore, migrateLegacyShows } from '../../stores/showStore';
@@ -13,6 +13,7 @@ import {
   ClipboardList, MessageSquare, RotateCcw, Users, Radio, Archive, ArchiveRestore,
   FileText, Download, BookOpen, ChevronDown, SlidersHorizontal,
 } from 'lucide-react';
+import { useShortcuts, plainKey } from '../../lib/shortcuts';
 import { ShowSettingsTab } from './ShowSettingsTab';
 import './ShowManagement.css';
 
@@ -198,31 +199,50 @@ function MicCheckTab({ show, terms }: { show: Show; terms: EnvironmentProfile })
       .map(p => [p.assignedChannelKey!, p])
   );
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-      if (e.key === 'y' || e.key === 'Y') {
-        if (focusedIdx >= 0 && focusedIdx < channels.length) {
-          setChannelChecked(show.id, currentAct, channelKey(channels[focusedIdx]), true);
-          const next = channels.findIndex((c, i) => i > focusedIdx && !actData[channelKey(c)]?.checked);
-          if (next >= 0) setFocusedIdx(next);
-        }
-      } else if (e.key === 'n' || e.key === 'N') {
-        if (focusedIdx >= 0 && focusedIdx < channels.length) {
-          setChannelChecked(show.id, currentAct, channelKey(channels[focusedIdx]), false);
-        }
-      } else if (e.key === 'ArrowDown') {
+  // The mic check is the one place in RFDeck genuinely worked by keyboard: an
+  // operator goes down the list saying yes or no with a talkback key in the
+  // other hand. None of these keys were discoverable — declaring them here
+  // publishes them to the overlay as a side effect of binding them.
+  useShortcuts('Mic check', useMemo(() => [
+    {
+      keys: 'Y',
+      label: 'Mark the focused channel checked, and move to the next unchecked one',
+      match: plainKey('y'),
+      run: () => {
+        if (focusedIdx < 0 || focusedIdx >= channels.length) return;
+        setChannelChecked(show.id, currentAct, channelKey(channels[focusedIdx]), true);
+        const next = channels.findIndex((c, i) => i > focusedIdx && !actData[channelKey(c)]?.checked);
+        if (next >= 0) setFocusedIdx(next);
+      },
+    },
+    {
+      keys: 'N',
+      label: 'Mark the focused channel not checked',
+      match: plainKey('n'),
+      run: () => {
+        if (focusedIdx < 0 || focusedIdx >= channels.length) return;
+        setChannelChecked(show.id, currentAct, channelKey(channels[focusedIdx]), false);
+      },
+    },
+    {
+      keys: '↓',
+      label: 'Focus the next channel',
+      match: (e: KeyboardEvent) => e.key === 'ArrowDown',
+      run: (e: KeyboardEvent) => {
         e.preventDefault();
         setFocusedIdx(i => Math.min(i + 1, channels.length - 1));
-      } else if (e.key === 'ArrowUp') {
+      },
+    },
+    {
+      keys: '↑',
+      label: 'Focus the previous channel',
+      match: (e: KeyboardEvent) => e.key === 'ArrowUp',
+      run: (e: KeyboardEvent) => {
         e.preventDefault();
         setFocusedIdx(i => Math.max(i - 1, 0));
-      }
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [focusedIdx, channels, show.id, currentAct, actData, setChannelChecked]);
+      },
+    },
+  ], [focusedIdx, channels, show.id, currentAct, actData, setChannelChecked]));
 
   const startEditNotes = (key: string) => {
     setEditingNotesFor(key);

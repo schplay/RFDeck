@@ -160,3 +160,24 @@
   margin-right: 10px;
   display: block;
 }
+
+/* Entry point to the shortcut overlay. "?" only helps someone who already knows
+   to press it, which was exactly the problem with the shortcuts that existed
+   before this. */
+.topbar-keys {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  color: var(--color-on-surface-variant);
+}
+
+.topbar-keys:hover {
+  background: var(--color-surface-container-highest);
+  color: var(--color-on-surface);
+}

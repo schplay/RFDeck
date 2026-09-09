@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Menu, X } from 'lucide-react';
+import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Menu, X, Keyboard } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { AudioMonitor } from '../components/audio/AudioMonitor';
 import { AlertFeed } from '../components/alerts/AlertFeed';
 import { LiveIndicator } from '../components/live/LiveIndicator';
+import { useShortcutRegistry } from '../lib/shortcuts';
 // Bundled import so the path survives base './' and the Electron file:// build.
 import logoMark from '../assets/logo-mark.png';
 import './RootLayout.css';
@@ -102,6 +103,17 @@ export default function RootLayout() {
           <AudioMonitor />
           <div className="topbar-divider" />
           <AlertFeed />
+          {/* An entry point, because "?" only helps somebody who already knows
+              to press it — which was the whole problem with the shortcuts that
+              existed before. */}
+          <button
+            className="topbar-keys"
+            onClick={() => useShortcutRegistry.getState().setHelpOpen(true)}
+            title="Keyboard shortcuts (?)"
+            aria-label="Keyboard shortcuts"
+          >
+            <Keyboard size={16} />
+          </button>
         </header>
         <Outlet />
       </main>

@@ -5,6 +5,7 @@ import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { channelKey } from '../../lib/channelKey';
+import { useShortcuts, plainKey } from '../../lib/shortcuts';
 import { API_BASE } from '../../lib/api';
 import './MicboardView.css';
 
@@ -66,7 +67,6 @@ export default function MicboardView() {
 
   const [data, setData] = useState<MicboardData>({ live: false, show: null, assignments: {} });
   const [showPhotos, setShowPhotos] = useState(true);
-  const [showHelp, setShowHelp] = useState(false);
 
   // Who is on each channel changes only when the cast list does, so this is
   // polled slowly rather than pushed — telemetry is what has to be live.
@@ -85,23 +85,26 @@ export default function MicboardView() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
-      if (e.key === 'f') {
+  // "?" and Escape are no longer handled here: the shared overlay owns them, so
+  // they work identically on every view rather than only on the two that
+  // happened to implement them.
+  useShortcuts('Micboard', useMemo(() => [
+    {
+      keys: 'F',
+      label: 'Full screen',
+      match: plainKey('f'),
+      run: () => {
         if (document.fullscreenElement) void document.exitFullscreen();
         else void document.documentElement.requestFullscreen().catch(() => {});
-      } else if (e.key === 'g') {
-        setShowPhotos(v => !v);
-      } else if (e.key === '?') {
-        setShowHelp(v => !v);
-      } else if (e.key === 'Escape') {
-        setShowHelp(false);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+      },
+    },
+    {
+      keys: 'G',
+      label: 'Photos on or off',
+      match: plainKey('g'),
+      run: () => setShowPhotos(v => !v),
+    },
+  ], []));
 
   const onlineByIp = useMemo(() => {
     const m = new Map<string, boolean>();
@@ -229,22 +232,6 @@ export default function MicboardView() {
         </div>
       )}
 
-      {showHelp && (
-        <div className="mb-help" onClick={() => setShowHelp(false)}>
-          <div className="mb-help-card">
-            <h2>Micboard</h2>
-            <dl>
-              <dt>F</dt><dd>Fullscreen</dd>
-              <dt>G</dt><dd>Photos on / off</dd>
-              <dt>?</dt><dd>This help</dd>
-            </dl>
-            <p>
-              This view is read-only and needs no PIN. Photos come from the cast
-              list of the show currently running.
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
