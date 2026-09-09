@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useChannelStore } from '../../stores/channelStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useLayoutStore, useOrderedChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
 import { useSocket } from '../../hooks/useSocket';
+import { useShortcuts } from '../../lib/shortcuts';
 import { Channel } from '@rfdeck/shared-types';
 import './BackstageView.css';
 
@@ -72,14 +73,19 @@ export default function BackstageView() {
   const cols = useLayoutStore(s => s.backstageCols);
   const setCols = useLayoutStore(s => s.setBackstageCols);
 
-  // Pressing 1-4 changes column layout; Escape exits full-screen hint
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key >= '1' && e.key <= '4') setCols(parseInt(e.key));
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [setCols]);
+  // Declared rather than bound by hand, so the key and its description are one
+  // object and the overlay cannot advertise a key that has since changed.
+  //
+  // This also picks up a guard the hand-written handler never had: 1-4 fired
+  // regardless of what had focus, so typing a digit into any field on this page
+  // silently re-laid it out.
+  useShortcuts('Backstage', useMemo(() => [{
+    keys: '1-4',
+    label: 'Set the number of columns',
+    match: (e: KeyboardEvent) =>
+      e.key >= '1' && e.key <= '4' && !e.ctrlKey && !e.metaKey && !e.altKey,
+    run: (e: KeyboardEvent) => setCols(parseInt(e.key, 10)),
+  }], [setCols]));
 
   const orderMode = useLayoutStore(s => s.orderMode);
   const setOrderMode = useLayoutStore(s => s.setOrderMode);

@@ -11,11 +11,18 @@ import ShowManagement from './pages/shows/ShowManagement';
 import PerformersPage from './pages/performers/PerformersPage';
 import DetectionsPage from './pages/detections/DetectionsPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 
 // Each route is wrapped so a render error takes down one page, not the whole
 // application. Mid-show an unhandled error used to mean a black window.
+// Every route carries the shortcut overlay, including the full-screen views
+// that render outside the sidebar shell — those are exactly the screens someone
+// is put in front of without a tour.
 const guard = (label: string, element: React.ReactNode) => (
-  <ErrorBoundary label={label} variant="page">{element}</ErrorBoundary>
+  <ErrorBoundary label={label} variant="page">
+    {element}
+    <ShortcutsOverlay />
+  </ErrorBoundary>
 );
 
 export const router = createHashRouter([
