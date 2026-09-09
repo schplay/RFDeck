@@ -12,6 +12,7 @@ import { Channel, Alert, Show, Performer } from '@rfdeck/shared-types';
 import { usePerformerStore } from '../stores/performerStore';
 import { useDetectionStore, Detection } from '../stores/detectionStore';
 import { useLiveStore, LiveState } from '../stores/liveStore';
+import { useStatusStore } from '../stores/statusStore';
 
 // Same origin resolution as the REST client — a hardcoded localhost here would
 // leave every remote client permanently disconnected. See lib/api.ts.
@@ -202,6 +203,13 @@ function getSocket(): Socket {
   });
   _socket.on('detection:pruned', ({ ids }: { ids: string[] }) => {
     useDetectionStore.getState().applyPruned(ids);
+  });
+
+  // What is actually being captured. Pushed on change and replayed on connect,
+  // because a client joining a running show would otherwise wait for a patch
+  // change that may never come.
+  _socket.on('recording:state', (st: { enabled: boolean; channels: number }) => {
+    useStatusStore.getState().applyRecording(st);
   });
 
   // Performer roster — the whole list on every change, so clients never drift.

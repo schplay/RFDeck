@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useStatusStore } from '../stores/statusStore';
 import { useSocket } from './useSocket';
 
 // Listen to one RF channel's audio, captured on the server.
@@ -12,7 +13,11 @@ import { useSocket } from './useSocket';
 
 export function useChannelAudio() {
   const { socket } = useSocket();
-  const [listeningTo, setListeningTo] = useState<string | null>(null);
+  // Shared rather than local: the shell states what is in the operator's ears
+  // from anywhere, and two components asking the same question must not be able
+  // to get different answers.
+  const listeningTo = useStatusStore(s => s.listeningTo);
+  const setListeningTo = useStatusStore(s => s.setListeningTo);
   const [error, setError] = useState<string | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   // Mirrors listeningTo for use inside socket handlers, which would otherwise

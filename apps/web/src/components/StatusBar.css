@@ -1,0 +1,60 @@
+/* The status bar: one quiet line at the bottom of the operator shell.
+   Quiet is the point — it is read by glancing, not by looking, so nothing in it
+   competes with the alerts and meters above it until it has something to say. */
+
+.sb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 14px;
+  border-top: 1px solid var(--color-surface-container-highest);
+  background: var(--color-surface-container);
+  font-size: 12px;
+  color: var(--color-on-surface-variant);
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.sb::-webkit-scrollbar { display: none; }
+
+.sb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.sb-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--color-surface-container-highest);
+  flex-shrink: 0;
+}
+
+.sb-spacer { flex: 1 1 auto; }
+
+.sb-dot { fill: currentColor; }
+
+.sb-live { color: var(--color-success, #46b26b); font-weight: 600; }
+.sb-standby { color: var(--color-on-surface-variant); }
+.sb-warn { color: var(--color-warning, #d08a2c); }
+.sb-offline { color: var(--color-error, #d05353); font-weight: 600; }
+
+.sb-listen { color: var(--color-primary, #6ea8fe); }
+
+/* Recording is the one thing here that earns attention: it is a state with a
+   cost, and an operator who thinks it is off when it is on will be surprised
+   by the disk. */
+.sb-rec { color: var(--color-error, #d05353); font-weight: 600; }
+.sb-rec:hover { text-decoration: underline; }
+
+/* On a phone the bar is the least important thing on screen and the vertical
+   space is the most contested, so the labels go and the icons carry it. */
+@media (max-width: 640px) {
+  .sb { height: 26px; gap: 8px; padding: 0 10px; }
+  .sb-sep { display: none; }
+}
