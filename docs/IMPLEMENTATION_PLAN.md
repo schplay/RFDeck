@@ -972,3 +972,180 @@ tick writes to `MicCheckEntry`, not the show row, so renaming an old show
 outranked the one actually on stage, and detections were filed against the
 wrong show. The live show is now declared, never inferred, and held as a
 single nullable pointer so two shows cannot be live at once.
+
+---
+
+## Stage C — From a competitive review *(added)*
+
+Prompted by reviewing eighty32's RF QC, a macOS Dante monitoring tool with RF
+telemetry overlaid. Its centre of gravity is the opposite of RFDeck's: it starts
+from having all 64 audio channels and adds receiver telemetry, where RFDeck
+starts from the receivers and adds audio for the channels that are patched. Most
+of its feature list follows from that difference and is not worth chasing.
+
+These are the parts worth having, plus the interface ideas that survive the
+difference in architecture. Several are things RFDeck should arguably have had
+already; the review is simply what surfaced them.
+
+### C.1 Capture on demand — **S**
+
+Record a named channel for the next 1 to 60 minutes, starting from the rolling
+pre-roll already in memory, while everything else carries on.
+
+Today RFDeck only records *around a detection*: something has to go wrong before
+audio is kept. "Vocal 3 sounds odd, keep the next ten minutes" is an ordinary
+request during a soundcheck and there is no way to answer it. The taps are
+already open and the pre-roll is already in memory, so this is a new reason to
+finalise a clip rather than a new capture path.
+
+Lands as a per-channel action (C.11) with a visible stop control. Written to the
+same store as detection clips and flagged, so the FIFO prune treats a deliberate
+capture as deliberately kept.
+
+### C.2 Alerts that leave the browser — **M**
+
+RFDeck's alerts exist only in an open tab. A dropout during a show nobody is
+watching, or overnight on a resident install, tells nobody. Extends 5.3, which
+covers the browser half.
+
+Two tiers, decided by what each costs to run:
+
+- **Free — browser push and webhooks.** Both are self-contained: a service
+  worker, and an HTTP POST to a URL the operator supplies. A webhook reaches
+  Slack, Teams, a home automation box or anything else without RFDeck taking on
+  an account or a bill, and it is the honest primitive to build the rest on.
+- **Paid — email and SMS.** These need a third-party service and carry a
+  per-message cost, so they cannot sit in a build anyone can run for nothing.
+
+Routed by severity and role, per 5.3. A webhook that fires on every channel mute
+is one an operator switches off within a night.
+
+### C.3 Spectrum scanning integration — **XL** — *to explore*
+
+Their Freq Show puts SDR sensor nodes on the show LAN and alerts only on carriers
+that are **not in the coordination plan**. The plan is what makes the alert
+meaningful: a spectrum full of energy is normal, a spectrum full of *unexpected*
+energy is not.
+
+RFDeck already holds the plan — every tracked channel's frequency. What it lacks
+is a source of spectrum. Worth exploring what can be read from hardware already
+in the rack, since Shure and Sennheiser receivers can report scan data, before
+considering anything needing an SDR of its own. Scoped as exploration rather than
+committed work: the value is clear, the input is not.
+
+### C.4 Multi-channel listen and solo groups — **M**
+
+`useChannelAudio` holds one channel at a time, so checking four radio mics during
+a line check is four round trips. Adds a listen bus: several channels summed with
+headroom, and eight recallable groups so a set of channels is one action.
+
+**Feasibility, since it was asked directly: good, provided the mix happens on the
+server.** The capture layer is per *device*, not per channel — one process per
+interface, demuxed into per-channel taps that already run for the rolling
+recorder. Every channel's samples therefore exist whether anyone is listening or
+not, and extra listeners cost nothing at the capture layer.
+
+The only new cost is the mix: summing N streams is 480 additions per channel per
+10 ms chunk, which is trivial at any channel count RFDeck supports, and it is
+pure arithmetic on typed arrays so it behaves identically on every platform. The
+platform-specific part — `arecord` on Linux, ffmpeg elsewhere — sits below the
+tap layer and is untouched.
+
+The way to get this wrong is to send N tracks and let the browser mix, which is N
+encoders per listener; that is where the cost would actually land. Mixing before
+the encoder keeps it at one track per peer, the same as today. Attenuate by 1/N
+rather than limiting, at least to begin with: predictable beats flattering, and a
+limiter is state to get wrong under load.
+
+### C.5 Lock mode — **S**
+
+A lock for the whole surface, not just the mutes.
+
+`mutesLocked` already establishes the pattern and the reasoning: a dashboard gets
+touched during a show — to scroll, to check a battery, to listen — so dangerous
+actions default to locked and unlocking is the deliberate act. This extends that
+to everything that changes the rig or the record: mutes, gain, device
+enable/disable, patch changes, mic-check ticks.
+
+Same control shape as the mute-enable button, persisted in `uiStore` beside
+`mutesLocked`, and shown in the header (C.10) so the state is visible rather than
+discovered by clicking something and finding it inert.
+
+### C.6 Intermod check — **S**
+
+Third-order intermodulation products from the frequencies currently in the rig,
+flagged where one lands on a live channel.
+
+RFDeck already knows every frequency, so unlike a standalone calculator there is
+nothing to type in and no chance of checking a plan that is not the one on air.
+Shown on the RF page and as a channel-level warning, naming the pair that
+produces each hit — a warning that does not say what is beating against what is
+not actionable.
+
+### C.7 Known-good baseline and drift — **?** — *needs discussion*
+
+The idea, from their Network Watch: record a baseline, then alert on deviation.
+For a theatre run that reads as "the rig is not how it was last night" — a
+frequency moved, a gain changed, a receiver missing.
+
+Held as a question rather than a plan. It is not yet clear what an operator would
+*do* with it that the event log and show report do not already tell them, or how
+to stop it firing on every legitimate change between two performances. Decide
+what the actual complaint is before designing for it.
+
+### C.8 Dense all-channels grid — **M**
+
+A compact grid showing every channel at once, alongside the existing cards.
+
+The card dashboard is right for detail and wrong past roughly thirty channels,
+where reading the state of the rig starts to mean scrolling. A grid trades
+per-channel detail for what an operator actually wants mid-show: whether anything
+is wrong, answered in one glance without moving.
+
+Not a replacement. Cards stay the default; this is for a big rig and a wall
+display.
+
+### C.9 Meter settings — **M**
+
+Peak hold first: RFDeck has none anywhere, and a transient dropout is exactly
+what a peak indicator is for.
+
+Then the rest as configuration rather than assumption — peak or RMS, ballistics,
+and the colour thresholds. Different rooms and different operators disagree about
+all three, and the present values are one person's preference compiled in.
+
+### C.10 Status bar — **S**
+
+A persistent line for facts currently spread across pages: how many channels are
+online out of how many tracked, whether RFDeck is live or standing by, what is
+being listened to, whether anything is recording, and whether the surface is
+locked (C.5).
+
+Their equivalent carries Dante sample rate and channel count, which is theirs to
+care about. RFDeck's should carry RFDeck's facts.
+
+### C.11 Per-channel context menu — **M**
+
+Right-click a channel for what is currently reached through drawers and other
+pages: listen, solo, capture (C.1), open the device, open the performer, add a
+maintenance note, patch audio.
+
+The complication is that a channel is not a first-class record here — it is
+telemetry keyed by `<inventory row>:<slot>`. Each action therefore has to resolve
+to whatever does own it: the inventory device, the cast assignment, the audio
+patch row. Worth doing carefully, because a menu entry that opens the wrong
+record is worse than no menu at all.
+
+### C.12 Surface the keyboard shortcuts — **S**
+
+Mic check has Y/N and arrow keys, Backstage and the Micboard have their own, and
+none are discoverable — they were built for an operator who already knew they
+were there.
+
+A shortcut overlay on `?`, and the relevant keys shown in place where there is
+room. Nothing new to learn, only made findable.
+
+**Not adopting: banks.** Their bank switching exists because 64 Dante channels do
+not fit on one surface. RFDeck has no equivalent division — channels group by
+device, role and show, all of which already mean something. A bank would be an
+invented boundary; the dense grid (C.8) is the real answer to the same problem.
