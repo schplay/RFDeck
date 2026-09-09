@@ -3,6 +3,7 @@ import { DiscoveryService, DiscoveredDevice, resolveDiscoveryDisabled } from './
 import { SSCClient } from './SSCClient';
 import { G3G4Client } from './G3G4Client';
 import { mcpBus } from './McpBus';
+import { findIntermodHits, intermodSignature, IntermodReport } from '../intermod';
 import { EventEmitter } from 'events';
 import { Server } from 'socket.io';
 import { Device, Channel } from '@rfdeck/shared-types';
@@ -95,6 +96,9 @@ export class DeviceManagerService extends EventEmitter {
   // Addresses already reported as found-but-withheld, so repeating scans do
   // not repeat the warning.
   private suppressionReported: Set<string> = new Set();
+  // The intermod picture, and the frequency set it was computed from.
+  private intermod: IntermodReport = { hits: [], truncated: false, sourceCount: 0 };
+  private intermodSig = '';
   private deviceNames: Map<string, string> = new Map(); // base id → user-assigned name
   // base id → what the device is for. An IEM transmitter has no RF and no
   // transmitter battery, and alerting on their absence is how a working
@@ -1344,6 +1348,9 @@ export class DeviceManagerService extends EventEmitter {
         if (JSON.stringify(oldChannel) !== JSON.stringify(newChannel)) {
           this.channelCache.set(channelId, newChannel);
           this.io.emit('channel:telemetry', newChannel);
+          // A frequency moving is the only thing that can change the intermod
+          // picture, and it is rare; telemetry is not.
+          this.refreshIntermod();
 
           // Alert Engine Logic
           if (oldChannel) {
@@ -1705,6 +1712,41 @@ export class DeviceManagerService extends EventEmitter {
   }
 
   // --- State snapshot (for replaying to newly-connected frontend clients) ---
+
+  /**
+   * Recompute which intermodulation products land on a live channel.
+   *
+   * Called from the telemetry path, which runs several times a second, so the
+   * first thing it does is establish that nothing relevant has moved. Only a
+   * frequency changing can alter the answer, and frequencies change when
+   * somebody re-tunes something — a handful of times a day, not a handful of
+   * times a second.
+   *
+   * Mics only. An IEM transmitter is a source of products like anything else,
+   * but it is not a victim: it receives nothing, so nothing can land on it.
+   */
+  private refreshIntermod(): void {
+    const sources = this.getChannelSnapshot()
+      .filter(c => c.role !== 'iem')
+      .map(c => ({ id: c.id, name: c.name, frequencyKHz: c.frequency }));
+
+    const sig = intermodSignature(sources);
+    if (sig === this.intermodSig) return;
+    this.intermodSig = sig;
+
+    this.intermod = findIntermodHits(sources);
+    this.io.emit('intermod:report', this.intermod);
+
+    if (this.intermod.hits.length > 0) {
+      const worst = this.intermod.hits[0];
+      log.info(
+        `[intermod] ${this.intermod.hits.length} product(s) land on a live channel; ` +
+        `closest is ${worst.formula} at ${Math.abs(worst.offsetKHz)} kHz from "${worst.victimName}"`,
+      );
+    }
+  }
+
+  getIntermodReport(): IntermodReport { return this.intermod; }
 
   getChannelSnapshot(): Channel[] {
     return Array.from(this.channelCache.values());

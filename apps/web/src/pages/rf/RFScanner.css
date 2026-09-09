@@ -436,3 +436,48 @@
   .spectrum-card { flex: 0 0 auto; }
   .table-card { min-height: auto; }
 }
+
+/* ── Intermodulation ─────────────────────────────────────────────────────── */
+/* Products the rig makes out of its own carriers. Quiet when there is nothing
+   to say, because the usual and correct answer is nothing — and a panel that
+   shouts at a clean plan is one an operator learns to skip. */
+
+.im-icon-warn { color: var(--color-warning, #d08a2c); }
+.im-icon-ok   { color: var(--color-success, #46b26b); }
+
+.im-body { padding: 12px 16px 14px; }
+
+.im-note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--color-on-surface-variant);
+}
+
+.im-note:last-child { margin-bottom: 0; }
+.im-clear { color: var(--color-success, #46b26b); }
+.im-warn  { color: var(--color-warning, #d08a2c); }
+
+.im-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.im-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1.2fr) 74px minmax(140px, 2fr) 92px;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 5px;
+  background: var(--color-surface-container);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.im-victim  { font-weight: 600; }
+.im-offset  { color: var(--color-warning, #d08a2c); font-variant-numeric: tabular-nums; }
+.im-formula { color: var(--color-on-surface-variant); }
+.im-product { font-family: var(--font-mono, ui-monospace, monospace); font-variant-numeric: tabular-nums; }

@@ -13,6 +13,7 @@ import { usePerformerStore } from '../stores/performerStore';
 import { useDetectionStore, Detection } from '../stores/detectionStore';
 import { useLiveStore, LiveState } from '../stores/liveStore';
 import { useStatusStore } from '../stores/statusStore';
+import { useIntermodStore, IntermodReport } from '../stores/intermodStore';
 
 // Same origin resolution as the REST client — a hardcoded localhost here would
 // leave every remote client permanently disconnected. See lib/api.ts.
@@ -210,6 +211,12 @@ function getSocket(): Socket {
   // change that may never come.
   _socket.on('recording:state', (st: { enabled: boolean; channels: number }) => {
     useStatusStore.getState().applyRecording(st);
+  });
+
+  // Which of the rig's own frequencies are landing on each other. Recomputed
+  // server-side only when something is re-tuned.
+  _socket.on('intermod:report', (r: IntermodReport) => {
+    useIntermodStore.getState().applyReport(r);
   });
 
   // Performer roster — the whole list on every change, so clients never drift.

@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { Radio, Download, Wifi, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 import { useDeviceStore } from '../../stores/deviceStore';
+import { IntermodPanel } from './IntermodPanel';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { apiFetch } from '../../lib/api';
 import { useRfEventStore } from '../../stores/rfEventStore';
@@ -136,6 +137,11 @@ export default function RFScanner() {
               <SpectrumCanvas channels={channels} />
             </div>
           </section>
+
+          {/* What the rig is doing to itself. Placed above the frequency table
+              because it is a finding, and the table below is the reference you
+              consult once you have one. */}
+          <IntermodPanel />
 
           {/* Frequency Table */}
           <section className="rf-card table-card">
