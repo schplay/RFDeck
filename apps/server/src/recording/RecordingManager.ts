@@ -139,6 +139,14 @@ export class RecordingManager {
       this.startRecorder(key, patch.deviceId, patch.inputChannel);
     }
 
+    // Tell every client what is actually being captured.
+    //
+    // Whether audio is being kept is a fact an operator has to hold in their
+    // head otherwise, and it changes underneath them — standing down stops it,
+    // an unpatched channel drops out of it. Recorders only change here, so this
+    // is exact and costs one message rather than a poll on every page.
+    this.announce();
+
     log.info(
       `[recording] ${this.recorders.size} channel(s) recording, ` +
       `${this.config.preSec}s pre / ${this.config.postSec}s post, ` +
@@ -400,5 +408,19 @@ export class RecordingManager {
   stopAll(): void {
     for (const rec of this.recorders.values()) rec.stop();
     this.recorders.clear();
+    this.announce();
+  }
+
+  /** The one-line summary the shell shows: is anything being captured, and how much. */
+  private announce(): void {
+    this.io.emit('recording:state', {
+      enabled:  this.config.enabled,
+      channels: this.recorders.size,
+    });
+  }
+
+  /** The same summary, for a client that has just connected. */
+  summary(): { enabled: boolean; channels: number } {
+    return { enabled: this.config.enabled, channels: this.recorders.size };
   }
 }

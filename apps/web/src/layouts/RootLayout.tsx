@@ -7,6 +7,7 @@ import { AlertFeed } from '../components/alerts/AlertFeed';
 import { LiveIndicator } from '../components/live/LiveIndicator';
 import { useShortcutRegistry, useShortcuts, plainKey } from '../lib/shortcuts';
 import { useUiStore } from '../stores/uiStore';
+import { StatusBar } from '../components/StatusBar';
 // Bundled import so the path survives base './' and the Electron file:// build.
 import logoMark from '../assets/logo-mark.png';
 import './RootLayout.css';
@@ -149,7 +150,10 @@ export default function RootLayout() {
             <Keyboard size={16} />
           </button>
         </header>
-        <Outlet />
+        <div className="main-scroll">
+          <Outlet />
+        </div>
+        <StatusBar />
       </main>
     </div>
   );

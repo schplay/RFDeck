@@ -169,6 +169,10 @@ export default fp(async (fastify, opts) => {
     for (const est of deviceManager.getBatteryEstimateSnapshot()) {
       socket.emit('battery:estimate', est);
     }
+    // Recording state changes rarely and is pushed when it does, so a client
+    // joining mid-show would otherwise show nothing until the next patch
+    // change — which on a running rig may be never.
+    socket.emit('recording:state', recordingManager.summary());
     for (const device of deviceManager.getDiscoveredSnapshot()) {
       socket.emit('device:discovered', {
         key: `${device.ip}:${device.port}`,
