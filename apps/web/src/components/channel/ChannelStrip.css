@@ -352,3 +352,19 @@
   color: var(--color-warning, #d97706);
   background: color-mix(in srgb, var(--color-warning, #d97706) 14%, transparent);
 }
+
+/* Intermodulation landing on this channel's carrier. Small and beside the
+   frequency: it is a property of where this channel is tuned, not a fault with
+   the channel, and the fix is to move something. */
+.cs-im {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: help;
+  color: var(--color-warning, #d08a2c);
+  background: color-mix(in srgb, var(--color-warning, #d08a2c) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning, #d08a2c) 40%, transparent);
+}

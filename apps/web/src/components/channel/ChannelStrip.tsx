@@ -6,7 +6,29 @@ import { useUiStore, LOCKED_REASON } from '../../stores/uiStore';
 import { useSocket } from '../../hooks/useSocket';
 import { useChannelAudio } from '../../hooks/useChannelAudio';
 import { channelKey } from '../../lib/channelKey';
+import { useIntermodStore, IntermodHit } from '../../stores/intermodStore';
 import './ChannelStrip.css';
+
+/**
+ * What to say about intermodulation landing on this channel.
+ *
+ * Names the transmitters responsible rather than just announcing a problem: a
+ * warning an operator cannot act on is one they learn to ignore, and the action
+ * here is always "move one of these two".
+ */
+function intermodTitle(hits: IntermodHit[]): string {
+  const lines = hits.slice(0, 4).map(h =>
+    `  ${h.formula} — ${h.offsetKHz === 0 ? 'dead on' : `${Math.abs(h.offsetKHz)} kHz away`}`,
+  );
+  const more = hits.length > 4 ? [`  …and ${hits.length - 4} more`] : [];
+  return [
+    'Intermodulation from this rig lands on this channel:',
+    ...lines,
+    ...more,
+    '',
+    'Moving either transmitter that makes it will clear it.',
+  ].join('\n');
+}
 
 interface ChannelStripProps {
   channel: Channel;
@@ -27,6 +49,8 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   // surface lock is the show-time one that covers everything.
   const mutesLocked = useUiStore(s => s.mutesLocked) || useUiStore(s => s.surfaceLocked);
   const surfaceLocked = useUiStore(s => s.surfaceLocked);
+  // Products from the rig's own transmitters that land on this channel.
+  const imHits = useIntermodStore(s => s.report.hits.filter(h => h.victimId === channel.id));
 
   // Outcome of the last control command for THIS channel. A refused command
   // otherwise leaves the button looking inert, with the reason only in the
@@ -172,6 +196,13 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
               {channel.frequency > 0 ? (channel.frequency / 1000).toFixed(3) : '—'}
             </span>
             <span>MHz</span>
+            {/* Something in this rig is putting energy on this carrier. Shown
+                against the frequency, because that is what would have to move
+                to fix it, and on the card, because that is where the symptom —
+                noise, or a dropout with no RF explanation — gets noticed. */}
+            {imHits.length > 0 && (
+              <span className="cs-im" title={intermodTitle(imHits)}>IM</span>
+            )}
           </div>
           <div className={`cs-batt ${channel.batteryPercent && channel.batteryPercent <= 20 ? 'batt-low' : ''}`}>
             {channel.batteryPercent != null ? Math.round(channel.batteryPercent) : '--'}%

@@ -173,6 +173,9 @@ export default fp(async (fastify, opts) => {
     // joining mid-show would otherwise show nothing until the next patch
     // change — which on a running rig may be never.
     socket.emit('recording:state', recordingManager.summary());
+    // The intermod picture changes only when something is re-tuned, so a client
+    // arriving between re-tunes would otherwise see nothing at all.
+    socket.emit('intermod:report', deviceManager.getIntermodReport());
     for (const device of deviceManager.getDiscoveredSnapshot()) {
       socket.emit('device:discovered', {
         key: `${device.ip}:${device.port}`,
