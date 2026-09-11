@@ -125,8 +125,10 @@ Z19 1785–1800 · Z20 1790–1805.
 | V5-7 | 941.7–951.8 & 953.05–956.05 & 956.65–959.65 |
 | Y1-3 | 1785.2–1799.8 |
 
-The exact string the device returns for `frequency_code` (e.g. `Q1-9` vs
-`Q1_9`) is **unverified** — read it off the rig before keying a table on it.
+The EW-DX SSC v1 document (03/2023, §8.27) shows the reply as
+`{"device":{"frequency_code":"Q1-9"}}` — the code as printed, which is what
+the table is keyed on. Seeing it arrive over RFDeck's UDP subscription is
+still for the rig.
 
 ### Sennheiser Digital 6000
 

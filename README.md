@@ -113,10 +113,11 @@ The log of problems RFDeck noticed on its own, each with the audio that proves i
   report
 - Frequency history log per device (timestamped record of all changes)
 - Frequency list export (CSV)
-- _Note: RFDeck does **not** perform spectrum scanning. It displays the frequencies
-  of the devices it is connected to and their reported signal strength. Frequency
-  coordination (IMD calculation, auto-plan generation) is likewise out of scope —
-  manufacturer tools handle that better._
+- Intermodulation check of the live rig, and frequency coordination across
+  vendors: plan a clean set of carriers and tune the receivers to it
+- _Note: RFDeck does **not** yet perform spectrum scanning. It displays the
+  frequencies of the devices it is connected to and their reported signal
+  strength; see `docs/SCANNING.md` for what is planned._
 
 ### Hardware Inventory
 - Auto-discovery of supported devices via mDNS / Bonjour, passive MCP listening,
@@ -270,7 +271,7 @@ network access gate, not per-user identity.
 ### Phase 1 (Initial Launch)
 | Manufacturer | Protocol | Capabilities |
 |---|---|---|
-| **Sennheiser** (EW-DX — firmware ≥ 4.0) | SSCv2 (HTTPS/JSON REST) | Full: RF, AF, battery, mute, gain, frequency, identify, network config, spectrum scan |
+| **Sennheiser** (EW-DX — firmware ≥ 4.0) | SSCv2 (HTTPS/JSON REST) | Full: RF, AF, battery, mute, gain, frequency, identify, network config |
 | **Sennheiser Legacy** (G3, G4, EM 3732, etc.) | SSCv1 (TCP/UDP) | Monitoring: RF, battery, status |
 | **Sennheiser Digital 6000** (EM 6000, EM 6000 Dante) | SSC over UDP 45 (subscriptions) | Monitoring: RF per antenna, audio, link quality, four-state battery gauge with runtime, name, frequency. Control: mute, frequency, identify 🚧 *— not verified on hardware* |
 | **Shure** (Axient Digital AD4D/AD4Q, ULX-D, QLX-D, SLX-D) | Command strings (TCP 2202) | Monitoring: RF per antenna, audio, battery bars and runtime, name, frequency. Control: mute, frequency 🚧 *— see below* |

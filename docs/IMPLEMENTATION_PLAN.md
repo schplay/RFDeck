@@ -1029,7 +1029,7 @@ is one an operator switches off within a night.
 Build only the free half until licensing exists. Nothing here should assume an
 enforcement mechanism that has not been designed.
 
-### C.3 Spectrum scanning integration — **XL** — *to explore*
+### C.3 Spectrum scanning integration — **XL** → staged S/M/M/S — *explored; see `docs/SCANNING.md`*
 
 Their Freq Show puts SDR sensor nodes on the show LAN and alerts only on carriers
 that are **not in the coordination plan**. The plan is what makes the alert
@@ -1037,10 +1037,24 @@ meaningful: a spectrum full of energy is normal, a spectrum full of *unexpected*
 energy is not.
 
 RFDeck already holds the plan — every tracked channel's frequency. What it lacks
-is a source of spectrum. Worth exploring what can be read from hardware already
-in the rack, since Shure and Sennheiser receivers can report scan data, before
-considering anything needing an SDR of its own. Scoped as exploration rather than
-committed work: the value is clear, the input is not.
+is a source of spectrum.
+
+**Explored.** Of the receivers in the rack only Digital 6000 offers a scan
+over a protocol RFDeck speaks (`/rx1/scan`, fully specified); EW-DX's SSC
+method list has none, Shure's command strings have none (WWB scans those
+receivers over Shure's private protocol), and the spectrum managers are
+WWB-only. Outside the rack, RF Explorer has a documented serial API and is
+what every coordination tool already imports; RTL-SDR is a presence sensor
+at best. Every tool exchanges scans as frequency/level CSV. Staged, smallest
+and most certain first:
+
+1. **Scan model, CSV import/export, environment layer on the RF page, and
+   coordination exclusions derived from a scan** — S, no hardware.
+2. **Digital 6000 as a scanner** — M; needs the rig to say whether a
+   scanning channel drops audio.
+3. **RF Explorer reader and "carriers not in the plan" alerts** — M; the
+   reader can be written and tested from the spec, verified with a unit.
+4. **RTL-SDR reader** — S, levels labelled relative.
 
 ### C.4 Multi-channel listen and solo groups — **M** — ✅ *complete: server-side mix, one track per peer, eight groups; members are metered from the audio itself*
 
