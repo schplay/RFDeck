@@ -1190,11 +1190,17 @@ piece.
 
 Three parts, in this order:
 
-1. **Device profiles — research first.** Tuning ranges, step sizes, minimum
-   spacings, and whatever is published about IF and image frequencies for the
-   families already supported. This is the item that could invalidate the
-   estimate, so it goes first. Some of it is published and some is not; that is
-   knowable only by looking.
+1. **Device profiles — research first.** ✅ Done — see
+   `docs/COORDINATION_PROFILES.md`. Verdict: the estimate stands, the shape
+   changes. Only Axient Digital (`RF_BAND`) and EW-DX (`frequency_code`)
+   report their band; Digital 6000 reports its own carrier limits instead;
+   ULX-D, QLX-D and G3/G4 report nothing, so band becomes a stored device
+   attribute with provenance (`reported` / `declared`) and a UI to declare
+   it. Step is 25 kHz everywhere it is published (EW-DX's manual step is
+   not). Spacings: Shure 350/125 kHz, EW-DX 600/300, D6000 400/200, G4
+   unpublished. IF/image frequencies are published by nobody and will not be
+   modelled. Three things to verify on the rig before the tables are
+   trusted are listed at the end of that document.
 2. **The solver.** Pure, offline, unit-testable in the same shape as
    `intermod.ts`. Scored by worst-case intermod margin so a plan can be compared
    against the one already on the air.
