@@ -23,9 +23,10 @@ interface Props {
   online: boolean;
   stale: boolean;
   onOpen?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function DenseTile({ channel, online, stale, onOpen }: Props) {
+export function DenseTile({ channel, online, stale, onOpen, onContextMenu }: Props) {
   const { label, tone } = channelStatus(channel, online, stale);
   const isIem = channel.role === 'iem';
   const im = useIntermodStore(s => s.report.hits.some(h => h.victimId === channel.id));
@@ -35,6 +36,7 @@ export function DenseTile({ channel, online, stale, onOpen }: Props) {
     <div
       className={`dt dt-${tone} ${dim ? 'is-dim' : ''}`}
       onDoubleClick={onOpen}
+      onContextMenu={onContextMenu}
       title={`${channel.name || `CH ${channel.channelIndex}`} — ${label}${dim ? '' : '. Double-click for the device.'}`}
       role="group"
       aria-label={`${channel.name || `CH ${channel.channelIndex}`}, ${label}`}

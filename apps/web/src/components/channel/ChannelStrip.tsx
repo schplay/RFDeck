@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
 import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff, Disc } from 'lucide-react';
-import { useStatusStore } from '../../stores/statusStore';
-import { apiFetch } from '../../lib/api';
+import { useChannelCapture } from '../../hooks/useChannelCapture';
 import { useUiStore, LOCKED_REASON } from '../../stores/uiStore';
 import { useSocket } from '../../hooks/useSocket';
 import { useChannelAudio } from '../../hooks/useChannelAudio';
@@ -55,34 +54,14 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   // Products from the rig's own transmitters that land on this channel.
   const imHits = useIntermodStore(s => s.report.hits.filter(h => h.victimId === channel.id));
 
-  // A capture on request, if one is running for this channel. Server-owned
-  // state: a capture started at FOH shows as running backstage too.
-  const capture = useStatusStore(s => s.captures.find(c => c.channelKey === channel.id) ?? null);
+  // Capture on request, shared with the context menu so there is one way to
+  // start and stop one. The running state is the server's: a capture started
+  // at FOH is running backstage too.
+  const { capture, error: captureError, clearError: clearCaptureError,
+          start: startCaptureFor, stop: stopCaptureFor } = useChannelCapture(channel);
   const [capturePick, setCapturePick] = useState(false);
-  const [captureError, setCaptureError] = useState<string | null>(null);
-
-  const startCapture = async (minutes: number) => {
-    setCapturePick(false);
-    setCaptureError(null);
-    try {
-      await apiFetch('/recording/capture', {
-        method: 'POST',
-        body: JSON.stringify({ channelKey: channel.id, minutes, channelName: channel.name }),
-      });
-    } catch (err: any) {
-      // The server says why — not patched, recording off — and that reason is
-      // the whole point of the error, so it is shown rather than summarised.
-      setCaptureError(err?.message ?? 'Could not start the capture');
-    }
-  };
-
-  const stopCapture = async (detectionId: string) => {
-    try {
-      await apiFetch(`/recording/capture/${detectionId}/stop`, { method: 'POST' });
-    } catch (err: any) {
-      setCaptureError(err?.message ?? 'Could not stop the capture');
-    }
-  };
+  const startCapture = (minutes: number) => { setCapturePick(false); void startCaptureFor(minutes); };
+  const stopCapture = (_detectionId: string) => { void stopCaptureFor(); };
 
   // Outcome of the last control command for THIS channel. A refused command
   // otherwise leaves the button looking inert, with the reason only in the
@@ -287,7 +266,7 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
         ) : (
           <button
             className="cs-btn btn-secondary"
-            onClick={() => { setCaptureError(null); setCapturePick(true); }}
+            onClick={() => { clearCaptureError(); setCapturePick(true); }}
             title="Record the next few minutes of this channel, pre-roll included"
           >
             <Disc size={14} /> Capture

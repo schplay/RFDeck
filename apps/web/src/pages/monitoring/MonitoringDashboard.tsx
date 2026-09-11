@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChannelStrip } from '../../components/channel/ChannelStrip';
 import { DenseTile } from '../../components/channel/DenseTile';
+import { ChannelContextMenu, DrawerSection } from '../../components/channel/ChannelContextMenu';
+import { contextMenuFor } from '../../stores/contextMenuStore';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useUiStore } from '../../stores/uiStore';
@@ -70,6 +72,7 @@ export default function MonitoringDashboard() {
   // Double-clicking a channel opens the details drawer for its parent device.
   // Held by ID so the drawer reflects live store updates rather than a snapshot.
   const [drawerDeviceId, setDrawerDeviceId] = useState<string | null>(null);
+  const [drawerSection, setDrawerSection] = useState<DrawerSection>('device');
   const drawerDevice = useMemo(
     () => inventory.find(d => d.id === drawerDeviceId) ?? null,
     [inventory, drawerDeviceId]
@@ -204,9 +207,10 @@ export default function MonitoringDashboard() {
                 ref={setFlipRef(ch.id)}
                 className={isChannelStale(ch.id) ? 'channel-stale' : undefined}
                 onDoubleClick={() => openDeviceFor(ch)}
+                onContextMenu={contextMenuFor(ch.id)}
                 title={isChannelStale(ch.id)
                   ? 'No recent telemetry — showing last known values'
-                  : 'Double-click for device details'}
+                  : 'Double-click for device details, right-click for actions'}
                 {...dragHandlers(ch)}
               >
                 {/* Per-strip boundary: one malformed channel degrades to an
@@ -231,6 +235,7 @@ export default function MonitoringDashboard() {
                   online={dev?.online ?? true}
                   stale={isChannelStale(ch.id)}
                   onOpen={() => openDeviceFor(ch)}
+                  onContextMenu={contextMenuFor(ch.id)}
                 />
               </ErrorBoundary>
             );
@@ -253,7 +258,8 @@ export default function MonitoringDashboard() {
                   key={ch.id}
                   className={`list-row ${!online ? 'list-row-offline' : ''}`}
                   onDoubleClick={() => openDeviceFor(ch)}
-                  title="Double-click for device details"
+                  onContextMenu={contextMenuFor(ch.id)}
+                  title="Double-click for device details, right-click for actions"
                 >
                   <div className="col-status">
                     <div className={`status-indicator ${!online ? 'offline' : ch.status.toLowerCase()}`} />
@@ -281,8 +287,17 @@ export default function MonitoringDashboard() {
         )}
       </div>
 
-      {/* Device details — opened by double-clicking a channel */}
-      <DeviceDrawer device={drawerDevice} onClose={() => setDrawerDeviceId(null)} />
+      {/* Device details — opened by double-clicking a channel, or from its menu */}
+      <DeviceDrawer
+        device={drawerDevice}
+        initialSection={drawerSection}
+        onClose={() => { setDrawerDeviceId(null); setDrawerSection('device'); }}
+      />
+
+      {/* One menu for every channel on the page, whichever view it is in. */}
+      <ChannelContextMenu
+        onOpenDevice={(dev, section) => { setDrawerSection(section); setDrawerDeviceId(dev.id); }}
+      />
     </div>
   );
 }

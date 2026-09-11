@@ -1,0 +1,97 @@
+/* The channel context menu. Fixed to the cursor, kept on screen, gone on
+   Escape, outside click, or scroll. */
+
+.ccm {
+  position: fixed;
+  z-index: 900;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--color-surface-container);
+  border: 1px solid var(--color-surface-container-highest);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+.ccm-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px 8px;
+}
+
+.ccm-name { font-weight: 700; }
+
+.ccm-sub {
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+}
+
+.ccm-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--color-on-surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ccm-item:hover,
+.ccm-item:focus-visible {
+  background: var(--color-surface-container-highest);
+  outline: none;
+}
+
+.ccm-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ccm-item:disabled:hover { background: none; }
+
+.ccm-hint {
+  margin-left: auto;
+  padding-left: 12px;
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+  white-space: nowrap;
+}
+
+.ccm-rec { color: var(--color-error, #f87171); }
+
+.ccm-row {
+  display: flex;
+  gap: 4px;
+  padding: 4px 10px 6px;
+}
+
+.ccm-chip {
+  flex: 1;
+  padding: 5px 0;
+  border: 1px solid var(--color-surface-container-highest);
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ccm-chip:hover,
+.ccm-chip:focus-visible { background: var(--color-surface-container-highest); outline: none; }
+
+.ccm-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--color-surface-container-highest);
+}
+
+.ccm-error {
+  padding: 6px 10px 4px;
+  font-size: 11px;
+  color: var(--color-error, #f87171);
+}

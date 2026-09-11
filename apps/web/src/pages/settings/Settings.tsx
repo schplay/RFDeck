@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
+import { useSearchParams } from 'react-router-dom';
 import { Volume2, BellRing, Network, RefreshCw, ShieldCheck, Gauge } from 'lucide-react';
 import { MeterSettings } from './MeterSettings';
 import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
@@ -201,7 +202,10 @@ function RemoteAccessSettings() {
 }
 
 export default function Settings() {
-  const [activeTab, setActiveTab] = useState('audio');
+  // A link can land on a tab (#/settings?tab=audio), so another page can send
+  // someone straight to the thing they asked for rather than to the top.
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') ?? 'audio');
   const [settings, setSettings] = useState<AppSettings>({
     aes67MulticastIp: '239.69.0.1',
     aes67Port: 5004,

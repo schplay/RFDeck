@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   X, Wifi, WifiOff, Radio, Info, Network,
@@ -16,9 +16,24 @@ import './DeviceDrawer.css';
 interface Props {
   device: InventoryDevice | null;
   onClose: () => void;
+  /**
+   * Which part to land on. A channel's context menu offers "add a maintenance
+   * note", and that has to arrive at the log rather than at the top of a long
+   * drawer with the log somewhere below the fold.
+   */
+  initialSection?: 'device' | 'maintenance';
 }
 
-export function DeviceDrawer({ device, onClose }: Props) {
+export function DeviceDrawer({ device, onClose, initialSection = 'device' }: Props) {
+  const maintenanceRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!device || initialSection !== 'maintenance') return;
+    // After the dialog has mounted and laid out.
+    const id = window.setTimeout(() => {
+      maintenanceRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [device, initialSection]);
   const { removeFromInventory, updateInventoryDevice, setDeviceActive, reconnectDevice } = useDeviceStore();
   const { socket, isConnected } = useSocket();
   // The patch lives on the server: the interface is in the rack, and every
@@ -455,9 +470,11 @@ export function DeviceDrawer({ device, onClose }: Props) {
 
                 {/* What has been done to this unit. Always shown, unlike the
                     sections above: an empty log is a prompt to start one. */}
-                <DrawerSection title="Maintenance" icon={<Wrench size={14} />}>
-                  <MaintenanceLog log={maintenance} />
-                </DrawerSection>
+                <div ref={maintenanceRef}>
+                  <DrawerSection title="Maintenance" icon={<Wrench size={14} />}>
+                    <MaintenanceLog log={maintenance} />
+                  </DrawerSection>
+                </div>
 
                 {/* Added timestamp */}
                 <div className="drawer-added">

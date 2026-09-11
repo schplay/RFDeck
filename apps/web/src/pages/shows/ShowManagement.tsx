@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Show, Player, MicCheckAct, EnvironmentProfile, ENVIRONMENTS } from '@rfdeck/shared-types';
 import { useShowStore, migrateLegacyShows } from '../../stores/showStore';
 import { useChannelStore } from '../../stores/channelStore';
@@ -738,7 +738,14 @@ function DevicesTab() {
 // ── ShowDetail ───────────────────────────────────────────────────
 function ShowDetail({ show }: { show: Show }) {
   const { deleteShow, setActiveShow, setShowArchived } = useShowStore();
-  const [activeTab, setActiveTab] = useState<'miccheck' | 'players' | 'devices' | 'settings'>('miccheck');
+  // A link can land on a tab (#/shows?tab=players), so the channel context
+  // menu can send someone to the cast rather than to the mic check.
+  const [searchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<'miccheck' | 'players' | 'devices' | 'settings'>(
+    requestedTab === 'players' || requestedTab === 'devices' || requestedTab === 'settings'
+      ? requestedTab : 'miccheck',
+  );
   const terms = ENVIRONMENTS[show.environmentMode];
   const inactiveCount = useDeviceStore(
     s => s.inventory.filter(d => d.active === false).length
