@@ -33,6 +33,7 @@ export function StatusBar() {
   const recordingEnabled = useStatusStore(s => s.recordingEnabled);
   const recordingChannels = useStatusStore(s => s.recordingChannels);
   const listeningTo = useStatusStore(s => s.listeningTo);
+  const captures = useStatusStore(s => s.captures);
 
   const tracked = inventory.filter(d => d.active !== false).length;
   const online = inventory.filter(d => d.active !== false && d.online).length;
@@ -79,6 +80,22 @@ export function StatusBar() {
           <Link to="/detections" className="sb-item sb-rec" title="Rolling capture is running. Detections keep the audio around them.">
             <Disc size={13} />
             Recording {recordingChannels}
+          </Link>
+        </>
+      )}
+
+      {/* Captures the operator asked for. A capture that is running is a
+          promise being kept; one that has quietly ended is a promise broken,
+          so this shows both the count and the soonest end. */}
+      {captures.length > 0 && (
+        <>
+          <span className="sb-sep" aria-hidden />
+          <Link to="/detections" className="sb-item sb-rec" title={captures.map(c => {
+            const ch = channels.find(x => x.id === c.channelKey);
+            return `${ch?.name ?? c.channelKey} until ${new Date(c.endsAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+          }).join('\n')}>
+            <Disc size={13} />
+            Capturing {captures.length}
           </Link>
         </>
       )}

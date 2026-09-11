@@ -12,7 +12,7 @@ import { Channel, Alert, Show, Performer } from '@rfdeck/shared-types';
 import { usePerformerStore } from '../stores/performerStore';
 import { useDetectionStore, Detection } from '../stores/detectionStore';
 import { useLiveStore, LiveState } from '../stores/liveStore';
-import { useStatusStore } from '../stores/statusStore';
+import { useStatusStore, ActiveCapture } from '../stores/statusStore';
 import { useIntermodStore, IntermodReport } from '../stores/intermodStore';
 
 // Same origin resolution as the REST client — a hardcoded localhost here would
@@ -211,6 +211,9 @@ function getSocket(): Socket {
   // change that may never come.
   _socket.on('recording:state', (st: { enabled: boolean; channels: number }) => {
     useStatusStore.getState().applyRecording(st);
+  });
+  _socket.on('capture:state', (caps: ActiveCapture[]) => {
+    useStatusStore.getState().applyCaptures(caps);
   });
 
   // Which of the rig's own frequencies are landing on each other. Recomputed

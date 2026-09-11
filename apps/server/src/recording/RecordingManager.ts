@@ -4,7 +4,7 @@ import { Server } from 'socket.io';
 import { prisma } from '../db';
 import { log } from '../logger';
 import { CaptureManager } from '../audio/CaptureManager';
-import { PcmRing, encodeWav, selectForPruning } from './pcm';
+import { PcmRing, StreamingWav, encodeWav, selectForPruning } from './pcm';
 import { ChannelDetector, frameFeatures, shouldPromote } from './detectors';
 
 /**
@@ -61,6 +61,33 @@ interface Recorder {
   pending: Array<{ detectionId: string; want: number; got: Int16Array[]; have: number }>;
   /** Watches this channel's audio for the signatures of a wireless fault. */
   detector: ChannelDetector;
+  /** A capture the operator asked for, streaming to disk. One at a time. */
+  capture: ActiveCapture | null;
+}
+
+/**
+ * A capture on request, in progress.
+ *
+ * Unlike a detection's post-roll this is not accumulated: an hour of audio is
+ * hundreds of megabytes, so it goes to disk as it arrives and only the count
+ * is kept here.
+ */
+interface ActiveCapture {
+  detectionId: string;
+  channelKey: string;
+  wav: StreamingWav;
+  /** Samples asked for, including the pre-roll already written. */
+  want: number;
+  startedAt: number;
+  endsAt: number;
+}
+
+/** What the shell shows: which channels are being captured, and until when. */
+export interface CaptureSummary {
+  detectionId: string;
+  channelKey: string;
+  startedAt: number;
+  endsAt: number;
 }
 
 export class RecordingManager {
@@ -128,6 +155,9 @@ export class RecordingManager {
     for (const [key, rec] of [...this.recorders]) {
       const patch = wanted.get(key);
       if (!patch || patch.deviceId !== rec.deviceId || patch.inputChannel !== rec.inputChannel) {
+        // A capture in progress keeps what it has: the operator asked for it,
+        // and an unpatched channel is a reason to end it, not to lose it.
+        if (rec.capture) await this.stopCapture(rec.capture.detectionId, 'channel unpatched');
         rec.stop();
         this.recorders.delete(key);
       }
@@ -158,7 +188,7 @@ export class RecordingManager {
     const ring = new PcmRing(SAMPLE_RATE * this.config.preSec);
     const rec: Recorder = {
       deviceId, inputChannel, ring, stop: () => {}, pending: [],
-      detector: new ChannelDetector(),
+      detector: new ChannelDetector(), capture: null,
     };
 
     const stop = this.capture.addTap(deviceId, inputChannel, (samples) => {
@@ -169,6 +199,15 @@ export class RecordingManager {
       // reporting every sibilant and every pause.
       const event = rec.detector.push(frameFeatures(samples), Date.now());
       if (event) this.considerAudioEvent(channelKey, deviceId, event);
+
+      // A capture on request goes straight to disk, and ends itself when it
+      // has what was asked for.
+      if (rec.capture) {
+        rec.capture.wav.append(samples);
+        if (rec.capture.wav.length >= rec.capture.want) {
+          void this.stopCapture(rec.capture.detectionId, 'complete');
+        }
+      }
 
       // Feed any post-roll still being collected, and finish the ones that
       // have enough. Iterated over a copy: finalize mutates the list.
@@ -406,9 +445,187 @@ export class RecordingManager {
   }
 
   stopAll(): void {
-    for (const rec of this.recorders.values()) rec.stop();
+    // Captures in flight are closed properly rather than abandoned: the file
+    // has a header to patch, and the operator asked for it.
+    for (const rec of this.recorders.values()) {
+      if (rec.capture) void this.stopCapture(rec.capture.detectionId, 'server stopped');
+      rec.stop();
+    }
     this.recorders.clear();
     this.announce();
+  }
+
+  // ── Capture on request ────────────────────────────────────────────────
+  //
+  // "Vocal 3 sounds odd, keep the next ten minutes." Detections only record
+  // around something RFDeck itself noticed; this records because a person
+  // did. The taps are already open and the pre-roll is already in memory, so
+  // it is a new reason to keep audio rather than a new way of capturing it.
+  //
+  // Stored as a detection with trigger MANUAL and flagged from the start, so
+  // it sits beside the automatic clips in the same list and the FIFO prune
+  // treats a deliberate capture as deliberately kept.
+
+  static readonly MIN_CAPTURE_MINUTES = 1;
+  static readonly MAX_CAPTURE_MINUTES = 60;
+
+  /**
+   * Start capturing a channel for `minutes`, beginning with the pre-roll.
+   *
+   * Refuses rather than pretends: a channel that is not patched has no audio
+   * to keep, and saying so is the difference between a missing clip the
+   * operator understands and one they discover after the show.
+   */
+  async startCapture(
+    channelKey: string,
+    minutes: number,
+    channelName: string | null = null,
+  ): Promise<
+    | { ok: true; detectionId: string; endsAt: number }
+    | { ok: false; status: 400 | 409 | 503; error: string; detectionId?: string }
+  > {
+    const mins = Math.round(Number(minutes));
+    if (!Number.isFinite(mins) ||
+        mins < RecordingManager.MIN_CAPTURE_MINUTES ||
+        mins > RecordingManager.MAX_CAPTURE_MINUTES) {
+      return {
+        ok: false, status: 400,
+        error: `Capture length must be between ${RecordingManager.MIN_CAPTURE_MINUTES} and ` +
+               `${RecordingManager.MAX_CAPTURE_MINUTES} minutes`,
+      };
+    }
+    if (!this.config.enabled) {
+      return {
+        ok: false, status: 503,
+        error: 'Recording is off. Go live, and check that recording is enabled in Settings.',
+      };
+    }
+    const rec = this.recorders.get(channelKey);
+    if (!rec) {
+      return {
+        ok: false, status: 409,
+        error: 'This channel is not patched to an audio input, so there is nothing to capture. ' +
+               'Patch it in Settings → Audio.',
+      };
+    }
+    if (rec.capture) {
+      return {
+        ok: false, status: 409, detectionId: rec.capture.detectionId,
+        error: 'This channel is already being captured.',
+      };
+    }
+
+    const { showId, act } = await this.liveScope();
+    let detection;
+    try {
+      detection = await prisma.detection.create({
+        data: {
+          channelKey, channelName,
+          deviceId: rec.deviceId,
+          trigger:  'MANUAL',
+          severity: 'INFO',
+          message:  `Captured on request — ${mins} min`,
+          flagged:  true,
+          showId, act,
+        },
+      });
+    } catch (err: any) {
+      log.warn(`[recording] Could not start capture on "${channelKey}": ${err?.message}`);
+      return { ok: false, status: 503, error: 'Could not record the capture' };
+    }
+
+    let wav: StreamingWav;
+    try {
+      wav = await StreamingWav.open(path.join(this.clipsDir, `${detection.id}.wav`), SAMPLE_RATE);
+    } catch (err: any) {
+      log.warn(`[recording] Could not open a file for capture on "${channelKey}": ${err?.message}`);
+      await prisma.detection.delete({ where: { id: detection.id } }).catch(() => {});
+      return { ok: false, status: 503, error: 'Could not write to the clips directory' };
+    }
+
+    // The pre-roll goes first, so the capture includes what prompted it.
+    const pre = rec.ring.read(SAMPLE_RATE * this.config.preSec);
+    wav.append(pre);
+
+    const now = Date.now();
+    rec.capture = {
+      detectionId: detection.id,
+      channelKey,
+      wav,
+      want: pre.length + SAMPLE_RATE * 60 * mins,
+      startedAt: now,
+      endsAt: now + 60_000 * mins,
+    };
+
+    this.io.emit('detection:new', detection);
+    this.announceCaptures();
+    log.info(`[recording] Capturing "${channelKey}" for ${mins} min on request`);
+    return { ok: true, detectionId: detection.id, endsAt: rec.capture.endsAt };
+  }
+
+  /** End a capture, keeping what was recorded so far. */
+  async stopCapture(detectionId: string, reason = 'stopped'): Promise<boolean> {
+    let owner: Recorder | null = null;
+    for (const rec of this.recorders.values()) {
+      if (rec.capture?.detectionId === detectionId) { owner = rec; break; }
+    }
+    if (!owner || !owner.capture) return false;
+
+    const cap = owner.capture;
+    owner.capture = null;              // stop feeding it before the file closes
+    this.announceCaptures();
+
+    const { samples, bytes, error } = await cap.wav.close();
+    if (error) {
+      log.warn(`[recording] Capture on "${cap.channelKey}" lost audio: ${error.message}`);
+    }
+    try {
+      const updated = await prisma.detection.update({
+        where: { id: detectionId },
+        data: {
+          clipPath:  path.basename(cap.wav.path),
+          clipBytes: bytes,
+          clipMs:    Math.round((samples / SAMPLE_RATE) * 1000),
+          message:   error
+            ? `Captured on request — ended early (${error.message})`
+            : `Captured on request — ${Math.round(samples / SAMPLE_RATE / 60)} min`,
+        },
+      });
+      this.io.emit('detection:updated', updated);
+    } catch (err: any) {
+      log.warn(`[recording] Could not attach capture on "${cap.channelKey}": ${err?.message}`);
+    }
+    log.info(`[recording] Capture on "${cap.channelKey}" ${reason} after ${Math.round(samples / SAMPLE_RATE)}s`);
+    this.schedulePrune();
+    return true;
+  }
+
+  captures(): CaptureSummary[] {
+    const out: CaptureSummary[] = [];
+    for (const rec of this.recorders.values()) {
+      if (rec.capture) {
+        const { detectionId, channelKey, startedAt, endsAt } = rec.capture;
+        out.push({ detectionId, channelKey, startedAt, endsAt });
+      }
+    }
+    return out;
+  }
+
+  private announceCaptures(): void {
+    this.io.emit('capture:state', this.captures());
+  }
+
+  /** The show and act declared when going live, for scoping a clip. */
+  private async liveScope(): Promise<{ showId: string | null; act: number | null }> {
+    try {
+      // Never inferred: a clip filed against the wrong show corrupts its report.
+      const settings = await prisma.settings.findFirst();
+      if (settings?.liveShowId) {
+        const show = await prisma.show.findUnique({ where: { id: settings.liveShowId } });
+        if (show) return { showId: show.id, act: show.currentAct };
+      }
+    } catch { /* scoping is a nicety; never block the clip */ }
+    return { showId: null, act: null };
   }
 
   /** The one-line summary the shell shows: is anything being captured, and how much. */

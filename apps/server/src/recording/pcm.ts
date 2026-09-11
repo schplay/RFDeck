@@ -90,6 +90,78 @@ export function wavHeader(sampleCount: number, sampleRate: number): Buffer {
   return h;
 }
 
+/**
+ * A WAV file written as the audio arrives, rather than assembled at the end.
+ *
+ * Detection clips are short — a pre-roll and a few seconds after — so they are
+ * built in memory and written once. A capture on request can run for an hour,
+ * which at 48 kHz mono 16-bit is around 345 MB per channel: holding that in
+ * memory across several channels would take the server down for the sake of a
+ * feature meant to help it. So the header goes down first with placeholder
+ * sizes, PCM is appended as it comes, and the sizes are patched in on close.
+ *
+ * Writes are chained so chunks land in order even though the tap callback
+ * cannot wait for the disk. `close` waits for the chain before patching, so a
+ * file is never closed with audio still in flight.
+ */
+export class StreamingWav {
+  private samples = 0;
+  private chain: Promise<void> = Promise.resolve();
+  private failed: Error | null = null;
+
+  // The FileHandle itself, never its bare descriptor. A FileHandle closes its
+  // descriptor when it is garbage-collected, so taking `handle.fd` and letting
+  // the handle go meant the file was closed underneath the writes — and the
+  // number could then be reused for something else entirely. The first version
+  // of this did exactly that and was caught by its own tests.
+  private constructor(
+    private readonly handle: import('fs/promises').FileHandle,
+    private readonly sampleRate: number,
+    readonly path: string,
+  ) {}
+
+  static async open(filePath: string, sampleRate: number): Promise<StreamingWav> {
+    const fsp = await import('fs/promises');
+    const handle = await fsp.open(filePath, 'w');
+    await handle.write(wavHeader(0, sampleRate), 0, WAV_HEADER_BYTES, 0);
+    return new StreamingWav(handle, sampleRate, filePath);
+  }
+
+  /** Samples written so far — what the file will say when closed. */
+  get length(): number { return this.samples; }
+
+  append(chunk: Int16Array): void {
+    if (this.failed) return;
+    const body = Buffer.alloc(chunk.length * 2);
+    for (let i = 0; i < chunk.length; i++) body.writeInt16LE(chunk[i], i * 2);
+    const offset = WAV_HEADER_BYTES + this.samples * 2;
+    this.samples += chunk.length;
+    this.chain = this.chain
+      .then(async () => { await this.handle.write(body, 0, body.length, offset); })
+      .catch(err => {
+        // Remember the first failure and stop trying; the caller learns of it
+        // on close, where it can be reported against the capture.
+        if (!this.failed) this.failed = err instanceof Error ? err : new Error(String(err));
+      });
+  }
+
+  /** Patch the sizes and close. Returns what was actually written. */
+  async close(): Promise<{ samples: number; bytes: number; error: Error | null }> {
+    await this.chain;
+    try {
+      await this.handle.write(wavHeader(this.samples, this.sampleRate), 0, WAV_HEADER_BYTES, 0);
+    } catch (err: any) {
+      if (!this.failed) this.failed = err instanceof Error ? err : new Error(String(err));
+    }
+    await this.handle.close().catch(() => {});
+    return {
+      samples: this.samples,
+      bytes: WAV_HEADER_BYTES + this.samples * 2,
+      error: this.failed,
+    };
+  }
+}
+
 export function encodeWav(samples: Int16Array, sampleRate: number): Buffer {
   const body = Buffer.alloc(samples.length * 2);
   for (let i = 0; i < samples.length; i++) body.writeInt16LE(samples[i], i * 2);
