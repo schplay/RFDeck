@@ -66,6 +66,22 @@ model InventoryDevice {
 //
 // Separate from the event log, which records what the *system* did. This
 // records what a person did with a screwdriver.
+// A spectrum scan, imported from the tool that took it (or, later, taken by
+// a receiver or a sensor RFDeck drives). One uniform grid: start, step, and a
+// level per point, kept as JSON because SQLite has no array and a scan is
+// read whole or not at all. See docs/SCANNING.md.
+model Scan {
+  id        String   @id @default(uuid())
+  name      String
+  source    String   // wwb | wsm | csv | rfexplorer | em6000 …
+  takenAt   DateTime
+  startKHz  Int
+  stepKHz   Int
+  points    Int
+  levels    String   // JSON array of dBm or null, `points` long
+  createdAt DateTime @default(now())
+}
+
 model MaintenanceEntry {
   id        String   @id @default(uuid())
   deviceId  String

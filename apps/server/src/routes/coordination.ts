@@ -4,6 +4,8 @@ import { buildRig } from '../hardware/coordination/service';
 import { coordinate, type CoordinationInput } from '../hardware/coordination/solver';
 import { profileFor, familyOf, bandIsReported } from '../hardware/coordination/profiles';
 import { log } from '../logger';
+import { loadScan } from './scans';
+import { exclusionsFromScan } from '../scans/format';
 
 // Frequency coordination: plan a clean set of carriers for the live rig, and
 // push it to the hardware.
@@ -50,9 +52,25 @@ export const coordinationRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(400).send({ error: `More than ${MAX_PLAN_TRANSMITTERS} transmitters; split the rig` });
     }
     const lockedIds = new Set<string>(Array.isArray(d.lockedIds) ? d.lockedIds.map(String) : []);
+
+    // Keep out of what a scan shows above a threshold — WWB's "exclude
+    // occupied frequencies", with the threshold the operator's.
+    const exclusionsKHz = readExclusions(d.exclusionsKHz);
+    let scanExclusions = 0;
+    if (typeof d.scanId === 'string' && d.scanId) {
+      const scan = await loadScan(d.scanId);
+      if (!scan) return reply.code(404).send({ error: 'Scan not found' });
+      const threshold = Number(d.scanThresholdDbm);
+      if (!Number.isFinite(threshold)) return reply.code(400).send({ error: 'scanThresholdDbm is required with scanId' });
+      const margin = Number.isFinite(Number(d.scanMarginKHz)) && Number(d.scanMarginKHz) >= 0 ? Number(d.scanMarginKHz) : 100;
+      const spans = exclusionsFromScan(scan, threshold, margin);
+      scanExclusions = spans.length;
+      exclusionsKHz.push(...spans);
+    }
+
     const input: CoordinationInput = {
       transmitters: rig.transmitters.map(t => lockedIds.has(t.id) ? { ...t, locked: true } : t),
-      exclusionsKHz: readExclusions(d.exclusionsKHz),
+      exclusionsKHz,
       guardKHz: Number.isFinite(Number(d.guardKHz)) && Number(d.guardKHz) >= 0 ? Number(d.guardKHz) : undefined,
       threeTx: ['required', 'preferred', 'ignored'].includes(d.threeTx) ? d.threeTx : undefined,
       includeFifthOrder: !!d.includeFifthOrder,
@@ -64,7 +82,7 @@ export const coordinationRoutes: FastifyPluginAsync = async (fastify) => {
       `${Date.now() - started} ms: ${plan.moves} move(s), 2TX margin ${plan.worstMarginKHz ?? '—'} kHz, ` +
       `3TX ${plan.threeTxCleared ? 'cleared' : 'not cleared'}`,
     );
-    return { plan, devices: rig.devices, skipped: rig.skipped };
+    return { plan, devices: rig.devices, skipped: rig.skipped, scanExclusions };
   });
 
   /**

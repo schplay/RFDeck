@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Compass, Lock } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 import { useSurfaceLocked, LOCKED_REASON } from '../../stores/uiStore';
+import { useScanStore } from '../../stores/scanStore';
 
 // Frequency coordination: a clean set of carriers for the rig that is
 // actually on the air, and the button that tunes the hardware to it.
@@ -55,6 +56,10 @@ export function CoordinationPanel() {
   const [transmitterCount, setTransmitterCount] = useState(0);
   const [exclusions, setExclusions] = useState('');
   const [threeTx, setThreeTx] = useState<'preferred' | 'required' | 'ignored'>('preferred');
+  const scan = useScanStore(s => s.selected);
+  const [useScan, setUseScan] = useState(true);
+  const [scanThreshold, setScanThreshold] = useState(-85);
+  const [scanExclusions, setScanExclusions] = useState<number | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [busy, setBusy] = useState<'plan' | 'apply' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -83,11 +88,13 @@ export function CoordinationPanel() {
   const runPlan = async () => {
     setBusy('plan'); setError(null); setApplied(null);
     try {
-      const res = await apiFetch<{ plan: Plan; devices: RigDevice[]; skipped: Skipped[] }>('/coordination/plan', {
+      const withScan = useScan && scan ? { scanId: scan.id, scanThresholdDbm: scanThreshold } : {};
+      const res = await apiFetch<{ plan: Plan; devices: RigDevice[]; skipped: Skipped[]; scanExclusions: number }>('/coordination/plan', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exclusionsKHz: parseExclusions(exclusions), threeTx }),
+        body: JSON.stringify({ exclusionsKHz: parseExclusions(exclusions), threeTx, ...withScan }),
       });
       setPlan(res.plan); setDevices(res.devices); setSkipped(res.skipped);
+      setScanExclusions(useScan && scan ? res.scanExclusions : null);
     } catch (e: any) { setError(e?.message ?? 'Planning failed'); }
     finally { setBusy(null); }
   };
@@ -212,6 +219,20 @@ export function CoordinationPanel() {
             {busy === 'plan' ? 'Planning…' : 'Plan'}
           </button>
         </div>
+
+        {scan && (
+          <label className="co-check">
+            <input type="checkbox" checked={useScan} onChange={e => setUseScan(e.target.checked)} />
+            Keep out of what “{scan.name}” shows above
+            <input
+              className="co-input" type="number" step={1} style={{ width: 72 }}
+              value={scanThreshold} onChange={e => setScanThreshold(Number(e.target.value))}
+              aria-label="Scan threshold in dBm" disabled={!useScan}
+            />
+            dBm
+            {scanExclusions !== null && <span className="co-muted">— {scanExclusions} span{scanExclusions === 1 ? '' : 's'} excluded</span>}
+          </label>
+        )}
 
         {error && <p className="co-note co-note-err" role="alert">{error}</p>}
 

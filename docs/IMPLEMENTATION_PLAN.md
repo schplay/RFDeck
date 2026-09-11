@@ -1048,8 +1048,12 @@ what every coordination tool already imports; RTL-SDR is a presence sensor
 at best. Every tool exchanges scans as frequency/level CSV. Staged, smallest
 and most certain first:
 
-1. **Scan model, CSV import/export, environment layer on the RF page, and
-   coordination exclusions derived from a scan** — S, no hardware.
+1. ✅ **Scan model, CSV import/export, environment layer on the RF page, and
+   coordination exclusions derived from a scan** — S, no hardware. Reads
+   WWB (MHz, comma) and WSM (kHz; %; dBm) exports onto one 25 kHz-minimum
+   grid, keeps the loudest reading per bin, draws it in dBm under the
+   carriers, exports the WWB pair form, and the coordinator takes "keep
+   out of what the scan shows above N dBm".
 2. **Digital 6000 as a scanner** — M; needs the rig to say whether a
    scanning channel drops audio.
 3. **RF Explorer reader and "carriers not in the plan" alerts** — M; the
