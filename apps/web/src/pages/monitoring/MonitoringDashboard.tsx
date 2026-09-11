@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChannelStrip } from '../../components/channel/ChannelStrip';
+import { DenseTile } from '../../components/channel/DenseTile';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useUiStore } from '../../stores/uiStore';
@@ -8,7 +9,7 @@ import { GoLivePanel } from '../../components/live/GoLivePanel';
 import { DeviceDrawer } from '../inventory/components/DeviceDrawer';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
-import { Ban, LayoutGrid, List, Search, ArrowUpDown, WifiOff, Lock, Unlock } from 'lucide-react';
+import { Ban, LayoutGrid, List, Grid3x3, Search, ArrowUpDown, WifiOff, Lock, Unlock } from 'lucide-react';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import './MonitoringDashboard.css';
 
@@ -18,7 +19,10 @@ export default function MonitoringDashboard() {
   // Connected but refusing the password — no cards, and the reason is not
   // visible from here unless we say it.
   const authFailedDevices = inventory.filter(d => d.active !== false && d.authFailed);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  // Persisted rather than component state: a wall display left on the dense
+  // grid has to come back as the dense grid after a reload.
+  const viewMode = useLayoutStore(s => s.dashboardView);
+  const setViewMode = useLayoutStore(s => s.setDashboardView);
   const [searchQuery, setSearchQuery] = useState('');
   const orderMode = useLayoutStore(s => s.orderMode);
   const customOrder = useLayoutStore(s => s.customOrder);
@@ -151,12 +155,22 @@ export default function MonitoringDashboard() {
               >
                 <LayoutGrid size={16} />
               </button>
-              <button 
-                className={viewMode === 'list' ? 'active' : ''} 
+              <button
+                className={viewMode === 'list' ? 'active' : ''}
                 onClick={() => setViewMode('list')}
                 title="List View"
               >
                 <List size={16} />
+              </button>
+              {/* Every channel on one screen, for a big rig or a wall display.
+                  Cards stay the default; this is the view for "is anything
+                  wrong", answered without scrolling. */}
+              <button
+                className={viewMode === 'dense' ? 'active' : ''}
+                onClick={() => setViewMode('dense')}
+                title="Dense View"
+              >
+                <Grid3x3 size={16} />
               </button>
             </div>
           </div>
@@ -205,6 +219,20 @@ export default function MonitoringDashboard() {
                   />
                 </ErrorBoundary>
               </div>
+            );
+          })
+        ) : viewMode === 'dense' ? (
+          filteredChannels.map(ch => {
+            const dev = deviceByIp.get(ch.deviceId.split(':')[0]);
+            return (
+              <ErrorBoundary key={ch.id} label={ch.name || `CH ${ch.channelIndex}`} variant="card">
+                <DenseTile
+                  channel={ch}
+                  online={dev?.online ?? true}
+                  stale={isChannelStale(ch.id)}
+                  onOpen={() => openDeviceFor(ch)}
+                />
+              </ErrorBoundary>
             );
           })
         ) : (

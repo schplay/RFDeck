@@ -10,13 +10,25 @@ export type OrderMode = 'alpha' | 'custom';
 // Re-exported under the old name so existing call sites keep working.
 export const orderKey = channelKey;
 
+/**
+ * How the dashboard lays its channels out.
+ *
+ * Cards for detail, a list for scanning columns, and a dense grid for reading
+ * the whole rig at once. Persisted, unlike the component state it replaced:
+ * a wall display set to the dense grid has to still be the dense grid after a
+ * reload, or it is not a wall display.
+ */
+export type DashboardView = 'grid' | 'list' | 'dense';
+
 interface LayoutStore {
   orderMode: OrderMode;
   customOrder: string[]; // orderKeys in display order
   backstageCols: number; // column count on the backstage view (1-4)
+  dashboardView: DashboardView;
   setOrderMode: (mode: OrderMode) => void;
   setCustomOrder: (keys: string[]) => void;
   setBackstageCols: (cols: number) => void;
+  setDashboardView: (view: DashboardView) => void;
 }
 
 export const useLayoutStore = create<LayoutStore>()(
@@ -25,9 +37,11 @@ export const useLayoutStore = create<LayoutStore>()(
       orderMode: 'alpha',
       customOrder: [],
       backstageCols: 2,
+      dashboardView: 'grid',
       setOrderMode: (orderMode) => set({ orderMode }),
       setCustomOrder: (customOrder) => set({ customOrder }),
       setBackstageCols: (backstageCols) => set({ backstageCols }),
+      setDashboardView: (dashboardView) => set({ dashboardView }),
     }),
     { name: 'rfdeck-layout' }
   )

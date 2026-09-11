@@ -1,0 +1,116 @@
+/* The dense tile: state at a glance, nothing that needs a second look.
+   Sized so that roughly 128 fit a 1080p display without scrolling. Every
+   tone here comes from the meter palette so a red bar and a red border mean
+   the same thing everywhere. */
+
+.dt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--color-surface-container-highest);
+  border-left-width: 3px;
+  background: var(--color-surface-container-low);
+  min-width: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.dt-good { border-left-color: var(--color-success, #4ade80); }
+.dt-warn { border-left-color: var(--color-warning, #fb923c); }
+.dt-crit { border-left-color: var(--color-error, #f87171); }
+.dt-idle { border-left-color: var(--color-on-surface-variant); }
+
+/* Offline or stale: still present, visibly not current. */
+.dt.is-dim { opacity: 0.55; }
+
+.dt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dt-name {
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.dt-flags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  color: var(--color-on-surface-variant);
+}
+
+.dt-im {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 3px;
+  border-radius: 3px;
+  color: var(--color-warning, #fb923c);
+  border: 1px solid color-mix(in srgb, var(--color-warning, #fb923c) 45%, transparent);
+}
+
+.dt-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dt-row {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 4px;
+}
+
+.dt-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-on-surface-variant);
+  text-align: right;
+}
+
+.dt-meter { height: 6px; }
+
+.dt-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+}
+
+.dt-status {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.dt-status-good { color: var(--color-success, #4ade80); }
+.dt-status-warn { color: var(--color-warning, #fb923c); }
+.dt-status-crit { color: var(--color-error, #f87171); }
+.dt-status-idle { color: var(--color-on-surface-variant); }
+
+.dt-batt {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-on-surface-variant);
+}
+
+.dt-batt.is-low { color: var(--color-error, #f87171); font-weight: 700; }
+
+/* The grid the tiles sit in. auto-fill, so a wider screen gets more columns
+   rather than wider tiles — the point is how many fit, not how big they are. */
+.dashboard-content.dense {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  align-content: start;
+}

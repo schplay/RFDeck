@@ -7,6 +7,7 @@ import { useDeviceStore } from '../../stores/deviceStore';
 import { channelKey } from '../../lib/channelKey';
 import { useShortcuts, plainKey } from '../../lib/shortcuts';
 import { Meter as SharedMeter } from '../../components/meters/Meter';
+import { channelStatus } from '../../lib/channelStatus';
 import { API_BASE } from '../../lib/api';
 import './MicboardView.css';
 
@@ -36,17 +37,9 @@ interface MicboardData {
   assignments: Record<string, Assignment>;
 }
 
-function statusOf(ch: Channel, online: boolean, stale: boolean): {
-  label: string; tone: 'good' | 'warn' | 'crit' | 'idle';
-} {
-  if (!online) return { label: 'OFFLINE', tone: 'crit' };
-  if (stale) return { label: 'NO DATA', tone: 'crit' };
-  if (ch.isMuted) return { label: 'MUTED', tone: 'warn' };
-  if (ch.isTxMuted) return { label: 'TX MUTED', tone: 'idle' };
-  if (ch.status === 'CRITICAL') return { label: 'DROPOUT', tone: 'crit' };
-  if (ch.status === 'WARNING') return { label: 'LOW RF', tone: 'warn' };
-  return { label: 'ON AIR', tone: 'good' };
-}
+// Shared with the dashboard's dense grid, so the wall display and the
+// operator's screen never disagree about whether a channel is a problem.
+const statusOf = channelStatus;
 
 // The shared meter as a fill bar. RF and audio thresholds come from the meter
 // settings, so the wall display agrees with the dashboard it is read beside.
