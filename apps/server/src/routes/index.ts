@@ -15,6 +15,7 @@ import { micboardRoutes } from './micboard';
 import { notificationRoutes } from './notifications';
 import { liveRoutes } from './live';
 import { maintenanceRoutes } from './maintenance';
+import { coordinationRoutes } from './coordination';
 
 export default async function routes(fastify: FastifyInstance) {
   fastify.register(healthRoutes, { prefix: '/health' });
@@ -33,6 +34,7 @@ export default async function routes(fastify: FastifyInstance) {
   fastify.register(notificationRoutes);
   fastify.register(liveRoutes);
   fastify.register(maintenanceRoutes);
+  fastify.register(coordinationRoutes);
 }
 
 

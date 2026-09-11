@@ -266,6 +266,16 @@ export class G3G4Client extends EventEmitter {
 
   async identify(): Promise<boolean> { return false; }
 
+  /**
+   * Tune the receiver. MCP takes the carrier in kHz — the same unit the
+   * device's own `Frequency` line reports and the parser above reads — and
+   * a G3/G4 has one receiver, so the index is not used.
+   */
+  async setFrequency(_rxIndex: number, frequencyHz: number): Promise<boolean> {
+    this.send(`Frequency ${Math.round(frequencyHz / 1000)}`);
+    return true;
+  }
+
   async setMute(rxIndex: number, muted: boolean): Promise<boolean> {
     return this.sendControl(`rx${rxIndex}/mute`, muted);
   }

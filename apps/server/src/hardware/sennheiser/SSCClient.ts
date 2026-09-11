@@ -747,6 +747,9 @@ export class SSCClient extends EventEmitter {
       osc: { state: { subscribe: [{ '#': { lifetime: 60 }, device: {
         encryption: null, brightness: null, booster: null, location: null,
         lock: null, link_density_mode: null, name: null, identification: null,
+        // The band ("Q1-9"), for coordination. Read this way by the Companion
+        // module; whether SSCv2 offers it too is unverified on the rig.
+        frequency_code: null,
       }}] } },
     }));
 
@@ -760,6 +763,19 @@ export class SSCClient extends EventEmitter {
 
   private parseUdpMessage(json: any): void {
     if (!json || typeof json !== 'object') return;
+
+    // Device-level fields arrive on the same socket as telemetry. The band
+    // and density mode are what coordination keys on, so they are passed up
+    // as metadata rather than folded into a channel.
+    if (json.device && typeof json.device === 'object') {
+      const meta: Record<string, unknown> = {};
+      if (typeof json.device.frequency_code === 'string' && json.device.frequency_code.trim()) {
+        meta.band = json.device.frequency_code.trim();
+      }
+      if (typeof json.device.link_density_mode === 'boolean') meta.dense = json.device.link_density_mode;
+      if (Object.keys(meta).length > 0) this.emit('metadata', meta);
+    }
+
     const rxData: Record<string, any> = {};
     for (let i = 1; i <= 4; i++) {
       const rxKey = `rx${i}`;

@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useState } from 'react';
 import { Radio, Download, Wifi, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { IntermodPanel } from './IntermodPanel';
+import { CoordinationPanel } from './CoordinationPanel';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { apiFetch } from '../../lib/api';
 import { useRfEventStore } from '../../stores/rfEventStore';
@@ -142,6 +143,10 @@ export default function RFScanner() {
               because it is a finding, and the table below is the reference you
               consult once you have one. */}
           <IntermodPanel />
+
+          {/* The remedy for what the panel above finds: plan a clean set of
+              carriers and tune the rig to it. */}
+          <CoordinationPanel />
 
           {/* Frequency Table */}
           <section className="rf-card table-card">

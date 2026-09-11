@@ -1159,7 +1159,7 @@ not fit on one surface. RFDeck has no equivalent division — channels group by
 device, role and show, all of which already mean something. A bank would be an
 invented boundary; the dense grid (C.8) is the real answer to the same problem.
 
-### C.13 Frequency coordination — **L** — *free tier, deliberately*
+### C.13 Frequency coordination — **L** — *free tier, deliberately* — ✅ built; awaiting rig verification
 
 Assign every transmitter in the rig a frequency that clears the others: minimum
 spacing respected, no third-order product landing on a carrier, inside each
@@ -1201,13 +1201,26 @@ Three parts, in this order:
    unpublished. IF/image frequencies are published by nobody and will not be
    modelled. Three things to verify on the rig before the tables are
    trusted are listed at the end of that document.
-2. **The solver.** Pure, offline, unit-testable in the same shape as
-   `intermod.ts`. Scored by worst-case intermod margin so a plan can be compared
-   against the one already on the air.
-3. **Deployment.** Push the plan to the hardware over the existing
-   `setFrequency`, behind the surface lock (C.5) and with a confirmation naming
-   what will move. Retuning a live rig is the single most disruptive thing
-   RFDeck can be asked to do.
+2. **The solver.** ✅ `hardware/coordination/solver.ts`. Pure, offline,
+   most-constrained-first with backtracking; current carriers tried first so
+   a clean rig gives zero moves; locked carriers are constraints. Measured:
+   a rig fully clear of three-transmitter products stops existing at about
+   26 carriers in a 146 MHz band whatever the budget, so 3TX is attempted
+   and relaxed, and the plan reports both margins and which it achieved.
+3. **Deployment.** ✅ `routes/coordination.ts` + `CoordinationPanel` on the
+   RF page. Plan → confirmation naming every move → per-channel result from
+   the device. Behind the surface lock. Fixed on the way: `setChannelFrequency`
+   only ever tuned SSC devices (gated on `instanceof SSCClient`), and
+   `G3G4Client` had no `setFrequency` at all.
+
+   **Not yet verified on hardware** — the build is green but these are
+   claims about devices, and only the rig can confirm them: EW-DX
+   `frequency_code` arriving over the UDP subscription (and its exact
+   string); Digital 6000 answering the `/osc/limits` query for `rx1/carrier`;
+   Shure `RF_BAND` / `TRANSMISSION_MODE` / `HIGH_DENSITY` replies parsing as
+   expected; G3/G4 accepting `Frequency <kHz>`; SLX-D `RF_BAND` existing at
+   all. The next live session should tune one channel of each family from
+   the panel and read the result back.
 
 **Free, and worth saying why.** Coordination is one operator doing their craft,
 so it fails the paid-tier test in `docs/EDITIONS.md` outright. It is also the

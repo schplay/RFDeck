@@ -23,6 +23,7 @@ import { isSscModel, isPlaceholderModel } from '../deviceRole';
 import { ShureClient } from '../shure/ShureClient';
 import { Digital6000Client } from './digital6000/Digital6000Client';
 import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
+import { canSet } from '../HardwareClient';
 import { log } from '../../logger';
 
 // The union is kept rather than replaced by HardwareClient because the
@@ -682,10 +683,24 @@ export class DeviceManagerService extends EventEmitter {
     {
       client.on('metadata', async (meta: any) => {
         // Persist identity fields so they survive server restarts
-        const patch: Record<string, string> = {};
+        const patch: Record<string, unknown> = {};
         if (meta.mac)      patch.mac      = meta.mac;
         if (meta.serial)   patch.serial   = meta.serial;
         if (meta.firmware) patch.firmware = meta.firmware;
+
+        // Coordination inputs the hardware knows about itself. A reported
+        // band replaces a declared one — the receiver is the truth about
+        // its own band — and is the only thing that does.
+        if (typeof meta.band === 'string' && meta.band) {
+          patch.band = meta.band;
+          patch.bandSource = 'reported';
+        }
+        if (typeof meta.dense === 'boolean') patch.dense = meta.dense;
+        if (meta.carrierLimits) {
+          patch.carrierMinKHz  = meta.carrierLimits.minKHz;
+          patch.carrierMaxKHz  = meta.carrierLimits.maxKHz;
+          patch.carrierStepKHz = meta.carrierLimits.stepKHz;
+        }
 
         // One read, used twice: to notice a firmware change, and to decide
         // whether the stored model is a placeholder worth replacing. Both need
@@ -1828,11 +1843,40 @@ export class DeviceManagerService extends EventEmitter {
 
   async setChannelFrequency(deviceId: string, rxIndex: number, frequencyHz: number) {
     const client = this.clients.get(deviceId);
-    if (!client || !(client instanceof SSCClient)) {
-      log.warn(`[DeviceManager] Cannot set frequency, device ${deviceId} not connected or legacy.`);
+    // Every driver implements setFrequency; the capability is the question,
+    // not the vendor. Gating on the Sennheiser client here was what stopped
+    // Shure and Digital 6000 being tuned from RFDeck at all.
+    if (!client || !canSet(client, 'setFrequency')) {
+      log.warn(`[DeviceManager] Cannot set frequency, device ${deviceId} not connected or cannot tune.`);
       return false;
     }
-    return client.setFrequency(rxIndex, frequencyHz);
+    return client.setFrequency!(rxIndex, frequencyHz);
+  }
+
+  /**
+   * Retune channels to a coordination plan, one at a time, and say what
+   * happened to each. A channel that is not on the air or whose device
+   * cannot tune is reported, not skipped silently — the operator is about
+   * to trust that the rig matches the plan.
+   */
+  async applyFrequencyPlan(
+    items: Array<{ id: string; frequencyKHz: number }>,
+  ): Promise<Array<{ id: string; ok: boolean; message: string | null }>> {
+    const results: Array<{ id: string; ok: boolean; message: string | null }> = [];
+    for (const item of items) {
+      const channel = this.channelCache.get(item.id);
+      if (!channel) {
+        results.push({ id: item.id, ok: false, message: 'channel is not on the air' });
+        continue;
+      }
+      const ok = await this.setChannelFrequency(channel.deviceId, channel.channelIndex, item.frequencyKHz * 1000);
+      results.push({ id: item.id, ok, message: ok ? null : 'the device refused or cannot be tuned from here' });
+      log.info(
+        `[coordination] ${channel.name}: ${channel.frequency} → ${item.frequencyKHz} kHz ` +
+        `(${ok ? 'sent' : 'FAILED'})`,
+      );
+    }
+    return results;
   }
 
   async setDeviceNetwork(deviceId: string, staticIp: string, subnet: string, gateway: string) {
