@@ -987,7 +987,7 @@ These are the parts worth having, plus the interface ideas that survive the
 difference in architecture. Several are things RFDeck should arguably have had
 already; the review is simply what surfaced them.
 
-### C.1 Capture on demand — **S**
+### C.1 Capture on demand — **S** — ✅ *complete*
 
 Record a named channel for the next 1 to 60 minutes, starting from the rolling
 pre-roll already in memory, while everything else carries on.
@@ -1002,7 +1002,7 @@ Lands as a per-channel action (C.11) with a visible stop control. Written to the
 same store as detection clips and flagged, so the FIFO prune treats a deliberate
 capture as deliberately kept.
 
-### C.2 Alerts that leave the browser — **M**
+### C.2 Alerts that leave the browser — **M** — ✅ *free half complete: webhooks and browser push; email and SMS are cloud-tier and not started*
 
 RFDeck's alerts exist only in an open tab. A dropout during a show nobody is
 watching, or overnight on a resident install, tells nobody. Extends 5.3, which
@@ -1066,7 +1066,7 @@ the encoder keeps it at one track per peer, the same as today. Attenuate by 1/N
 rather than limiting, at least to begin with: predictable beats flattering, and a
 limiter is state to get wrong under load.
 
-### C.5 Lock mode — **S**
+### C.5 Lock mode — **S** — ✅ *complete*
 
 A lock for the whole surface, not just the mutes.
 
@@ -1080,7 +1080,7 @@ Same control shape as the mute-enable button, persisted in `uiStore` beside
 `mutesLocked`, and shown in the header (C.10) so the state is visible rather than
 discovered by clicking something and finding it inert.
 
-### C.6 Intermod check — **S**
+### C.6 Intermod check — **S** — ✅ *complete*
 
 Third-order intermodulation products from the frequencies currently in the rig,
 flagged where one lands on a live channel.
@@ -1102,7 +1102,7 @@ Held as a question rather than a plan. It is not yet clear what an operator woul
 to stop it firing on every legitimate change between two performances. Decide
 what the actual complaint is before designing for it.
 
-### C.8 Dense all-channels grid — **M**
+### C.8 Dense all-channels grid — **M** — ✅ *complete*
 
 A compact grid showing every channel at once, alongside the existing cards.
 
@@ -1114,7 +1114,7 @@ is wrong, answered in one glance without moving.
 Not a replacement. Cards stay the default; this is for a big rig and a wall
 display.
 
-### C.9 Meter settings — **M**
+### C.9 Meter settings — **M** — ✅ *complete; audio-derived RMS waits on C.4*
 
 Peak hold first: RFDeck has none anywhere, and a transient dropout is exactly
 what a peak indicator is for.
@@ -1123,7 +1123,7 @@ Then the rest as configuration rather than assumption — peak or RMS, ballistic
 and the colour thresholds. Different rooms and different operators disagree about
 all three, and the present values are one person's preference compiled in.
 
-### C.10 Status bar — **S**
+### C.10 Status bar — **S** — ✅ *complete*
 
 A persistent line for facts currently spread across pages: how many channels are
 online out of how many tracked, whether RFDeck is live or standing by, what is
@@ -1133,7 +1133,7 @@ locked (C.5).
 Their equivalent carries Dante sample rate and channel count, which is theirs to
 care about. RFDeck's should carry RFDeck's facts.
 
-### C.11 Per-channel context menu — **M**
+### C.11 Per-channel context menu — **M** — ✅ *complete*
 
 Right-click a channel for what is currently reached through drawers and other
 pages: listen, solo, capture (C.1), open the device, open the performer, add a
@@ -1145,7 +1145,7 @@ to whatever does own it: the inventory device, the cast assignment, the audio
 patch row. Worth doing carefully, because a menu entry that opens the wrong
 record is worse than no menu at all.
 
-### C.12 Surface the keyboard shortcuts — **S**
+### C.12 Surface the keyboard shortcuts — **S** — ✅ *complete*
 
 Mic check has Y/N and arrow keys, Backstage and the Micboard have their own, and
 none are discoverable — they were built for an operator who already knew they

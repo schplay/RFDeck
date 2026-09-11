@@ -12,6 +12,7 @@ import { performerRoutes } from './performers';
 import { showReportRoutes } from './showReport';
 import { detectionRoutes } from './detections';
 import { micboardRoutes } from './micboard';
+import { notificationRoutes } from './notifications';
 import { liveRoutes } from './live';
 import { maintenanceRoutes } from './maintenance';
 
@@ -29,6 +30,7 @@ export default async function routes(fastify: FastifyInstance) {
   fastify.register(showReportRoutes);
   fastify.register(detectionRoutes);
   fastify.register(micboardRoutes);
+  fastify.register(notificationRoutes);
   fastify.register(liveRoutes);
   fastify.register(maintenanceRoutes);
 }

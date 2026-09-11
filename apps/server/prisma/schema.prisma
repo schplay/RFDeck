@@ -118,6 +118,61 @@ model Settings {
   // per patched channel, so it is deliberately short.
   recordingPreSec    Int      @default(15)
   recordingPostSec   Int      @default(10)
+
+  // ── Browser push ──
+  // VAPID keys identify this server to push services. Generated once on first
+  // use and kept, because every browser subscription is bound to the public
+  // key: regenerating it would silently orphan every subscription.
+  vapidPublicKey     String?
+  vapidPrivateKey    String?
+}
+
+// ── Notifications that leave the browser ──
+//
+// An alert that only exists in an open tab tells nobody at 2am. A webhook is
+// an HTTP POST to a URL the operator supplies — Slack, Teams, a home
+// automation box, anything — and is the honest primitive: self-contained, no
+// account, no bill. Browser push reaches a phone through the browser's own
+// push service with the same properties.
+//
+// Both are free-tier per docs/EDITIONS.md. Email and SMS, which need a hosted
+// service RFDeck operates on the customer's behalf, are cloud features and are
+// not here.
+
+model Webhook {
+  id          String    @id @default(uuid())
+  name        String
+  url         String
+  // Shared secret for an HMAC-SHA256 signature over the body, so a receiver
+  // can verify the POST came from this server. Encrypted at rest like a
+  // device password.
+  secret      String?
+  enabled     Boolean   @default(true)
+  // INFO | WARNING | CRITICAL. Defaults to CRITICAL: a webhook that fires on
+  // every channel mute is one an operator switches off within a night.
+  minSeverity String    @default("CRITICAL")
+  // What happened last time, so a webhook that is failing is visible rather
+  // than silently not arriving.
+  lastAt      DateTime?
+  lastStatus  Int?
+  lastError   String?
+  failures    Int       @default(0)
+  createdAt   DateTime  @default(now())
+}
+
+model PushSubscription {
+  id          String    @id @default(uuid())
+  // The push service URL. Unique: a browser re-subscribing replaces itself.
+  endpoint    String    @unique
+  // The subscription's own keys (p256dh, auth), as the browser gave them.
+  keys        String
+  minSeverity String    @default("CRITICAL")
+  // Which browser this is, as far as its user agent says — so a list of
+  // subscriptions is readable rather than a list of opaque URLs.
+  label       String?
+  lastAt      DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
 }
 
 // Something that looked like a wireless fault, with the audio that proves it.
