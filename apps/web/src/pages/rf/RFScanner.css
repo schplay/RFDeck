@@ -526,3 +526,15 @@
   .co-row { grid-template-columns: 1fr 1fr; }
   .co-controls { grid-template-columns: 1fr; }
 }
+
+/* ── Scan controls (spectrum card) ────────────────────────────────────── */
+
+.scan-controls {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 16px; font-size: 12px;
+  border-bottom: 1px solid var(--color-outline-variant, rgba(127,127,127,0.2));
+}
+.scan-controls .co-select { width: auto; min-width: 180px; }
+.scan-controls .co-muted { color: var(--color-on-surface-variant); }
+.scan-controls .btn-secondary-rf { padding: 4px 10px; font-size: 12px; }
+.scan-controls-spacer { flex: 1; }

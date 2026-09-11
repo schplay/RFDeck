@@ -115,9 +115,11 @@ The log of problems RFDeck noticed on its own, each with the audio that proves i
 - Frequency list export (CSV)
 - Intermodulation check of the live rig, and frequency coordination across
   vendors: plan a clean set of carriers and tune the receivers to it
-- _Note: RFDeck does **not** yet perform spectrum scanning. It displays the
-  frequencies of the devices it is connected to and their reported signal
-  strength; see `docs/SCANNING.md` for what is planned._
+- Spectrum scans imported from Wireless Workbench, WSM or an RF Explorer
+  export, drawn under the frequency map and used to keep coordination out of
+  occupied spectrum; exported in the form those tools read
+- _Note: RFDeck does **not** yet take scans itself; see `docs/SCANNING.md`
+  for what is planned._
 
 ### Hardware Inventory
 - Auto-discovery of supported devices via mDNS / Bonjour, passive MCP listening,

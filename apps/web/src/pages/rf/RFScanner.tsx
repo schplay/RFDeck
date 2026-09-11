@@ -7,6 +7,8 @@ import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { apiFetch } from '../../lib/api';
 import { useRfEventStore } from '../../stores/rfEventStore';
 import { SpectrumCanvas } from './components/SpectrumCanvas';
+import { ScanControls } from './components/ScanControls';
+import { useScanStore } from '../../stores/scanStore';
 import { FrequencyTable } from './components/FrequencyTable';
 import './RFScanner.css';
 
@@ -64,6 +66,9 @@ export default function RFScanner() {
   // dashboard, backstage, and mic check already do.
   const channels = useActiveChannels();
   const { inventory } = useDeviceStore();
+  const scan = useScanStore(s => s.selected);
+  const loadScans = useScanStore(s => s.load);
+  useEffect(() => { loadScans().catch(() => {}); }, [loadScans]);
 
   const onlineDevices = inventory.filter((d) => d.online && d.active !== false).length;
   const activeChannels = channels.filter((c) => c.status === 'ACTIVE');
@@ -130,12 +135,14 @@ export default function RFScanner() {
                 Channel Frequency Map
               </div>
               <div className="spectrum-meta">
-                <span>470 – 608 MHz</span>
                 <span>{channels.length} connected</span>
               </div>
             </div>
+            {/* A scan somebody took of the room, drawn under the carriers.
+                Imported from the tools that take scans, until RFDeck can. */}
+            <ScanControls />
             <div className="spectrum-body">
-              <SpectrumCanvas channels={channels} />
+              <SpectrumCanvas channels={channels} scan={scan} />
             </div>
           </section>
 
