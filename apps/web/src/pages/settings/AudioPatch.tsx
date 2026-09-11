@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { useAudioPatch } from '../../hooks/useAudioPatch';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
@@ -18,6 +19,17 @@ export function AudioPatchSettings() {
   const channels = useActiveChannels();
   const { devices, assignments, hint, accessProblem, loading, error, patch, reload } =
     useAudioPatch();
+
+  // Sent here for one channel (#/settings?tab=audio&channel=<id>): scroll to
+  // its row and mark it. A link that lands at the top of a sixty-row table is
+  // not much of a link.
+  const [searchParams] = useSearchParams();
+  const wanted = searchParams.get('channel');
+  useEffect(() => {
+    if (!wanted || loading) return;
+    const row = document.getElementById(`patch-${wanted}`);
+    row?.scrollIntoView({ block: 'center' });
+  }, [wanted, loading, channels.length]);
 
   return (
     <div className="settings-card">
@@ -102,7 +114,11 @@ export function AudioPatchSettings() {
               const inputCount = device?.channels ?? (current?.inputChannel ?? 0);
 
               return (
-                <div key={ch.id} className="audio-patch-row">
+                <div
+                  key={ch.id}
+                  id={`patch-${ch.id}`}
+                  className={`audio-patch-row${wanted === ch.id ? ' is-wanted' : ''}`}
+                >
                   <span className="audio-patch-name">{ch.name || `CH ${ch.channelIndex}`}</span>
 
                   <select

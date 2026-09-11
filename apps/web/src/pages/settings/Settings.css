@@ -358,3 +358,10 @@
   background: none;
   cursor: pointer;
 }
+
+/* The patch row somebody was sent to from a channel's context menu. */
+.audio-patch-row.is-wanted {
+  background: rgba(0, 219, 233, 0.08);
+  outline: 1px solid rgba(0, 219, 233, 0.35);
+  border-radius: var(--radius-sm);
+}

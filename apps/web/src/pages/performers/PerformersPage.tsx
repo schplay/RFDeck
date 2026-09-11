@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Users, Plus, Trash2, Camera, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { usePerformerStore } from '../../stores/performerStore';
 import { Performer } from '@rfdeck/shared-types';
@@ -83,7 +84,11 @@ export default function PerformersPage() {
   const [newName, setNewName] = useState('');
   const [newNotes, setNewNotes] = useState('');
   const [filter, setFilter] = useState('');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // A link can open one performer (#/performers?performer=<id>), so a
+  // channel's context menu can land on the person cast onto it rather than
+  // on a roster they then have to search.
+  const [searchParams] = useSearchParams();
+  const [expanded, setExpanded] = useState<string | null>(searchParams.get('performer'));
 
   useEffect(() => { void fetchPerformers(); }, [fetchPerformers]);
 
