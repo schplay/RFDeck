@@ -21,6 +21,11 @@ export interface InventoryDevice {
   // until this is fixed, so it is shown as its own condition, not as healthy.
   authFailed?: string | null;
   deviceType: DeviceType;
+  // Frequency coordination: the receiver's band and who said so. Reported
+  // by the hardware where it can be; declared by the operator where not.
+  band?: string | null;
+  bandSource?: 'reported' | 'declared' | null;
+  dense?: boolean;
   /**
    * True when a person set the type, false when RFDeck inferred it from the
    * model or name.

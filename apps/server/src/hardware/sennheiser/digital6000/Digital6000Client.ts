@@ -4,7 +4,7 @@ import { log } from '../../../logger';
 import { HardwareClient, DeviceStateTree, ReceiverState } from '../../HardwareClient';
 import {
   SSC_PORT, RENEW_INTERVAL_MS,
-  subscriptionMessages, identityMessages, applyMessage,
+  subscriptionMessages, identityMessages, applyMessage, parseCarrierLimits,
 } from './protocol';
 
 // Sennheiser Digital 6000 — EM 6000, EM 6000 Dante, L 6000.
@@ -188,6 +188,9 @@ export class Digital6000Client extends EventEmitter implements HardwareClient {
     }
 
     this.mergeIdentity(json);
+
+    const limits = parseCarrierLimits(json);
+    if (limits) this.emit('metadata', { carrierLimits: limits });
 
     const partial = applyMessage(json, this.channelList);
     let changed = false;

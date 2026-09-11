@@ -158,6 +158,11 @@ names **K+** and **1G8**; their numeric ranges were not in the pages read.
   is the first real input for C.3.
 - EW-DX: RFDeck sets `rx{n}/frequency` over SSCv2 today; whether the device
   snaps to a grid, and which, is **unverified**.
+- G3/G4: `Frequency <kHz>` over MCP, the unit the receiver's own `Frequency`
+  line reports. Sending is **unverified**; only reading is proven.
+- Every driver now reaches `setFrequency` through the capability check
+  rather than `instanceof SSCClient`, which had silently limited tuning to
+  EW-DX.
 
 ## What this does to the C.13 estimate
 

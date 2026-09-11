@@ -229,9 +229,31 @@ export function subscriptionMessages(channels: number[]): string[] {
 
 /** The one-off questions asked on connect, for values that are not subscribable. */
 export function identityMessages(): string[] {
-  return [JSON.stringify({
-    device: { identity: { version: null, vendor: null, product: null }, name: null },
-  })];
+  return [
+    JSON.stringify({
+      device: { identity: { version: null, vendor: null, product: null }, name: null },
+    }),
+    // What the receiver will accept as a carrier — "min: 470100, max: 713900,
+    // inc: 25" (SSC v2.2 §8.17). Better than any band table, because it is the
+    // device describing itself; coordination uses it directly.
+    JSON.stringify({ osc: { limits: [{ rx1: { carrier: null } }] } }),
+  ];
+}
+
+/** The carrier limits out of an /osc/limits reply, or null if this is not one. */
+export function parseCarrierLimits(json: any): { minKHz: number; maxKHz: number; stepKHz: number } | null {
+  const limits = json?.osc?.limits;
+  if (!Array.isArray(limits)) return null;
+  for (const entry of limits) {
+    const carrier = entry?.rx1?.carrier;
+    const spec = Array.isArray(carrier) ? carrier[0] : carrier;
+    if (!spec || typeof spec !== 'object') continue;
+    const { min, max, inc } = spec;
+    if (typeof min === 'number' && typeof max === 'number' && max > min) {
+      return { minKHz: min, maxKHz: max, stepKHz: typeof inc === 'number' && inc > 0 ? inc : 25 };
+    }
+  }
+  return null;
 }
 
 // ── Turning a datagram into RFDeck's channel shape ──────────────────────────

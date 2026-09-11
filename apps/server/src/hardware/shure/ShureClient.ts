@@ -151,6 +151,14 @@ export class ShureClient extends EventEmitter implements HardwareClient {
       // parameters are asked for one at a time.
       if (this.spec.isTransmitter) this.write(getDeviceParam('DEVICE_NAME', this.family));
 
+      // Band and density mode, for coordination. `GET ALL` is documented to
+      // include the device-level properties, but asked for by name as well:
+      // a receiver that omits them from ALL would otherwise be a receiver
+      // with no band, silently.
+      if (this.family === 'axtd' || this.family === 'slxd') this.write(getDeviceParam('RF_BAND', this.family));
+      if (this.family === 'axtd') this.write(getDeviceParam('TRANSMISSION_MODE', this.family));
+      if (this.family === 'ulxd') this.write(getDeviceParam('HIGH_DENSITY', this.family));
+
       for (const ch of this.channelList) {
         const all = getAll(ch, this.family);
         if (all) this.write(all);
@@ -415,6 +423,18 @@ export class ShureClient extends EventEmitter implements HardwareClient {
         break;
       case 'MODEL':
         this.emit('metadata', { model: msg.value });
+        break;
+      // Coordination needs the band. Axient Digital and SLX-D report it as
+      // "{G55 }" — braced and padded; ULX-D and QLX-D have no such command
+      // and are asked to declare it instead.
+      case 'RF_BAND':
+        this.emit('metadata', { band: msg.value.replace(/[{}]/g, '').trim() });
+        break;
+      case 'TRANSMISSION_MODE':
+        this.emit('metadata', { dense: msg.value.trim() === 'HIGH_DENSITY' });
+        break;
+      case 'HIGH_DENSITY':
+        this.emit('metadata', { dense: msg.value.trim() === 'ON' });
         break;
     }
   }

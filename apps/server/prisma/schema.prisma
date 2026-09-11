@@ -37,6 +37,21 @@ model InventoryDevice {
   mac                String?
   serial             String?
   firmware           String?
+  // Frequency coordination: which band this receiver is, and who said so.
+  //
+  // Axient Digital and EW-DX report their band over the protocol; ULX-D,
+  // QLX-D and G3/G4 do not, so an operator declares it. "reported" always
+  // wins over "declared" — the hardware is the truth about itself — and a
+  // declared band is never overwritten by anything but a report or a person.
+  // See docs/COORDINATION_PROFILES.md.
+  band               String?
+  bandSource         String?  // 'reported' | 'declared'
+  // High Density / Link Density mode, as the receiver reports it.
+  dense              Boolean  @default(false)
+  // Digital 6000 publishes its own carrier limits instead of a band code.
+  carrierMinKHz      Int?
+  carrierMaxKHz      Int?
+  carrierStepKHz     Int?
   addedAt            DateTime @default(now())
 
   maintenance        MaintenanceEntry[]
