@@ -6,6 +6,7 @@ import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { channelKey } from '../../lib/channelKey';
 import { useShortcuts, plainKey } from '../../lib/shortcuts';
+import { Meter as SharedMeter } from '../../components/meters/Meter';
 import { API_BASE } from '../../lib/api';
 import './MicboardView.css';
 
@@ -47,17 +48,18 @@ function statusOf(ch: Channel, online: boolean, stale: boolean): {
   return { label: 'ON AIR', tone: 'good' };
 }
 
+// The shared meter as a fill bar. RF and audio thresholds come from the meter
+// settings, so the wall display agrees with the dashboard it is read beside.
+// Battery keeps fixed thresholds here: those are the server's alert settings,
+// not a display preference, and this read-only view does not fetch them.
 function Meter({ value, kind }: { value: number; kind: 'rf' | 'af' | 'batt' }) {
-  const pct = Math.max(0, Math.min(100, value));
-  // RF and battery are bad when low; audio is bad when pinned high.
-  const tone = kind === 'af'
-    ? (pct > 92 ? 'crit' : pct > 80 ? 'warn' : 'good')
-    : (pct < 20 ? 'crit' : pct < 40 ? 'warn' : 'good');
-  return (
-    <div className={`mb-meter mb-meter-${tone}`}>
-      <div className="mb-meter-fill" style={{ width: `${pct}%` }} />
-    </div>
-  );
+  if (kind === 'batt') {
+    return (
+      <SharedMeter value={value} kind="rf" variant="bar" className="mb-meter"
+        thresholds={{ warn: 20, crit: 5 }} lowIsBad label="Battery" />
+    );
+  }
+  return <SharedMeter value={value} kind={kind} variant="bar" className="mb-meter" />;
 }
 
 export default function MicboardView() {

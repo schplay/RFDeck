@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Volume2, BellRing, Network, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Volume2, BellRing, Network, RefreshCw, ShieldCheck, Gauge } from 'lucide-react';
+import { MeterSettings } from './MeterSettings';
 import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
 import { AudioPatchSettings } from './AudioPatch';
 import { AES67RoutingSettings } from './AES67Routing';
@@ -268,7 +269,17 @@ export default function Settings() {
           <Tabs.Trigger value="access" className="tabs-trigger">
             <ShieldCheck size={16} /> Remote Access
           </Tabs.Trigger>
+          <Tabs.Trigger value="display" className="tabs-trigger">
+            <Gauge size={16} /> Display
+          </Tabs.Trigger>
         </Tabs.List>
+
+        {/* Per-browser preferences, unlike every other tab: the person at FOH
+            and the person on the backstage tablet can reasonably want
+            different meters, and neither should overrule the other. */}
+        <Tabs.Content value="display" className="tabs-content">
+          <MeterSettings />
+        </Tabs.Content>
 
         <Tabs.Content value="audio" className="tabs-content">
           {/* Routing first, then patching: a stream has to be arriving at the

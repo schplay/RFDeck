@@ -45,6 +45,10 @@ test.describe('locking the surface', () => {
     // Locking wants to be fast. Unlocking is the act that makes every dangerous
     // control live again, so it has to be aimed at deliberately.
     await page.goto('/#/');
+    // Wait for the shell before pressing: the key is bound by RootLayout, and
+    // pressing it before that mounts tests nothing. This one passed by luck
+    // until the page got heavier.
+    await expect(page.getByRole('button', { name: /Unlocked/ })).toBeVisible();
     await page.keyboard.press('l');
     await expect(page.getByRole('button', { name: /^Locked/ })).toBeVisible();
 

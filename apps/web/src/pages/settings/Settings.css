@@ -289,3 +289,72 @@
   .audio-patch-table { overflow-x: auto; }
   .settings-table { display: block; overflow-x: auto; }
 }
+
+/* ── Meter settings ──────────────────────────────────────────────────────── */
+/* A live preview above the controls, so a change is seen before it is
+   trusted — ballistics in particular is impossible to judge from a label. */
+
+.ms-preview {
+  display: flex;
+  gap: 24px;
+  align-items: flex-end;
+  padding: 14px 16px;
+  margin: 12px 0 18px;
+  border-radius: 8px;
+  background: var(--color-surface-container);
+}
+
+.ms-preview-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.ms-preview-wide {
+  flex: 1;
+  align-items: stretch;
+  min-width: 160px;
+}
+
+.ms-preview-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-on-surface-variant);
+}
+
+.ms-preview-meter { height: 90px; }
+.ms-preview-bar   { height: 10px; }
+
+.ms-pair {
+  display: grid;
+  grid-template-columns: auto 90px auto 90px;
+  gap: 8px 10px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--color-on-surface-variant);
+}
+
+.ms-colors {
+  display: flex;
+  gap: 18px;
+}
+
+.ms-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.ms-color input[type="color"] {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--color-surface-container-highest);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}

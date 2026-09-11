@@ -176,10 +176,8 @@
   background: rgba(255, 255, 255, 0.12);
   overflow: hidden;
 }
-.mb-meter-fill { height: 100%; transition: width 0.12s linear; }
-.mb-meter-good .mb-meter-fill { background: #6bff8f; }
-.mb-meter-warn .mb-meter-fill { background: #ffb444; }
-.mb-meter-crit .mb-meter-fill { background: #ff6b6b; }
+/* The fill and its colours come from components/meters, shared with the
+   dashboard this display is read beside. */
 
 .mb-foot {
   display: flex;

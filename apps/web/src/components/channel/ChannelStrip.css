@@ -104,28 +104,8 @@
   gap: 2px;
 }
 
-.meter-segment {
-  flex: 1;
-  width: 100%;
-  border-radius: 1px;
-  background-color: var(--color-surface-container-highest);
-  transition: background-color 0.1s, box-shadow 0.1s;
-}
-
-.meter-segment.active-green {
-  background-color: var(--color-success);
-  box-shadow: 0 0 4px var(--color-success);
-}
-
-.meter-segment.active-orange {
-  background-color: #f59e0b;
-  box-shadow: 0 0 4px #f59e0b;
-}
-
-.meter-segment.active-red {
-  background-color: var(--color-error);
-  box-shadow: 0 0 4px var(--color-error);
-}
+/* Segment colours and thresholds live in components/meters — one meter for
+   every view, driven by the meter settings, rather than a palette per card. */
 
 .cs-data {
   flex: 1;
