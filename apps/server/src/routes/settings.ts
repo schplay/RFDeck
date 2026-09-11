@@ -11,7 +11,9 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
     if (!settings) {
       settings = await prisma.settings.create({ data: {} });
     }
-    const { defaultPassword, authPinHash, ...safe } = settings;
+    // The VAPID private key signs push messages as this server; it never
+    // leaves. The public key has its own endpoint.
+    const { defaultPassword, authPinHash, vapidPrivateKey, vapidPublicKey, ...safe } = settings;
     return {
       ...safe,
       hasDefaultPassword: !!defaultPassword,

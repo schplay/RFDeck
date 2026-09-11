@@ -3,6 +3,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { useSearchParams } from 'react-router-dom';
 import { Volume2, BellRing, Network, RefreshCw, ShieldCheck, Gauge } from 'lucide-react';
 import { MeterSettings } from './MeterSettings';
+import { NotificationSettings } from './NotificationSettings';
 import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
 import { AudioPatchSettings } from './AudioPatch';
 import { AES67RoutingSettings } from './AES67Routing';
@@ -336,6 +337,10 @@ export default function Settings() {
               <button className="btn-primary" onClick={handleSave}>Save Settings</button>
             </div>
           </div>
+
+          {/* Where alerts go once they leave the tab. Beside the thresholds
+              that raise them, since the two are read together. */}
+          <NotificationSettings />
         </Tabs.Content>
 
         <Tabs.Content value="network" className="tabs-content">

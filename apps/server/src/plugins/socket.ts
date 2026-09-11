@@ -7,6 +7,7 @@ import { WebRTCSignaling } from '../audio/WebRTCSignaling';
 import { AES67Manager } from '../audio/AES67Manager';
 import { CaptureManager } from '../audio/CaptureManager';
 import { RecordingManager } from '../recording/RecordingManager';
+import { attachAlertDispatcher } from '../notify/dispatcher';
 import { listAudioInputDevices } from '../audio/deviceList';
 import { prisma } from '../db';
 import { log } from '../logger';
@@ -46,6 +47,10 @@ export default fp(async (fastify, opts) => {
   fastify.decorate('audioManager', audioManager);
   fastify.decorate('captureManager', captureManager);
   fastify.decorate('recordingManager', recordingManager);
+
+  // Alerts that leave the browser: webhooks and push, fed by the same alerts
+  // the dashboard shows.
+  attachAlertDispatcher(deviceManager);
 
   // Detections keep the audio that proves them.
   deviceManager.on('rf:detection', (input: any) => {
