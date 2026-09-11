@@ -3,6 +3,7 @@ import { ChannelStrip } from '../../components/channel/ChannelStrip';
 import { DenseTile } from '../../components/channel/DenseTile';
 import { ChannelContextMenu, DrawerSection } from '../../components/channel/ChannelContextMenu';
 import { contextMenuFor } from '../../stores/contextMenuStore';
+import { SoloGroups } from '../../components/audio/SoloGroups';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useUiStore } from '../../stores/uiStore';
@@ -134,6 +135,9 @@ export default function MonitoringDashboard() {
                 <option value="custom">Custom Order</option>
               </select>
             </div>
+
+            {/* Eight recallable listen buses. */}
+            <SoloGroups />
 
             {/* Global mute lock. Locked is the resting state during a show:
                 a Mute is one click from silencing a performer mid-line, and

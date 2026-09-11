@@ -58,3 +58,29 @@
   .sb { height: 26px; gap: 8px; padding: 0 10px; }
   .sb-sep { display: none; }
 }
+
+/* Listen bus members, each with a tiny level drawn from the audio itself. */
+.sb-bus-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 8px;
+}
+
+.sb-bus-member:first-of-type { margin-left: 2px; }
+
+.sb-bus-level {
+  display: inline-block;
+  width: 34px;
+  height: 5px;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 18%, transparent);
+  overflow: hidden;
+}
+
+.sb-bus-level-fill {
+  display: block;
+  height: 100%;
+  background: currentColor;
+  transition: width 80ms linear;
+}

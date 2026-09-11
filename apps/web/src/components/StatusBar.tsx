@@ -32,14 +32,15 @@ export function StatusBar() {
   const show = useLiveStore(s => s.show);
   const recordingEnabled = useStatusStore(s => s.recordingEnabled);
   const recordingChannels = useStatusStore(s => s.recordingChannels);
-  const listeningTo = useStatusStore(s => s.listeningTo);
+  const listening = useStatusStore(s => s.listening);
+  const audioLevels = useStatusStore(s => s.audioLevels);
   const captures = useStatusStore(s => s.captures);
 
   const tracked = inventory.filter(d => d.active !== false).length;
   const online = inventory.filter(d => d.active !== false && d.online).length;
-  const listening = listeningTo
-    ? channels.find(c => c.id === listeningTo)
-    : null;
+  const bus = listening
+    .map(id => channels.find(c => c.id === id))
+    .filter((c): c is NonNullable<typeof c> => !!c);
 
   return (
     <footer className="sb" role="status" aria-label="RFDeck status">
@@ -101,13 +102,26 @@ export function StatusBar() {
       )}
 
       {/* What is in the operator's ears, which is otherwise only knowable by
-          finding the card you clicked. */}
-      {listening && (
+          finding the cards you clicked. Each member carries a level measured
+          from the audio itself on the server — the only place in RFDeck a
+          level comes from samples rather than from a receiver's report. */}
+      {bus.length > 0 && (
         <>
           <span className="sb-sep" aria-hidden />
-          <span className="sb-item sb-listen" title="Monitoring this channel">
+          <span className="sb-item sb-listen" title={`Listening to ${bus.length} channel${bus.length === 1 ? '' : 's'}`}>
             <Headphones size={13} />
-            {listening.name || `CH ${listening.channelIndex}`}
+            {bus.map(ch => {
+              const lvl = audioLevels[ch.id];
+              const pct = lvl ? Math.round(Math.min(1, lvl.peak) * 100) : 0;
+              return (
+                <span key={ch.id} className="sb-bus-member">
+                  {ch.name || `CH ${ch.channelIndex}`}
+                  <span className="sb-bus-level" aria-hidden>
+                    <span className="sb-bus-level-fill" style={{ width: `${pct}%` }} />
+                  </span>
+                </span>
+              );
+            })}
           </span>
         </>
       )}

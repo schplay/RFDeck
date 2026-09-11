@@ -17,14 +17,25 @@ interface StatusStore {
   applyRecording: (s: { enabled: boolean; channels: number }) => void;
 
   /**
-   * The channel currently being monitored, by stable channel id.
+   * The channels on the listen bus, by stable channel id.
    *
-   * Lifted out of useChannelAudio's local state so the shell can say what is in
-   * the operator's ears from anywhere — and so that more than one channel can
-   * be listened to at once later without moving it a second time.
+   * Shared so the shell can say what is in the operator's ears from anywhere,
+   * and so every card, the menu and the status bar agree about it. Server-
+   * confirmed: this is what the server said it put on the bus, which can be
+   * fewer than were asked for.
    */
-  listeningTo: string | null;
-  setListeningTo: (channelId: string | null) => void;
+  listening: string[];
+  setListening: (channelIds: string[]) => void;
+
+  /**
+   * Level per bus member, measured from the audio itself on the server.
+   *
+   * The first point in RFDeck where a level comes from audio rather than from a
+   * number a receiver reported. Only for channels being listened to — the mix
+   * has their samples and nothing else's.
+   */
+  audioLevels: Record<string, { peak: number; rms: number }>;
+  applyAudioLevels: (levels: Record<string, { peak: number; rms: number }>) => void;
 
   /** Captures the operator asked for, in progress. Server-owned. */
   captures: ActiveCapture[];
@@ -44,8 +55,15 @@ export const useStatusStore = create<StatusStore>()((set) => ({
   applyRecording: ({ enabled, channels }) =>
     set({ recordingEnabled: enabled, recordingChannels: channels }),
 
-  listeningTo: null,
-  setListeningTo: (listeningTo) => set({ listeningTo }),
+  listening: [],
+  setListening: (listening) => set(s => ({
+    listening,
+    // Levels for anything no longer on the bus are stale the moment it leaves.
+    audioLevels: Object.fromEntries(Object.entries(s.audioLevels).filter(([k]) => listening.includes(k))),
+  })),
+
+  audioLevels: {},
+  applyAudioLevels: (audioLevels) => set({ audioLevels }),
 
   captures: [],
   applyCaptures: (captures) => set({ captures }),

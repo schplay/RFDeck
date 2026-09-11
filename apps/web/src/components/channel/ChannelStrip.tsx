@@ -42,9 +42,10 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   const { socket, isConnected } = useSocket();
   // Audio is captured on the server and streamed here, so this works from any
   // client rather than only from a browser sitting at the interface.
-  const { listen, stop, listeningTo, error: audioError } = useChannelAudio();
+  const { listen, stop, toggle, listening, error: audioError } = useChannelAudio();
   const audioKey = channelKey(channel);
-  const isListening = listeningTo === audioKey;
+  const isListening = listening.includes(audioKey);
+  const busHasOthers = listening.some(k => k !== audioKey);
   // Global safety switch from the dashboard toolbar; applies on every view
   // that renders a strip, Backstage included.
   // Either lock is enough. The mute lock is the narrow, always-on one; the
@@ -121,10 +122,15 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
     }
   };
 
-  const handleListen = () => {
+  const handleListen = (e: React.MouseEvent) => {
     // The server resolves which input this channel is patched to, so the
     // client only has to name the channel.
-    if (isListening) stop();
+    //
+    // Plain click solos — this channel and nothing else — because that is what
+    // "Listen" has always meant here. Shift-click stacks it onto whatever is
+    // already playing, the way shift-click works on a console.
+    if (e.shiftKey) { void toggle(audioKey); return; }
+    if (isListening && !busHasOthers) stop();
     else listen(audioKey);
   };
 
@@ -238,7 +244,9 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
         <button
           className={`cs-btn ${isListening ? 'btn-primary is-listening' : 'btn-secondary'}`}
           onClick={handleListen}
-          title={audioError ?? (isListening ? 'Stop listening' : 'Listen to this channel')}
+          title={audioError ?? (isListening
+            ? (busHasOthers ? 'Listen to this channel alone · Shift-click to take it off the bus' : 'Stop listening')
+            : 'Listen to this channel · Shift-click to add it to what is playing')}
           aria-pressed={isListening}
         >
           <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
