@@ -368,3 +368,16 @@
   background: color-mix(in srgb, var(--color-warning, #d08a2c) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-warning, #d08a2c) 40%, transparent);
 }
+
+/* Capture on request. Running is the emphasised state, in the recording
+   colour, because a capture that is on and forgotten is what fills a disk. */
+.cs-btn.is-capturing {
+  color: var(--color-error, #d05353);
+  border-color: color-mix(in srgb, var(--color-error, #d05353) 45%, transparent);
+}
+
+.cs-capture-pick {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}

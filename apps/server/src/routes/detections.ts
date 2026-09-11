@@ -116,4 +116,34 @@ export const detectionRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(500).send({ error: 'Could not reload recording' });
     }
   });
+
+  // Capture on request: keep the next N minutes of one channel, starting from
+  // the pre-roll already in memory. Refusals carry the reason, because a
+  // capture that quietly did not happen is found out after the show.
+  fastify.post('/recording/capture', async (request, reply) => {
+    const rec = recorder();
+    if (!rec) return reply.code(503).send({ error: 'Recording is not available' });
+    const body = (request.body ?? {}) as { channelKey?: string; minutes?: number; channelName?: string };
+    if (!body.channelKey) return reply.code(400).send({ error: 'channelKey is required' });
+    const result = await rec.startCapture(body.channelKey, body.minutes, body.channelName ?? null);
+    if (!result.ok) {
+      return reply.code(result.status).send({ error: result.error, detectionId: result.detectionId });
+    }
+    return { detectionId: result.detectionId, endsAt: result.endsAt };
+  });
+
+  fastify.post('/recording/capture/:id/stop', async (request, reply) => {
+    const rec = recorder();
+    if (!rec) return reply.code(503).send({ error: 'Recording is not available' });
+    const { id } = request.params as { id: string };
+    const stopped = await rec.stopCapture(id, 'stopped by operator');
+    if (!stopped) return reply.code(404).send({ error: 'No capture with that id is running' });
+    return { stopped: true };
+  });
+
+  fastify.get('/recording/captures', async (_request, reply) => {
+    const rec = recorder();
+    if (!rec) return reply.code(503).send({ error: 'Recording is not available' });
+    return rec.captures();
+  });
 };

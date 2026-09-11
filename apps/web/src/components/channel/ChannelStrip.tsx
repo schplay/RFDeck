@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
-import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff } from 'lucide-react';
+import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff, Disc } from 'lucide-react';
+import { useStatusStore } from '../../stores/statusStore';
+import { apiFetch } from '../../lib/api';
 import { useUiStore, LOCKED_REASON } from '../../stores/uiStore';
 import { useSocket } from '../../hooks/useSocket';
 import { useChannelAudio } from '../../hooks/useChannelAudio';
@@ -51,6 +53,35 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   const surfaceLocked = useUiStore(s => s.surfaceLocked);
   // Products from the rig's own transmitters that land on this channel.
   const imHits = useIntermodStore(s => s.report.hits.filter(h => h.victimId === channel.id));
+
+  // A capture on request, if one is running for this channel. Server-owned
+  // state: a capture started at FOH shows as running backstage too.
+  const capture = useStatusStore(s => s.captures.find(c => c.channelKey === channel.id) ?? null);
+  const [capturePick, setCapturePick] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+
+  const startCapture = async (minutes: number) => {
+    setCapturePick(false);
+    setCaptureError(null);
+    try {
+      await apiFetch('/recording/capture', {
+        method: 'POST',
+        body: JSON.stringify({ channelKey: channel.id, minutes, channelName: channel.name }),
+      });
+    } catch (err: any) {
+      // The server says why — not patched, recording off — and that reason is
+      // the whole point of the error, so it is shown rather than summarised.
+      setCaptureError(err?.message ?? 'Could not start the capture');
+    }
+  };
+
+  const stopCapture = async (detectionId: string) => {
+    try {
+      await apiFetch(`/recording/capture/${detectionId}/stop`, { method: 'POST' });
+    } catch (err: any) {
+      setCaptureError(err?.message ?? 'Could not stop the capture');
+    }
+  };
 
   // Outcome of the last control command for THIS channel. A refused command
   // otherwise leaves the button looking inert, with the reason only in the
@@ -251,7 +282,39 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
         >
           <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
         </button>
+        {/* Keep the next N minutes of this channel, starting from the pre-roll
+            already in memory. Not behind the surface lock: it changes nothing
+            about the rig, it only remembers it. */}
+        {capture ? (
+          <button
+            className="cs-btn btn-secondary is-capturing"
+            onClick={() => void stopCapture(capture.detectionId)}
+            title={`Capturing until ${new Date(capture.endsAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}. Click to stop and keep what was recorded.`}
+          >
+            <Disc size={14} /> Stop capture
+          </button>
+        ) : capturePick ? (
+          <span className="cs-capture-pick" role="group" aria-label="Capture length">
+            {[1, 5, 15, 60].map(m => (
+              <button key={m} className="cs-btn btn-secondary" onClick={() => void startCapture(m)}>
+                {m} min
+              </button>
+            ))}
+            <button className="cs-btn btn-secondary" onClick={() => setCapturePick(false)} aria-label="Cancel">✕</button>
+          </span>
+        ) : (
+          <button
+            className="cs-btn btn-secondary"
+            onClick={() => { setCaptureError(null); setCapturePick(true); }}
+            title="Record the next few minutes of this channel, pre-roll included"
+          >
+            <Disc size={14} /> Capture
+          </button>
+        )}
       </div>
+      {captureError && (
+        <div className="cs-control-error" role="status">{captureError}</div>
+      )}
       {(controlError || (isListening && audioError)) && (
         <div className="cs-control-error" role="status">
           {controlError ?? audioError}

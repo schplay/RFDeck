@@ -25,6 +25,17 @@ interface StatusStore {
    */
   listeningTo: string | null;
   setListeningTo: (channelId: string | null) => void;
+
+  /** Captures the operator asked for, in progress. Server-owned. */
+  captures: ActiveCapture[];
+  applyCaptures: (captures: ActiveCapture[]) => void;
+}
+
+export interface ActiveCapture {
+  detectionId: string;
+  channelKey: string;
+  startedAt: number;
+  endsAt: number;
 }
 
 export const useStatusStore = create<StatusStore>()((set) => ({
@@ -35,4 +46,7 @@ export const useStatusStore = create<StatusStore>()((set) => ({
 
   listeningTo: null,
   setListeningTo: (listeningTo) => set({ listeningTo }),
+
+  captures: [],
+  applyCaptures: (captures) => set({ captures }),
 }));
