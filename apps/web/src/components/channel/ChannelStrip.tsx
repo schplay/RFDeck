@@ -9,6 +9,7 @@ import { useSocket } from '../../hooks/useSocket';
 import { useChannelAudio } from '../../hooks/useChannelAudio';
 import { channelKey } from '../../lib/channelKey';
 import { useIntermodStore, IntermodHit } from '../../stores/intermodStore';
+import { Meter } from '../meters/Meter';
 import './ChannelStrip.css';
 
 /**
@@ -111,32 +112,13 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
                      : channel.status === 'ACTIVE' ? 'success'
                      : channel.status === 'WARNING' ? 'warning' : 'error';
 
-  // Helper to render segmented meter
-  const renderMeter = (level: number, type: 'rf' | 'af') => {
-    const segments = 10;
-    const activeCount = Math.floor((level / 100) * segments);
-    return (
-      <div className="meter-stack">
-        {Array.from({ length: segments }).map((_, i) => {
-          const index = segments - 1 - i;
-          const isActive = index < activeCount;
-          let colorClass = 'meter-segment';
-          if (isActive) {
-            if (type === 'rf') {
-              if (index < 2) colorClass += ' active-red';
-              else if (index < 4) colorClass += ' active-orange';
-              else colorClass += ' active-green';
-            } else {
-              if (index >= 8) colorClass += ' active-red';
-              else if (index >= 6) colorClass += ' active-orange';
-              else colorClass += ' active-green';
-            }
-          }
-          return <div key={i} className={colorClass} />;
-        })}
-      </div>
-    );
-  };
+  // The shared meter, with this card's segment count. Thresholds, ballistics,
+  // peak hold and colours all come from the meter settings rather than being
+  // decided here — this card used to turn RF red at 20% while the server
+  // alerts at 25%, and nobody had chosen either.
+  const renderMeter = (level: number, type: 'rf' | 'af') => (
+    <Meter value={level} kind={type} segments={10} orientation="vertical" className="meter-stack" />
+  );
 
   const StatusIcon = () => {
     if (!deviceOnline) return <WifiOff size={18} className="text-muted" />;

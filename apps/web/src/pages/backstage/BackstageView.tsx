@@ -5,6 +5,7 @@ import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { useLayoutStore, useOrderedChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
 import { useSocket } from '../../hooks/useSocket';
 import { useShortcuts } from '../../lib/shortcuts';
+import { Meter } from '../../components/meters/Meter';
 import { Channel } from '@rfdeck/shared-types';
 import './BackstageView.css';
 
@@ -23,37 +24,16 @@ function statusLabel(ch: Channel): string {
   return 'ON AIR';
 }
 
+// Both bars are the shared meter. This view used to carry its own thresholds
+// — RF red under 20%, audio orange from 60% — which disagreed with the
+// dashboard beside it and with the server's alerts. One meter, one set of
+// settings, every view.
 function rfBar(level: number) {
-  const segs = 8;
-  const active = Math.round((level / 100) * segs);
-  return (
-    <div className="bs-rf-bar" aria-label={`RF ${level}%`}>
-      {Array.from({ length: segs }).map((_, i) => (
-        <div
-          key={i}
-          className={`bs-rf-seg ${i < active ? (level < 20 ? 'crit' : level < 40 ? 'warn' : 'good') : ''}`}
-        />
-      ))}
-    </div>
-  );
+  return <Meter value={level} kind="rf" segments={8} orientation="horizontal" className="bs-rf-bar" label="RF" />;
 }
 
-// AF uses audio-level semantics (matches dashboard ChannelStrip): high level =
-// hot/clipping, so the TOP segments go orange (≥60%) and red (≥80%) — unlike RF
-// where a LOW level is the problem.
 function afBar(level: number) {
-  const segs = 8;
-  const active = Math.round((level / 100) * segs);
-  return (
-    <div className="bs-rf-bar" aria-label={`AF ${level}%`}>
-      {Array.from({ length: segs }).map((_, i) => (
-        <div
-          key={i}
-          className={`bs-rf-seg ${i < active ? (i / segs >= 0.8 ? 'crit' : i / segs >= 0.6 ? 'warn' : 'good') : ''}`}
-        />
-      ))}
-    </div>
-  );
+  return <Meter value={level} kind="af" segments={8} orientation="horizontal" className="bs-rf-bar" label="AF" />;
 }
 
 export default function BackstageView() {

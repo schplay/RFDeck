@@ -245,17 +245,8 @@
   align-items: center;
 }
 
-.bs-rf-seg {
-  flex: 1;
-  height: 10px;
-  border-radius: 2px;
-  background: #1e2d2e;
-  transition: background 0.1s;
-}
-
-.bs-rf-seg.good { background: #4ae176; }
-.bs-rf-seg.warn { background: #ffb86c; }
-.bs-rf-seg.crit { background: #ff5555; }
+/* Segments and their colours come from components/meters, shared with the
+   dashboard so the two views agree about what red means. */
 
 .bs-meter-val {
   font-family: 'JetBrains Mono', monospace;
