@@ -1,0 +1,42 @@
+/* Solo group strip: eight small buttons. Empty ones are quiet, stored ones
+   are legible, the one that matches what is playing is lit. */
+
+.sg {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.sg-icon {
+  margin-right: 4px;
+  color: var(--color-on-surface-variant);
+}
+
+.sg-btn {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--color-surface-container-highest);
+  border-radius: 5px;
+  background: none;
+  color: var(--color-on-surface-variant);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.sg-btn.has { opacity: 1; color: var(--color-on-surface); }
+
+.sg-btn:hover { background: var(--color-surface-container-highest); opacity: 1; }
+
+.sg-btn.active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: rgba(0, 219, 233, 0.12);
+}
+
+@media (max-width: 640px) {
+  .sg { display: none; }
+}

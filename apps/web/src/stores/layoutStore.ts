@@ -25,10 +25,17 @@ interface LayoutStore {
   customOrder: string[]; // orderKeys in display order
   backstageCols: number; // column count on the backstage view (1-4)
   dashboardView: DashboardView;
+  /**
+   * Solo groups: eight recallable sets of channels for the listen bus, so
+   * "the four radio mics" is one press rather than four. Per browser, like
+   * the card order — they are this operator's working set, not the rig's.
+   */
+  soloGroups: Record<number, string[]>;
   setOrderMode: (mode: OrderMode) => void;
   setCustomOrder: (keys: string[]) => void;
   setBackstageCols: (cols: number) => void;
   setDashboardView: (view: DashboardView) => void;
+  setSoloGroup: (n: number, keys: string[]) => void;
 }
 
 export const useLayoutStore = create<LayoutStore>()(
@@ -38,10 +45,12 @@ export const useLayoutStore = create<LayoutStore>()(
       customOrder: [],
       backstageCols: 2,
       dashboardView: 'grid',
+      soloGroups: {},
       setOrderMode: (orderMode) => set({ orderMode }),
       setCustomOrder: (customOrder) => set({ customOrder }),
       setBackstageCols: (backstageCols) => set({ backstageCols }),
       setDashboardView: (dashboardView) => set({ dashboardView }),
+      setSoloGroup: (n, keys) => set(s => ({ soloGroups: { ...s.soloGroups, [n]: keys } })),
     }),
     { name: 'rfdeck-layout' }
   )

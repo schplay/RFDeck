@@ -69,8 +69,9 @@ export function ChannelContextMenu({ onOpenDevice }: Props) {
   }, [channel, shows, liveShow]);
 
   // ── Actions ───────────────────────────────────────────────────────────
-  const { listen, stop, listeningTo } = useChannelAudio();
-  const isListening = !!channel && listeningTo === channel.id;
+  const { listen, stop, add, remove, listening } = useChannelAudio();
+  const isListening = !!channel && listening.includes(channel.id);
+  const onBusWithOthers = isListening && listening.length > 1;
   const capture = useChannelCapture(channel ?? { id: '', name: '' } as any);
 
   const [capturePick, setCapturePick] = useState(false);
@@ -149,8 +150,21 @@ export function ChannelContextMenu({ onOpenDevice }: Props) {
 
       {/* Listening and capture change nothing about the rig, so they stay
           available under the surface lock. */}
-      <button role="menuitem" className="ccm-item" onClick={act(() => isListening ? stop() : listen(channel.id))}>
-        <Headphones size={14} /> {isListening ? 'Stop listening' : 'Listen'}
+      {/* Listen alone, or stack onto whatever is already in the ears. Solo
+          replaces the bus; add joins it. */}
+      <button role="menuitem" className="ccm-item" onClick={act(() => isListening && !onBusWithOthers ? stop() : listen(channel.id))}>
+        <Headphones size={14} /> {isListening && !onBusWithOthers ? 'Stop listening' : 'Listen (solo)'}
+      </button>
+      <button
+        role="menuitem"
+        className="ccm-item"
+        onClick={act(() => isListening ? remove(channel.id) : add(channel.id))}
+        title={isListening ? 'Take this channel off the listen bus' : 'Hear this channel alongside what is already playing'}
+      >
+        <Headphones size={14} /> {isListening ? 'Remove from listen bus' : 'Add to listen bus'}
+        {listening.length > 0 && !isListening && (
+          <span className="ccm-hint">{listening.length} playing</span>
+        )}
       </button>
 
       {capture.capture ? (

@@ -1042,7 +1042,7 @@ in the rack, since Shure and Sennheiser receivers can report scan data, before
 considering anything needing an SDR of its own. Scoped as exploration rather than
 committed work: the value is clear, the input is not.
 
-### C.4 Multi-channel listen and solo groups — **M**
+### C.4 Multi-channel listen and solo groups — **M** — ✅ *complete: server-side mix, one track per peer, eight groups; members are metered from the audio itself*
 
 `useChannelAudio` holds one channel at a time, so checking four radio mics during
 a line check is four round trips. Adds a listen bus: several channels summed with
@@ -1114,7 +1114,7 @@ is wrong, answered in one glance without moving.
 Not a replacement. Cards stay the default; this is for a big rig and a wall
 display.
 
-### C.9 Meter settings — **M** — ✅ *complete; audio-derived RMS waits on C.4*
+### C.9 Meter settings — **M** — ✅ *complete; audio-derived peak/RMS now exists for bus members (C.4) and is shown in the status bar — using it as a meter source on the cards is a follow-up*
 
 Peak hold first: RFDeck has none anywhere, and a transient dropout is exactly
 what a peak indicator is for.
