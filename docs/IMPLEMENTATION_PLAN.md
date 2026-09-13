@@ -1258,3 +1258,24 @@ profiles shipped with the build, and the maintained feed is the subscription.
 a licensed channel is a regulatory problem, not merely a noisy one. RFDeck
 coordinates *within a band the operator declares usable* and should say so
 plainly, rather than implying it knows what is legal where you are standing.
+
+---
+
+## Stages D and R — cloud, and the paid application *(planned, not started)*
+
+Two plans, written 2026-09-13, sit alongside this one:
+
+- **`docs/CLOUD_INTEGRATION_PLAN.md`** — Stage D. Accounts and the cloud:
+  a rig link (OAuth device flow) and a person link (PKCE); entitlements as
+  signed documents verified offline; show files and profiles (free); the
+  notification relay and regional data feeding the coordinator (paid). Phases
+  D.0–D.6. Almost all of it is open-repository work.
+- **`docs/REPO_SEPARATION_PLAN.md`** — Stage R. The open repository has no
+  licence yet (R.0 is that decision); extension points in the core with an
+  in-tree example (R.1); the `rfdeck-pro` repository carrying the core as a
+  submodule pinned to release tags, never editing a core file (R.2);
+  offline-verified licence documents with the "runs forever, updates for a
+  year" rule (R.3); named users and roles as the first paid feature (R.4);
+  appliances (R.5).
+
+Neither begins until the decisions each lists are made.

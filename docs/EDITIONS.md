@@ -116,7 +116,12 @@ regional data.
 ## Sequencing
 
 No gating, licence checking, or edition branching is to be built until the
-repository separation and licensing implementation are designed. Until then:
+repository separation and licensing implementation are designed. Both are now
+planned — `docs/REPO_SEPARATION_PLAN.md` (the paid application: licence,
+extension points, the pro repository, licence keys) and
+`docs/CLOUD_INTEGRATION_PLAN.md` (accounts, the rig and person links,
+entitlements, the free and paid cloud tiers) — and neither has started. Until
+they do:
 
 - Build features on the free side of the line as normal.
 - Where a feature is destined to be paid, note it in the plan and build nothing
