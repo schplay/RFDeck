@@ -120,7 +120,7 @@ export default function PerformersPage() {
         <div>
           <h1 className="page-title">Performers</h1>
           <p className="performers-subtitle">
-            Everyone you put a mic on, across every show. Cast them into a show from
+            Everyone you put a mic on, across every show. Cast them from
             Show &amp; Mic Check.
           </p>
         </div>
@@ -213,8 +213,8 @@ export default function PerformersPage() {
                   <label className="performers-detail-label">
                     Mic &amp; pack
                     <span className="performers-detail-hint">
-                      Where the element is taped, where the pack sits, spare element,
-                      comfort or allergy notes — this follows the person from show to show.
+                      Element placement, pack position, spare element, comfort or
+                      allergy notes. Follows the person between shows.
                     </span>
                   </label>
                   <textarea

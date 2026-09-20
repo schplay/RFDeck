@@ -6,6 +6,7 @@ import { useDeviceStore } from '../stores/deviceStore';
 import { useLiveStore } from '../stores/liveStore';
 import { useStatusStore } from '../stores/statusStore';
 import { useSocket } from '../hooks/useSocket';
+import { describeChannelKey } from '../lib/channelLabel';
 import './StatusBar.css';
 
 // One line, always there, saying what RFDeck is doing.
@@ -93,7 +94,7 @@ export function StatusBar() {
           <span className="sb-sep" aria-hidden />
           <Link to="/detections" className="sb-item sb-rec" title={captures.map(c => {
             const ch = channels.find(x => x.id === c.channelKey);
-            return `${ch?.name ?? c.channelKey} until ${new Date(c.endsAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+            return `${ch?.name || describeChannelKey(c.channelKey, channels, inventory)} until ${new Date(c.endsAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
           }).join('\n')}>
             <Disc size={13} />
             Capturing {captures.length}

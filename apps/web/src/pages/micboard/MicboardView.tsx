@@ -160,10 +160,10 @@ export default function MicboardView() {
                 no channels at all, and says something the operator can act on:
                 the receivers are working, the cast list is not filled in. */}
             {data.show && channels.length > 0
-              ? `${channels.length} channel(s) are online. This board shows the cast — assign them to people on the show's cast list and they appear here. Backstage shows every channel.`
+              ? `${channels.length} channel(s) are online but not cast. Assign them on the show's cast list. Backstage shows every channel.`
               : data.live
-                ? 'Channels appear here as receivers come online. Photos come from the cast list of the running show.'
-                : 'RFDeck is standing by. An operator starts the rig with Go Live.'}
+                ? 'Channels appear here as receivers come online.'
+                : 'Standing by. Start the rig with Go Live.'}
           </p>
         </div>
       ) : (

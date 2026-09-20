@@ -74,8 +74,7 @@ export function ShowSettingsTab({ show }: { show: Show }) {
           ))}
         </select>
         <p className="sm-form-hint">
-          Decides what this show calls its people and its periods, and which
-          parts of the performer notebook apply to it.
+          Sets what this show calls its people and its periods.
         </p>
       </div>
 

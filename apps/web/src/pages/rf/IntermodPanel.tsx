@@ -41,17 +41,16 @@ export function IntermodPanel() {
           </p>
         ) : hits.length === 0 ? (
           <p className="im-note im-clear">
-            No third-order product lands on a live channel. Checked every pair
-            and triple of the {sourceCount} carriers currently on air.
+            No third-order product lands on a live channel. Checked every pair and
+            triple of the {sourceCount} carriers on air.
           </p>
         ) : (
           <>
             <p className="im-note">
-              {hits.length} product{hits.length === 1 ? '' : 's'} from the rig's own
+              {hits.length} product{hits.length === 1 ? '' : 's'} from this rig's own
               transmitters {hits.length === 1 ? 'lands' : 'land'} inside a live
-              channel. Closest first — a product on top of a carrier is heard as
-              noise or a dropout on that channel, and moving either transmitter
-              that makes it will clear it.
+              channel, closest first. Move either transmitter in the formula to
+              clear it.
             </p>
 
             <div className="im-table">

@@ -74,8 +74,7 @@ export function MaintenanceLog({ log }: Props) {
       {!loading && entries.length === 0 && !adding && (
         <p className="maint-empty">
           Nothing logged yet. Record element and battery changes, repairs and
-          service here — it is the only record of work that never appears over
-          the network.
+          service here.
         </p>
       )}
 

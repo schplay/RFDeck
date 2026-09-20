@@ -59,8 +59,8 @@ export default function DetectionsPage() {
         <div>
           <h1 className="page-title">Detections</h1>
           <p className="det-subtitle">
-            Problems RFDeck noticed on its own, with the audio from around each one.
-            Flag the ones worth keeping — flagged clips are never pruned.
+            Detected faults, each with the audio from around it. Flagged clips are
+            never pruned.
           </p>
         </div>
         <button

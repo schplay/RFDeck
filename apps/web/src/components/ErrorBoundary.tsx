@@ -57,7 +57,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         <h2 className="eb-page-title">{label} stopped working</h2>
         <p className="eb-page-msg">{error.message}</p>
         <p className="eb-page-hint">
-          Device monitoring is still running in the background — other pages are unaffected.
+          Device monitoring is still running. Other pages are unaffected.
         </p>
         <button className="eb-retry" onClick={this.reset}>
           <RotateCcw size={14} /> Try again

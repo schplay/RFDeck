@@ -7,6 +7,7 @@ import { useDeviceStore } from '../../stores/deviceStore';
 import { useChannelsByRole } from '../../hooks/useActiveChannels';
 import { usePerformerStore } from '../../stores/performerStore';
 import { channelKey } from '../../lib/channelKey';
+import { useChannelLabeller } from '../../lib/channelLabel';
 import { API_BASE, getToken } from '../../lib/api';
 import {
   Plus, Trash2, CheckCircle2, Circle, ChevronRight,
@@ -487,6 +488,11 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvironmentProfile }) 
   const { addPlayer, updatePlayer, deletePlayer } = useShowStore();
   // A performer can wear both, so they are assigned separately.
   const { mics, iems } = useChannelsByRole();
+  // A device that is off, or marked inactive for this show, stops sending
+  // channels — but the assignment it carried is still on the cast list. The
+  // inventory row can still name the receiver and the slot, which is what an
+  // operator recognises; the raw channel id is not.
+  const labelFor = useChannelLabeller();
 
   // The roster is shared across shows; this tab casts from it. A name typed
   // here joins the roster too, so the next show can pick the same person.
@@ -575,7 +581,7 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvironmentProfile }) 
                 {player.assignedChannelKey &&
                  !mics.some(ch => channelKey(ch) === player.assignedChannelKey) && (
                   <option value={player.assignedChannelKey}>
-                    {player.assignedChannelKey} (offline)
+                    {labelFor(player.assignedChannelKey)} (offline)
                   </option>
                 )}
               </select>
@@ -602,7 +608,7 @@ function PlayersTab({ show, terms }: { show: Show; terms: EnvironmentProfile }) 
                 {player.iemChannelKey &&
                  !iems.some(ch => channelKey(ch) === player.iemChannelKey) && (
                   <option value={player.iemChannelKey}>
-                    {player.iemChannelKey} (offline)
+                    {labelFor(player.iemChannelKey)} (offline)
                   </option>
                 )}
               </select>
@@ -699,8 +705,8 @@ function DevicesTab() {
   return (
     <div className="sm-devices-tab">
       <p className="sm-devices-hint">
-        Turn a device off when it's intentionally powered down. Inactive devices are
-        hidden from the mic check and dashboard, and never raise dropout alerts.
+        Inactive devices are hidden from the mic check and the dashboard, and raise
+        no dropout alerts.
       </p>
       <div className="sm-device-list">
         {inventory.map(dev => {
