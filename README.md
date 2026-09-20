@@ -130,6 +130,14 @@ The log of problems RFDeck noticed on its own, each with the audio that proves i
   matched by MAC or serial and reconnected without editing inventory
 - **Active / inactive flag** — mark a device as intentionally powered off so it is
   untracked, hidden from the dashboard, and raises no alerts
+- **Channels in use** — a multi-channel receiver rarely has a radio on every slot.
+  Mark the empty ones as not in use and they produce no channel at all: no card,
+  no mic-check row, no dropout or battery alerts. Per slot, so switching off an
+  empty half of a two-channel unit does not take the working mic with it
+- **Addresses to leave alone** — discovery has to contact an address to find out
+  what is on it, and a show network has other people's equipment on it. Settings →
+  Network takes a list of addresses, CIDR ranges or spans that discovery never
+  touches
 - Sort and filter by name, status, IP, location, or model
 - Hardware types: Receivers, IEM Transmitters 🚧 *— Antenna Distributors and Network
   Gear not yet modelled*
