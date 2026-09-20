@@ -1,12 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
-import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff, Disc } from 'lucide-react';
-import { useChannelCapture } from '../../hooks/useChannelCapture';
-import { useUiStore, LOCKED_REASON } from '../../stores/uiStore';
+import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff } from 'lucide-react';
 import { useSocket } from '../../hooks/useSocket';
-import { useChannelAudio } from '../../hooks/useChannelAudio';
-import { channelKey } from '../../lib/channelKey';
+import { ChannelActions } from './ChannelActions';
 import { useIntermodStore, IntermodHit } from '../../stores/intermodStore';
 import { Meter } from '../meters/Meter';
 import './ChannelStrip.css';
@@ -40,48 +37,9 @@ interface ChannelStripProps {
 
 export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, deviceType = 'input', deviceOnline = true }) => {
   const { socket, isConnected } = useSocket();
-  // Audio is captured on the server and streamed here, so this works from any
-  // client rather than only from a browser sitting at the interface.
-  const { listen, stop, toggle, listening, error: audioError } = useChannelAudio();
-  const audioKey = channelKey(channel);
-  const isListening = listening.includes(audioKey);
-  const busHasOthers = listening.some(k => k !== audioKey);
-  // Global safety switch from the dashboard toolbar; applies on every view
-  // that renders a strip, Backstage included.
-  // Either lock is enough. The mute lock is the narrow, always-on one; the
-  // surface lock is the show-time one that covers everything.
-  const mutesLocked = useUiStore(s => s.mutesLocked) || useUiStore(s => s.surfaceLocked);
-  const surfaceLocked = useUiStore(s => s.surfaceLocked);
   // Products from the rig's own transmitters that land on this channel.
   const imHits = useIntermodStore(s => s.report.hits.filter(h => h.victimId === channel.id));
 
-  // Capture on request, shared with the context menu so there is one way to
-  // start and stop one. The running state is the server's: a capture started
-  // at FOH is running backstage too.
-  const { capture, error: captureError, clearError: clearCaptureError,
-          start: startCaptureFor, stop: stopCaptureFor } = useChannelCapture(channel);
-  const [capturePick, setCapturePick] = useState(false);
-  const startCapture = (minutes: number) => { setCapturePick(false); void startCaptureFor(minutes); };
-  const stopCapture = (_detectionId: string) => { void stopCaptureFor(); };
-
-  // Outcome of the last control command for THIS channel. A refused command
-  // otherwise leaves the button looking inert, with the reason only in the
-  // server log.
-  const [controlError, setControlError] = useState<string | null>(null);
-  useEffect(() => {
-    if (!socket) return;
-    const onResult = (r: { deviceId: string; rxIndex: number; ok: boolean; message: string | null }) => {
-      if (r.deviceId !== channel.deviceId || r.rxIndex !== channel.channelIndex) return;
-      setControlError(r.ok ? null : r.message);
-    };
-    socket.on('control:result', onResult);
-    return () => { socket.off('control:result', onResult); };
-  }, [socket, channel.deviceId, channel.channelIndex]);
-  useEffect(() => {
-    if (!controlError) return;
-    const t = setTimeout(() => setControlError(null), 8_000);
-    return () => clearTimeout(t);
-  }, [controlError]);
   // The channel now says what it is, server-side. The prop is kept as a
   // fallback for callers that still pass it, but the channel wins: it is the
   // same answer the server used when deciding whether to alert on this
@@ -110,28 +68,6 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
     return isOutput
       ? <Headphones size={18} className="text-primary" />
       : <Mic size={18} className="text-primary" />;
-  };
-
-  const handleMuteToggle = () => {
-    if (socket && isConnected) {
-      socket.emit('channel:mute', {
-        deviceId: channel.deviceId,
-        rxIndex: channel.channelIndex,
-        muted: !channel.isMuted
-      });
-    }
-  };
-
-  const handleListen = (e: React.MouseEvent) => {
-    // The server resolves which input this channel is patched to, so the
-    // client only has to name the channel.
-    //
-    // Plain click solos — this channel and nothing else — because that is what
-    // "Listen" has always meant here. Shift-click stacks it onto whatever is
-    // already playing, the way shift-click works on a console.
-    if (e.shiftKey) { void toggle(audioKey); return; }
-    if (isListening && !busHasOthers) stop();
-    else listen(audioKey);
   };
 
   // Offline overlay — device disconnected, show stale data dimmed with a banner
@@ -209,7 +145,7 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
         </div>
       </div>
 
-      <div className="cs-actions">
+      <div className="cs-meta-row">
         <div className="cs-gain">
           <span className="gain-label">Gain</span>
           <input
@@ -229,66 +165,9 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
           />
           <span className="gain-unit">dB</span>
         </div>
-        <button
-          className="cs-btn btn-secondary"
-          onClick={handleMuteToggle}
-          disabled={mutesLocked}
-          title={mutesLocked
-            ? (surfaceLocked ? LOCKED_REASON : 'Mute controls are locked — unlock them from the dashboard toolbar')
-            : (channel.isMuted ? 'Unmute this channel' : 'Mute this channel')}
-        >
-          <VolumeX size={14} /> {channel.isMuted ? 'Unmute' : 'Mute'}
-        </button>
-        {/* Listening is the emphasised state; idle is the quiet one. It used
-            to be the reverse, because "btn-active" had no styling at all. */}
-        <button
-          className={`cs-btn ${isListening ? 'btn-primary is-listening' : 'btn-secondary'}`}
-          onClick={handleListen}
-          title={audioError ?? (isListening
-            ? (busHasOthers ? 'Listen to this channel alone · Shift-click to take it off the bus' : 'Stop listening')
-            : 'Listen to this channel · Shift-click to add it to what is playing')}
-          aria-pressed={isListening}
-        >
-          <Headphones size={14} /> {isListening ? 'Stop' : 'Listen'}
-        </button>
-        {/* Keep the next N minutes of this channel, starting from the pre-roll
-            already in memory. Not behind the surface lock: it changes nothing
-            about the rig, it only remembers it. */}
-        {capture ? (
-          <button
-            className="cs-btn btn-secondary is-capturing"
-            onClick={() => void stopCapture(capture.detectionId)}
-            title={`Capturing until ${new Date(capture.endsAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}. Click to stop and keep what was recorded.`}
-          >
-            <Disc size={14} /> Stop capture
-          </button>
-        ) : capturePick ? (
-          <span className="cs-capture-pick" role="group" aria-label="Capture length">
-            {[1, 5, 15, 60].map(m => (
-              <button key={m} className="cs-btn btn-secondary" onClick={() => void startCapture(m)}>
-                {m} min
-              </button>
-            ))}
-            <button className="cs-btn btn-secondary" onClick={() => setCapturePick(false)} aria-label="Cancel">✕</button>
-          </span>
-        ) : (
-          <button
-            className="cs-btn btn-secondary"
-            onClick={() => { clearCaptureError(); setCapturePick(true); }}
-            title="Record the next few minutes of this channel, pre-roll included"
-          >
-            <Disc size={14} /> Capture
-          </button>
-        )}
       </div>
-      {captureError && (
-        <div className="cs-control-error" role="status">{captureError}</div>
-      )}
-      {(controlError || (isListening && audioError)) && (
-        <div className="cs-control-error" role="status">
-          {controlError ?? audioError}
-        </div>
-      )}
+
+      <ChannelActions channel={channel} />
     </Card>
   );
 });

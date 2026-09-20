@@ -1,0 +1,132 @@
+/* Mute / Listen / Capture — the three per-channel controls, wherever a channel
+   is shown. Shared so the dashboard's grid and list views cannot drift apart
+   again: the list used to draw its own inert pair of buttons. */
+
+/* Three equal columns, so a long label shortens its own button rather than
+   pushing the others out of the card. */
+.cs-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cs-btn {
+  min-width: 0;
+  padding: 7px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
+  transition: background 0.15s;
+  box-shadow: inset 0 0 1px rgba(255,255,255,0.15);
+}
+
+/* The icon always survives; the word is what gives way if it has to. */
+.cs-btn > svg { flex: 0 0 auto; }
+
+.cs-btn-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-btn.btn-secondary {
+  background: var(--color-surface-container);
+  border: 1px solid var(--color-surface-container-highest);
+  color: var(--color-on-surface);
+}
+
+.cs-btn.btn-secondary:hover {
+  background: var(--color-surface-bright);
+}
+
+.cs-btn.btn-primary {
+  background: rgba(0, 219, 233, 0.1);
+  border: 1px solid rgba(0, 219, 233, 0.3);
+  color: var(--color-primary);
+}
+
+.cs-btn.btn-primary:hover {
+  background: rgba(0, 219, 233, 0.2);
+}
+
+/* Listening: filled, unmistakably "on". The idle button is the quiet one. */
+.cs-btn.btn-primary.is-listening {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary, #003238);
+}
+.cs-btn.btn-primary.is-listening:hover {
+  background: color-mix(in srgb, var(--color-primary) 85%, black);
+}
+
+/* Mute locked from the dashboard: visibly inert, not merely unresponsive. */
+.cs-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cs-btn:disabled:hover {
+  background: var(--color-surface-container);
+}
+
+/* A refused control command, or a failed listen, shown on the card itself —
+   otherwise a button that does nothing is indistinguishable from a broken one. */
+.cs-control-error {
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75em;
+  line-height: 1.3;
+  color: var(--color-warning, #d97706);
+  background: color-mix(in srgb, var(--color-warning, #d97706) 14%, transparent);
+}
+
+/* Capture on request. Running is the emphasised state, in the recording
+   colour, because a capture that is on and forgotten is what fills a disk. */
+.cs-btn.is-capturing {
+  color: var(--color-error, #d05353);
+  border-color: color-mix(in srgb, var(--color-error, #d05353) 45%, transparent);
+}
+
+/* Picking a capture length takes the whole button row rather than trying to
+   fit four durations into one third of the card. */
+.cs-capture-pick {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+/* ── Compact: icon-only, for a table row ───────────────────────────────────
+   The row has no space for words and does not need them — each button keeps
+   its tooltip and its aria-label. */
+.cs-actions.is-compact {
+  display: flex;
+  gap: 6px;
+}
+
+.cs-actions.is-compact .cs-btn {
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.cs-actions.is-compact .cs-capture-pick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.cs-actions.is-compact .cs-capture-pick .cs-btn {
+  width: auto;
+  padding: 0 6px;
+  font-size: 10px;
+}

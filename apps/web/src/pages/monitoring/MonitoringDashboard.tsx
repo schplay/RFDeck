@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ChannelStrip } from '../../components/channel/ChannelStrip';
+import { ChannelActions } from '../../components/channel/ChannelActions';
 import { DenseTile } from '../../components/channel/DenseTile';
 import { ChannelContextMenu, DrawerSection } from '../../components/channel/ChannelContextMenu';
 import { contextMenuFor } from '../../stores/contextMenuStore';
@@ -281,8 +282,10 @@ export default function MonitoringDashboard() {
                     {ch.batteryPercent != null ? Math.round(ch.batteryPercent) : '--'}%
                   </div>
                   <div className="col-actions">
-                    <button className="btn-secondary-sm">Mute</button>
-                    <button className="btn-primary-sm">Listen</button>
+                    {/* The same controls the cards carry, from the same
+                        component — the list used to draw two buttons of its
+                        own that were wired to nothing. */}
+                    <ChannelActions channel={ch} compact disabled={!online} />
                   </div>
                 </div>
               );

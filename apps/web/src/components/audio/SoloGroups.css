@@ -1,21 +1,50 @@
-/* Solo group strip: eight small buttons. Empty ones are quiet, stored ones
-   are legible, the one that matches what is playing is lit. */
+/* Listen groups: a label and eight small slots.
+   Empty slots are quiet, saved ones are legible with their size, the one that
+   matches what is playing is lit. */
 
 .sg {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sg-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-on-surface-variant);
+}
+
+.sg-legend:hover,
+.sg-legend[aria-expanded='true'] {
+  color: var(--color-on-surface);
+  border-color: var(--color-surface-container-highest);
+}
+
+.sg-slots {
   display: inline-flex;
   align-items: center;
   gap: 3px;
 }
 
-.sg-icon {
-  margin-right: 4px;
-  color: var(--color-on-surface-variant);
-}
-
 .sg-btn {
-  width: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 26px;
   height: 26px;
-  padding: 0;
+  padding: 0 5px;
   border: 1px solid var(--color-surface-container-highest);
   border-radius: 5px;
   background: none;
@@ -29,14 +58,149 @@
 
 .sg-btn.has { opacity: 1; color: var(--color-on-surface); }
 
-.sg-btn:hover { background: var(--color-surface-container-highest); opacity: 1; }
+/* Empty, but there is something on the bus to put in it: this click will
+   save. Dashed, because the slot is a placeholder rather than a thing. */
+.sg-btn.saveable {
+  opacity: 0.9;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  color: var(--color-primary);
+}
+
+.sg-btn:hover:not(:disabled) {
+  background: var(--color-surface-container-highest);
+  opacity: 1;
+}
+
+/* Empty and nothing playing: there is genuinely nothing this button can do,
+   and saying so beats swallowing the click. */
+.sg-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.3;
+}
 
 .sg-btn.active {
+  opacity: 1;
   color: var(--color-primary);
   border-color: var(--color-primary);
   background: rgba(0, 219, 233, 0.12);
 }
 
+.sg-count {
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.sg-plus { opacity: 0.85; }
+
+/* ── The panel ────────────────────────────────────────────────────────────
+   What each group holds, all at once. */
+.sg-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--color-surface-container-highest);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface-container-low);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.sg-panel-empty,
+.sg-panel-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-on-surface-variant);
+}
+
+.sg-panel-hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-surface-container-highest);
+  font-size: 10px;
+}
+
+.sg-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sg-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sg-panel-recall {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--color-on-surface);
+}
+
+.sg-panel-recall:hover { background: var(--color-surface-container-highest); }
+
+.sg-panel-num {
+  flex: 0 0 auto;
+  width: 18px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.sg-panel-names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.sg-panel-clear {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  color: var(--color-on-surface-variant);
+}
+
+.sg-panel-clear:hover {
+  background: var(--color-surface-container-highest);
+  color: var(--color-error, #d05353);
+}
+
+/* On a phone the toolbar has no room for eight slots, and the keyboard
+   shortcuts are not reachable either. */
 @media (max-width: 640px) {
   .sg { display: none; }
+}
+
+/* Tablet-width: the word goes, the slots stay. */
+@media (max-width: 1100px) {
+  .sg-legend-text { display: none; }
 }
