@@ -1,10 +1,15 @@
+/* The page grows to its content and scrolls in the shell.
+   It used to be a fixed frame with its own inner scrollers, which meant every
+   card on it competed for one viewport's worth of height: on a laptop the
+   spectrum, the intermod panel and the coordination panel were each squeezed
+   to a few dozen pixels and none of them could be read. Cards here have real
+   minimum sizes and the page is as tall as it needs to be. */
 .rf-page {
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-  height: calc(100vh - 65px);
-  overflow: hidden;
+  min-height: 100%;
 }
 
 /* ── Header ── */
@@ -60,8 +65,8 @@
 .rf-workspace {
   display: flex;
   gap: 16px;
-  flex: 1;
-  min-height: 0;
+  align-items: flex-start;
+  flex: 1 0 auto;
 }
 
 .rf-main-col {
@@ -70,10 +75,11 @@
   flex-direction: column;
   gap: 16px;
   min-width: 0;
-  overflow-y: auto;
 }
 
 /* ── Cards ── */
+/* Never shrink below the content. A card that fits by squashing is a card
+   nobody can use, and the column scrolls with the page instead. */
 .rf-card {
   background: var(--color-surface-container-high);
   border: 1px solid var(--color-surface-container-highest);
@@ -81,19 +87,21 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
 }
 
 .spectrum-card {
-  flex: 0 0 220px;
+  height: 260px;
 }
 
+/* Long lists still scroll inside their own card rather than pushing the page
+   to thousands of pixels — but from a height that fits a usable number of
+   rows, not from whatever is left over. */
 .table-card {
-  flex: 1;
-  min-height: 0;
+  max-height: 520px;
 }
 
 .history-card {
-  flex: 0 0 auto;
   max-height: 340px;
   min-height: 200px;
 }
@@ -303,7 +311,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow-y: auto;
+  position: sticky;
+  top: 0;
 }
 
 .sidebar-card {
@@ -423,18 +432,12 @@
 
 /* ── Mobile: the workspace's two columns stack. ─────────────────────────── */
 @media (max-width: 768px) {
-  .rf-page {
-    height: auto;
-    overflow: visible;
-  }
   .rf-workspace {
     flex-direction: column;
-    min-height: auto;
   }
-  .rf-main-col { overflow-y: visible; }
-  .rf-sidebar { width: 100%; }
-  .spectrum-card { flex: 0 0 auto; }
-  .table-card { min-height: auto; }
+  .rf-sidebar { width: 100%; position: static; }
+  .spectrum-card { height: 200px; }
+  .table-card { max-height: none; }
 }
 
 /* ── Intermodulation ─────────────────────────────────────────────────────── */

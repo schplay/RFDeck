@@ -4,7 +4,8 @@
 
 .sm-root {
   display: flex;
-  height: calc(100vh - 65px);
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 

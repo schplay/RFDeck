@@ -232,13 +232,6 @@ export default function RFScanner() {
             </div>
           </div>
 
-          <div className="rf-card sidebar-card">
-            <div className="sidebar-section-title">About This View</div>
-            <p className="sidebar-note">
-              This view shows the RF environment based on live telemetry from your connected hardware. For full frequency coordination and IMD calculation, use your manufacturer's tools (Sennheiser WSM, Shure WWB6).
-            </p>
-          </div>
-
         </aside>
       </div>
     </div>

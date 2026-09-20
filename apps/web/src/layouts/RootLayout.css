@@ -68,14 +68,34 @@
   opacity: 1;
 }
 
+/* The shell owns the only vertical scrollbar.
+   main-content is a column: header, one scrolling region, status bar. The
+   scroll lives on .main-scroll rather than here, so the status bar stays
+   pinned to the bottom of the window instead of riding the content. */
 .main-content {
   flex: 1;
-  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background-color: var(--color-background);
+}
+
+/* The one scroll container in the app. Pages size themselves against it with
+   `min-height: 100%` (grow-and-scroll) or `height: 100%` (fixed frame with
+   its own inner scrollers) — never against the viewport, which does not know
+   about the header or the status bar. */
+.main-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* Header tools (was inline styles; classed so mobile can restyle it). */
 .topbar-tools {
+  flex-shrink: 0;
   padding: 16px 24px;
   display: flex;
   justify-content: flex-end;
