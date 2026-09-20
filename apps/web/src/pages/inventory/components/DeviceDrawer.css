@@ -494,3 +494,48 @@
 @media (max-width: 768px) {
   .drawer-content { width: 100vw; }
 }
+
+/* ── Channels in use ───────────────────────────────────────────────────────
+   Which of a multi-channel receiver's slots are carrying a radio. Reads as a
+   list of switches rather than a form: the operator is answering "is there a
+   pack on this one", once, and then leaving it alone. */
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.slot-row:hover { background: var(--color-surface-container-highest); }
+
+.slot-row input { accent-color: var(--color-primary); cursor: pointer; }
+
+.slot-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--color-on-surface);
+}
+
+.slot-state {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-on-surface-variant);
+}
+
+/* An unused slot stays legible — it is still a thing you can switch back on. */
+.slot-row.is-off .slot-name { color: var(--color-on-surface-variant); }
+.slot-row.is-off .slot-state { opacity: 0.8; }

@@ -98,6 +98,37 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
     return publicDevice(device);
   });
 
+  // PATCH which receiver slots on one device are in use.
+  //
+  // Separate from `active`, which is all-or-nothing and therefore no use on a
+  // multi-channel receiver: a two-channel unit with one radio on it reported a
+  // healthy channel and a permanently disconnected one, and the only way to
+  // silence the empty slot was to deactivate the device carrying the working
+  // mic. Slots are 1-based and given as an array.
+  fastify.patch('/inventory/:id/slots', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { disabledSlots } = request.body as { disabledSlots: unknown };
+
+    if (!Array.isArray(disabledSlots)) {
+      return reply.code(400).send({ error: 'disabledSlots must be an array of slot numbers' });
+    }
+    const slots = [...new Set(
+      disabledSlots.map(Number).filter(n => Number.isInteger(n) && n > 0 && n <= 64),
+    )].sort((a, b) => a - b);
+
+    const device = await prisma.inventoryDevice.update({
+      where: { id },
+      data: { disabledSlots: slots.join(',') },
+    });
+
+    (fastify as any).deviceManager.setDisabledSlots(device, device.disabledSlots);
+    (fastify as any).io.emit('device:slots-changed', {
+      id: device.id, ip: device.ip, port: device.port, disabledSlots: device.disabledSlots,
+    });
+
+    return publicDevice(device);
+  });
+
   // PATCH set every device active/inactive at once — the start-of-day /
   // end-of-day switch. Powering a rack down without disabling first floods
   // the log with dropouts; doing it one device at a time on a large rack is

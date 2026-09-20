@@ -23,6 +23,8 @@ interface ChannelState {
   setChannels: (channels: Channel[]) => void;
   updateChannel: (id: string, partial: Partial<Channel>) => void;
   removeChannelsForDevice: (ipPrefix: string) => void;
+  /** One channel is gone — a receiver slot the operator marked as not in use. */
+  removeChannel: (channelId: string) => void;
   applyHeartbeat: (payload: HeartbeatPayload) => void;
 }
 
@@ -38,6 +40,12 @@ export const useChannelStore = create<ChannelState>((set) => ({
     channels: state.channels.map(c => c.id === id ? { ...c, ...partial } : c),
     lastUpdate: { ...state.lastUpdate, [id]: Date.now() },
   })),
+
+  removeChannel: (channelId) => set((state) => {
+    const lastUpdate = { ...state.lastUpdate };
+    delete lastUpdate[channelId];
+    return { channels: state.channels.filter(c => c.id !== channelId), lastUpdate };
+  }),
 
   removeChannelsForDevice: (ipPrefix) => set((state) => {
     const lastUpdate = { ...state.lastUpdate };

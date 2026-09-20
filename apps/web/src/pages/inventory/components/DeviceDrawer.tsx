@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import {
   X, Wifi, WifiOff, Radio, Info, Network,
@@ -45,6 +45,26 @@ export function DeviceDrawer({ device, onClose, initialSection = 'device' }: Pro
     patch: patchAudio,
   } = useAudioPatch();
   const channels = useChannelStore((s) => s.channels.filter(c => device && c.deviceId.startsWith(device.ip)));
+  const setDeviceSlots = useDeviceStore((s) => s.setDeviceSlots);
+
+  // Slots to offer. A disabled slot stops reporting entirely, so the stored
+  // list is part of the answer — otherwise turning off the last slot would
+  // take away the switch that turns it back on.
+  const disabledSlotSet = useMemo(() => new Set(
+    (device?.disabledSlots ?? '')
+      .split(',')
+      .map(n => Number(n.trim()))
+      .filter(n => Number.isInteger(n) && n > 0),
+  ), [device?.disabledSlots]);
+
+  const slotNumbers = useMemo(() => {
+    const highest = Math.max(
+      0,
+      ...channels.map(c => c.channelIndex),
+      ...disabledSlotSet,
+    );
+    return Array.from({ length: highest }, (_, i) => i + 1);
+  }, [channels, disabledSlotSet]);
   // Owned here rather than inside the section, so removing a device can say how
   // much history goes with it.
   const maintenance = useMaintenance(device?.id ?? null);
@@ -380,6 +400,50 @@ export function DeviceDrawer({ device, onClose, initialSection = 'device' }: Pro
                       <DrawerRow label="Location" value={device.location || '—'} />
                     </>
                   )}
+                </DrawerSection>
+
+                {/* Which of this receiver's slots are actually carrying a
+                    radio. A four-channel unit with two packs on it is the
+                    normal case, and marking the whole device inactive was the
+                    only way to silence the empty slots — which took the
+                    working mics down with them. */}
+                <DrawerSection title="Channels In Use" icon={<Radio size={14} />}>
+                  {slotNumbers.length === 0 ? (
+                    <p className="drawer-section-desc">
+                      {device.online
+                        ? 'Waiting for channel data from device…'
+                        : 'Device offline — no channels to show.'}
+                    </p>
+                  ) : (
+                    <div className="slot-list">
+                      {slotNumbers.map(slot => {
+                        const off = disabledSlotSet.has(slot);
+                        const ch = channels.find(c => c.channelIndex === slot);
+                        return (
+                          <label key={slot} className={`slot-row ${off ? 'is-off' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={!off}
+                              onChange={() => {
+                                const next = new Set(disabledSlotSet);
+                                if (off) next.delete(slot); else next.add(slot);
+                                void setDeviceSlots(device.id, [...next]);
+                              }}
+                            />
+                            <span className="slot-name">
+                              {ch?.name || `Channel ${slot}`}
+                            </span>
+                            <span className="slot-state">
+                              {off ? 'Not in use' : 'In use'}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="drawer-section-desc">
+                    A slot that is not in use raises no alerts and shows no card.
+                  </p>
                 </DrawerSection>
 
                 {/* Audio patch — which server input each channel is wired to */}

@@ -105,6 +105,13 @@ export class DeviceManagerService extends EventEmitter {
   // transmitter battery, and alerting on their absence is how a working
   // monitor rig raises a dropout every few seconds all night.
   private deviceRoles: Map<string, 'mic' | 'iem'> = new Map();
+  // base id -> receiver slots the operator has marked as not in use.
+  //
+  // A four-channel receiver with two radios on it is the normal case, and
+  // `active` could only speak for the whole box: the empty slots reported a
+  // permanently disconnected channel, and silencing them meant deactivating
+  // the receiver that was carrying the working mics.
+  private disabledSlots: Map<string, Set<number>> = new Map();
   // Devices that have successfully connected over SSCv2 at least once.
   //
   // The model string is a weak signal — a device added without one is stored
@@ -326,6 +333,7 @@ export class DeviceManagerService extends EventEmitter {
       id?: string;
       ip: string; port: number; name?: string;
       manufacturer?: string; model?: string; deviceType?: string;
+      disabledSlots?: string | null;
     },
   ) {
     const id = `${device.ip}:${device.port}`;
@@ -343,6 +351,9 @@ export class DeviceManagerService extends EventEmitter {
     // And what it is for. 'output' is the inventory's word for an IEM
     // transmitter; everything else carries a microphone.
     this.deviceRoles.set(id, device.deviceType === 'output' ? 'iem' : 'mic');
+    // Slots the operator has said are empty. Read before the first poll, so a
+    // disabled slot never produces a card even momentarily.
+    this.disabledSlots.set(id, DeviceManagerService.parseSlots((device as any).disabledSlots));
 
     // Shure speaks a different protocol on a different port, and there is no
     // probe chain to fall into: the manufacturer on the inventory row decides.
@@ -485,6 +496,7 @@ export class DeviceManagerService extends EventEmitter {
     device: {
       ip: string; port: number; active?: boolean;
       name?: string; manufacturer?: string; model?: string; deviceType?: string;
+      disabledSlots?: string | null;
     },
   ) {
     this.untrackDevice(device.ip, device.port);
@@ -499,6 +511,7 @@ export class DeviceManagerService extends EventEmitter {
     device: {
       ip: string; port: number; name?: string; password?: string | null;
       manufacturer?: string; model?: string; deviceType?: string;
+      disabledSlots?: string | null;
     },
     active: boolean,
   ) {
@@ -521,9 +534,66 @@ export class DeviceManagerService extends EventEmitter {
     }
   }
 
+  /**
+   * Which receiver slots on this device are not in use.
+   *
+   * Stored on the inventory row as a comma-separated list, so it survives a
+   * restart and is the same for every client.
+   */
+  private static parseSlots(spec?: string | null): Set<number> {
+    const out = new Set<number>();
+    for (const part of (spec ?? '').split(',')) {
+      const n = Number(part.trim());
+      if (Number.isInteger(n) && n > 0) out.add(n);
+    }
+    return out;
+  }
+
+  /** Is this receiver slot one the operator has marked as not in use? */
+  private slotDisabled(deviceId: string, slot: number): boolean {
+    const baseId = deviceId.replace(/-legacy$/, '');
+    return this.disabledSlots.get(baseId)?.has(slot) ?? false;
+  }
+
+  /**
+   * Operator marked some of a receiver's slots as not in use.
+   *
+   * Takes effect at once rather than at the next restart: the reason anyone
+   * touches this is a card on the dashboard that is red and should not be.
+   * Channels for newly disabled slots are dropped from the cache and from
+   * every client, along with any alerting state they had accumulated.
+   */
+  public setDisabledSlots(device: { ip: string; port: number }, spec: string | null | undefined) {
+    const id = `${device.ip}:${device.port}`;
+    const next = DeviceManagerService.parseSlots(spec);
+    this.disabledSlots.set(id, next);
+
+    for (const slot of next) {
+      // Both the live client and the G3/G4 stand-in file channels under their
+      // own device id, so both have to be cleared.
+      for (const owner of [id, `${id}-legacy`]) {
+        const channelId = this.stableChannelId(owner, slot);
+        if (!this.channelCache.delete(channelId)) continue;
+        this.rfStates.delete(channelId);
+        const pending = this.pendingDropouts.get(channelId);
+        if (pending) { clearTimeout(pending); this.pendingDropouts.delete(channelId); }
+        this.pendingLowBattery.delete(channelId);
+        this.batteryHistory.delete(channelId);
+        this.batteryEstimates.delete(channelId);
+        this.lastBatterySampleAt.delete(channelId);
+        this.io.emit('channel:removed', { channelId });
+      }
+    }
+    this.refreshIntermod();
+    log.info(
+      `[DeviceManager] ${id}: slot(s) ${next.size ? [...next].sort().join(', ') : 'none'} marked not in use`,
+    );
+  }
+
   public untrackDevice(ip: string, port: number) {
     const id = `${ip}:${port}`;
     this.deviceRoles.delete(id);
+    this.disabledSlots.delete(id);
     const client = this.clients.get(id);
     if (client) {
       client.stopPolling();
@@ -1304,6 +1374,12 @@ export class DeviceManagerService extends EventEmitter {
     receivers.forEach((rx, index) => {
       if (sscState[rx] && typeof sscState[rx] === 'object') {
         const rxData = sscState[rx];
+
+        // A slot the operator has marked as not in use produces no channel at
+        // all — no card, no mic-check row, and nothing for the RF and battery
+        // alerting below to fire on. An empty slot on a multi-channel receiver
+        // otherwise sits at 0% RF forever and reads as a fault.
+        if (this.slotDisabled(deviceId, index + 1)) return;
 
         const channelId = this.stableChannelId(deviceId, index + 1);
 

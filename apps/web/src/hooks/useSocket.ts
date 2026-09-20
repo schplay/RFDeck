@@ -259,6 +259,19 @@ function getSocket(): Socket {
     }));
   });
 
+  // A receiver slot was marked not in use (possibly from another window).
+  _socket.on('device:slots-changed', ({ id, disabledSlots }: { id: string; disabledSlots: string }) => {
+    useDeviceStore.setState((state) => ({
+      inventory: state.inventory.map((d) => (d.id === id ? { ...d, disabledSlots } : d)),
+    }));
+  });
+
+  // The server stops producing a channel for a disabled slot; this drops the
+  // card that is already on screen rather than leaving it frozen.
+  _socket.on('channel:removed', ({ channelId }: { channelId: string }) => {
+    useChannelStore.getState().removeChannel(channelId);
+  });
+
   // Device was explicitly removed from inventory — drop its channel strips immediately
   _socket.on('device:untracked', ({ ip }: { ip: string }) => {
     useChannelStore.getState().removeChannelsForDevice(ip);

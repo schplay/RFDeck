@@ -35,6 +35,16 @@ export interface InventoryDevice {
    * restart.
    */
   deviceTypeManual?: boolean;
+  /**
+   * Receiver slots that are not in use, as a comma-separated list of 1-based
+   * slot numbers ("2" or "2,4").
+   *
+   * `active` is all-or-nothing, which is no use on a multi-channel receiver:
+   * a two-channel unit with one radio on it showed a healthy channel and a
+   * permanently disconnected one, and silencing the empty slot meant
+   * deactivating the device carrying the working mic.
+   */
+  disabledSlots?: string;
   // Operator-controlled. Inactive = intentionally powered off / not in this show.
   // Inactive devices are untracked server-side and hidden from the dashboard.
   active: boolean;
@@ -77,6 +87,8 @@ interface DeviceState {
   setDeviceActive: (id: string, active: boolean) => Promise<void>;
   /** Start/end-of-day switch: every device at once. */
   setAllDevicesActive: (active: boolean) => Promise<void>;
+  /** Which receiver slots on this device are not in use (1-based). */
+  setDeviceSlots: (id: string, disabledSlots: number[]) => Promise<void>;
   updateDeviceMetadata: (ip: string, port: number, meta: { deviceName?: string; firmware?: string; serial?: string; mac?: string; model?: string }) => void;
 
   devices: Device[];
@@ -185,6 +197,30 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
       console.error('Failed to set device active state:', err);
       set((state) => ({
         inventory: state.inventory.map((d) => (d.id === id ? { ...d, active: prev } : d)),
+      }));
+    }
+  },
+
+  setDeviceSlots: async (id, disabledSlots) => {
+    // Optimistic like the active toggle. The server drops the channel and
+    // tells every client, so the card disappears either way — this just makes
+    // the switch itself feel immediate.
+    const prev = get().inventory.find((d) => d.id === id)?.disabledSlots ?? '';
+    const next = [...new Set(disabledSlots)].sort((a, b) => a - b).join(',');
+    set((state) => ({
+      inventory: state.inventory.map((d) => (d.id === id ? { ...d, disabledSlots: next } : d)),
+    }));
+    try {
+      const res = await fetch(`${API_BASE}/inventory/${id}/slots`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disabledSlots }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      console.error('Failed to set which channels are in use:', err);
+      set((state) => ({
+        inventory: state.inventory.map((d) => (d.id === id ? { ...d, disabledSlots: prev } : d)),
       }));
     }
   },

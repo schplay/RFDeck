@@ -34,6 +34,15 @@ model InventoryDevice {
   // use for this show.  They are not tracked, not shown on the dashboard, and
   // never raise dropout or battery alerts.
   active             Boolean  @default(true)
+  // Receiver slots that are not in use, as a comma-separated list of 1-based
+  // slot numbers ("2" or "2,4").
+  //
+  // `active` is all-or-nothing, and a receiver is not. A two-channel unit with
+  // one radio on it reported a healthy channel and a permanently disconnected
+  // one, and the only way to silence the empty slot was to deactivate the
+  // whole device — taking the working mic with it. A disabled slot produces no
+  // channel at all: no card, no mic-check row, no dropout or battery alert.
+  disabledSlots      String   @default("")
   mac                String?
   serial             String?
   firmware           String?
