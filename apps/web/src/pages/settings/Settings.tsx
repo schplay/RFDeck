@@ -17,6 +17,7 @@ interface AppSettings {
   batteryCriticalPct: number;
   dropoutSensitivity: number;
   bindInterface: string;
+  discoveryIgnore: string;
   /** Write-only. The server never returns the stored value; blank means "keep". */
   defaultPassword: string;
   hasDefaultPassword?: boolean;
@@ -214,6 +215,7 @@ export default function Settings() {
     batteryCriticalPct: 5,
     dropoutSensitivity: 20,
     bindInterface: '0.0.0.0',
+    discoveryIgnore: '',
     defaultPassword: '',
   });
   const [loading, setLoading] = useState(true);
@@ -361,6 +363,34 @@ export default function Settings() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <button className="btn-primary" onClick={handleSave}>Save Settings</button>
+            </div>
+          </div>
+
+          {/* Discovery has to touch addresses to find out what is on them: a
+              TCP connect to every host on the subnet, then HTTPS probes to
+              each one answering on 443. Nothing is ever claimed as a receiver
+              without positively identifying itself — but that is about the
+              result, not the traffic, and a show network has other people's
+              equipment on it. */}
+          <div className="settings-card mt-4">
+            <h3>Addresses to leave alone</h3>
+            <p className="settings-desc">
+              Discovery never contacts these. Use it for equipment on this network
+              that is not wireless audio. One entry per line or separated by commas:
+              an address (<code>10.0.1.5</code>), a range (<code>10.0.1.0/24</code>)
+              or a span (<code>10.0.1.20-10.0.1.40</code>).
+            </p>
+            <div className="settings-form">
+              <div className="form-group">
+                <textarea
+                  rows={4}
+                  spellCheck={false}
+                  placeholder="10.0.1.5&#10;10.0.2.0/24"
+                  value={settings.discoveryIgnore}
+                  onChange={e => setSettings({ ...settings, discoveryIgnore: e.target.value })}
+                />
               </div>
               <button className="btn-primary" onClick={handleSave}>Save Settings</button>
             </div>

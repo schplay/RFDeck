@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inferDeviceRole, looksLikeIem, isSscModel, isPlaceholderModel } from './deviceRole';
+import { inferDeviceRole, looksLikeIem, isSscModel, isPlaceholderModel, isLegacyMcpModel } from './deviceRole';
 
 // Filing an IEM transmitter as a microphone is not cosmetic: it has no RF to
 // receive, so it reads as a channel permanently at 0% and clutters the
@@ -132,5 +132,36 @@ describe('isPlaceholderModel', () => {
   it('does not mistake a two-word model for the "<vendor> Device" pattern', () => {
     // "Digital 6000" is two words and a real model.
     expect(isPlaceholderModel('Digital 6000', 'Sennheiser')).toBe(false);
+  });
+});
+
+describe('isLegacyMcpModel', () => {
+  it('recognises the G3 and G4 generations', () => {
+    for (const m of ['EW G3/G4', 'ew 300 G3', 'EM 300 G3', 'EM 2050 G4',
+                     'ew 500 G4', 'G4', 'SR 300 IEM G3']) {
+      expect(isLegacyMcpModel(m), m).toBe(true);
+    }
+  });
+
+  it('leaves everything else alone', () => {
+    // A G3 marker has to stand on its own. "G3000" is not a generation, and
+    // treating one as such would send an SSC receiver to a client that cannot
+    // reach it -- the mirror of the bug this exists to fix.
+    for (const m of ['EW-DX EM 2', 'EM 6000', 'EM 9046', 'AD4D', 'ULXD4D',
+                     'G3000', 'RACKG3X', '', null]) {
+      expect(isLegacyMcpModel(m as any), String(m)).toBe(false);
+    }
+  });
+
+  it('keeps a G3 receiver out of isSscModel, EM number or not', () => {
+    // "EM 300 G3" matches the EM rule, which used to lock it to SSC forever:
+    // it retried HTTPS on a device that has no HTTPS interface and never
+    // reached the MCP client that could have talked to it.
+    expect(isSscModel('EM 300 G3')).toBe(false);
+    expect(isSscModel('EM 2050 G4')).toBe(false);
+    expect(isSscModel('EW G3/G4')).toBe(false);
+    // And the SSC receivers are untouched.
+    expect(isSscModel('EW-DX EM 2')).toBe(true);
+    expect(isSscModel('EM 6000')).toBe(true);
   });
 });

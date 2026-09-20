@@ -111,6 +111,17 @@ model Settings {
   batteryCriticalPct Int      @default(5)
   dropoutSensitivity Int      @default(20)
   bindInterface      String   @default("0.0.0.0")
+  // Addresses discovery must never contact: single IPs, CIDR ranges or dashed
+  // ranges, separated by commas or newlines.
+  //
+  // Finding receivers means touching addresses that turn out not to be
+  // receivers — a TCP connect to every host on the subnet, then HTTPS probes
+  // to each one answering on 443. RFDeck only ever *claims* a host that
+  // positively identifies itself as Sennheiser, but that care is about the
+  // result, not the traffic, and a venue network has other people's cameras
+  // and appliances on it. This is how an operator says which ones to leave
+  // alone; it is honoured at the socket, before anything is sent.
+  discoveryIgnore    String   @default("")
   defaultPassword    String?
   // ALSA device on the SERVER that monitoring captures from, e.g. "hw:1,0".
   // The interface is in the rack, so the device list is the server's, not a

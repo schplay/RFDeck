@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { DiscoveryService, DiscoveredDevice, resolveDiscoveryDisabled } from './DiscoveryService';
+import { DiscoveryService, DiscoveredDevice, resolveDiscoveryDisabled, MCP_PORT } from './DiscoveryService';
 import { SSCClient } from './SSCClient';
 import { G3G4Client } from './G3G4Client';
 import { mcpBus } from './McpBus';
@@ -19,7 +19,7 @@ import {
 } from '../batteryEstimator';
 import { decryptSecret } from '../../auth/secretBox';
 import { detectFirmwareChange } from '../firmwareChange';
-import { isSscModel, isPlaceholderModel } from '../deviceRole';
+import { isSscModel, isPlaceholderModel, isLegacyMcpModel } from '../deviceRole';
 import { ShureClient } from '../shure/ShureClient';
 import { Digital6000Client } from './digital6000/Digital6000Client';
 import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
@@ -217,6 +217,20 @@ export class DeviceManagerService extends EventEmitter {
     }
   }
 
+  /**
+   * Re-read the operator's discovery exclusion list and hand it to discovery.
+   *
+   * Called at startup and again whenever the setting is saved.
+   */
+  async applyDiscoveryIgnore(): Promise<void> {
+    try {
+      const settings = await prisma.settings.findFirst();
+      this.discovery.setIgnoreList(settings?.discoveryIgnore);
+    } catch (err: any) {
+      log.warn(`[DeviceManager] Could not read the discovery exclusion list: ${err?.message}`);
+    }
+  }
+
   /** Re-read the interface setting and restart the passive listeners on it. */
   async rebindNetworkInterface(): Promise<void> {
     const before = mcpBus.getBindAddress();
@@ -239,8 +253,10 @@ export class DeviceManagerService extends EventEmitter {
   }
 
   async start() {
-    // Apply the operator's interface choice before anything binds or scans.
+    // Apply the operator's interface choice before anything binds or scans,
+    // and the exclusion list before a single packet could be sent.
     await this.applyBindInterface();
+    await this.applyDiscoveryIgnore();
 
     // Fix legacy G3/G4 records added via discovery before manufacturer inference was corrected.
     // MCP-discovered devices have port 53212; records with manufacturer='Unknown' got that value
@@ -347,6 +363,29 @@ export class DeviceManagerService extends EventEmitter {
       this.setupClientListeners(d6000, device.ip, device.port, id);
       this.clients.set(id, d6000);
       d6000.startPolling();
+      return;
+    }
+
+    // G3/G4 speak MCP and nothing else. There is no HTTPS interface on them
+    // for the probe chain to find, so starting an SSC client is a guaranteed
+    // five-URL timeout chain before the first `disconnected` fires and the MCP
+    // client it needed all along is put in its place. Paid once per G3 at
+    // startup, with every other receiver probing at the same time, that is
+    // what made a resync take minutes — and a G3 whose SSC client happened to
+    // be told it was an SSC model never got the fallback at all.
+    //
+    // Two signals, either of which is conclusive: the port (MCP devices are
+    // stored on 53212, which is how discovery found them) and a model that
+    // names the generation.
+    if (device.port === MCP_PORT || isLegacyMcpModel(device.model)) {
+      log.debug(
+        `[DeviceManager] ${device.ip} is a G3/G4 (${device.port === MCP_PORT ? `port ${MCP_PORT}` : `model "${device.model}"`}) ` +
+        `— starting on MCP without probing for SSC`,
+      );
+      const legacy = new G3G4Client(device.ip, device.port);
+      this.setupClientListeners(legacy, device.ip, device.port, id);
+      this.clients.set(id, legacy);
+      legacy.startPolling();
       return;
     }
 
@@ -525,7 +564,7 @@ export class DeviceManagerService extends EventEmitter {
     if (pendingLost) { clearTimeout(pendingLost); this.lostTimers.delete(ip); }
     // Allow the device to be re-discovered (clears seenIps in DiscoveryService)
     this.discovery.forgetDevice(ip, port);
-    this.discovery.forgetDevice(ip, 53212); // also clear MCP port for G3/G4 devices
+    this.discovery.forgetDevice(ip, MCP_PORT); // also clear MCP port for G3/G4 devices
     // Release any secondary (Dante) IPs owned by this device
     for (const [sIp, owner] of this.secondaryIps) {
       if (owner === ip) this.secondaryIps.delete(sIp);
@@ -1640,7 +1679,9 @@ export class DeviceManagerService extends EventEmitter {
   // Trigger a full network scan (UDP probes + HTTP sweep).
   // Called externally when the user opens the Add Device dialog.
   async triggerScan(): Promise<void> {
-    await this.discovery.scan();
+    // Operator-initiated: they are saying something on the network has
+    // changed, so previously rejected addresses get another look.
+    await this.discovery.scan(true);
   }
 
   get isScanInProgress(): boolean {

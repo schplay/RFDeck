@@ -39,6 +39,8 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
         batteryCriticalPct:  data.batteryCriticalPct,
         dropoutSensitivity:  data.dropoutSensitivity,
         bindInterface:       data.bindInterface,
+        discoveryIgnore:     typeof data.discoveryIgnore === 'string'
+                               ? data.discoveryIgnore : undefined,
         // Encrypted at rest — this unlocks wireless hardware. A blank string
         // means "leave unchanged" rather than "clear", so a user editing other
         // settings doesn't wipe a stored credential.
@@ -77,6 +79,13 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
     // be a poor answer.
     if (Object.prototype.hasOwnProperty.call(data, 'bindInterface')) {
       (fastify as any).deviceManager?.rebindNetworkInterface().catch(() => {});
+    }
+
+    // The exclusion list has to bite immediately, including on a sweep already
+    // running: the operator is saving it because RFDeck is contacting
+    // something it should not be, and "from the next scan" is not an answer.
+    if (Object.prototype.hasOwnProperty.call(data, 'discoveryIgnore')) {
+      (fastify as any).deviceManager?.applyDiscoveryIgnore().catch(() => {});
     }
 
     const { defaultPassword, authPinHash, ...safe } = settings;

@@ -92,6 +92,11 @@ export function looksLikeIem(model?: string | null, name?: string | null): boole
 export function isSscModel(model?: string | null): boolean {
   const m = (model ?? '').trim();
   if (!m) return false;
+  // A model that names a G3 or G4 generation is never SSC, whatever else it
+  // says. "EM 2050" and "EM 300 G3" both match the EM rule below, and locking
+  // them to SSC meant a G3 receiver retried HTTPS forever and never reached
+  // the MCP client that could actually talk to it.
+  if (isLegacyMcpModel(m)) return false;
   // EW-DX and EW-D, and the EM-series receivers -- but not "EW G3/G4",
   // which is exactly the device the fallback exists for.
   if (/\bEW[\s-]?DX\b|\bEW[\s-]?D\b|\bEWDX\b/i.test(m)) return true;
@@ -123,4 +128,27 @@ export function isPlaceholderModel(model?: string | null, manufacturer?: string 
   const vendor = (manufacturer ?? '').trim();
   if (vendor && m.toLowerCase() === `${vendor.toLowerCase()} device`) return true;
   return false;
+}
+
+/**
+ * Does this model name a Sennheiser device that speaks MCP rather than SSC?
+ *
+ * The G3 and G4 generations have no HTTPS interface at all. Working that out
+ * by probing costs a full SSC probe chain -- five candidate URLs, each with
+ * its own timeout -- before the first `disconnected` fires and the MCP client
+ * is put in its place. Paid once per G3 in the inventory, at startup, with
+ * every other receiver being probed at the same moment, that is the difference
+ * between a rig that is up in seconds and one still resyncing minutes later.
+ * Some never arrived at all.
+ *
+ * Where the model says plainly that it is a G3 or G4, RFDeck skips the probe
+ * and starts on MCP. The port is the other unambiguous signal -- MCP devices
+ * are stored on 53212 -- and DeviceManagerService checks that too.
+ */
+export function isLegacyMcpModel(model?: string | null): boolean {
+  const m = (model ?? '').trim();
+  if (!m) return false;
+  // "EW G3/G4", "ew 300 G3", "EM 2050 G4", "G4". The generation marker has to
+  // stand on its own, so a "G3" inside a serial or a room name is not a model.
+  return /(^|[\s\-/(])G[34]([\s\-/)]|$)/i.test(m);
 }

@@ -93,7 +93,7 @@
   color: var(--color-on-surface-variant);
 }
 
-.form-group input, .form-group select {
+.form-group input, .form-group select, .form-group textarea {
   background: var(--color-surface-container-highest);
   border: 1px solid var(--color-outline-variant);
   color: var(--color-on-surface);
@@ -103,13 +103,28 @@
   font-family: var(--font-mono);
 }
 
-.form-group input:focus, .form-group select:focus {
+.form-group textarea {
+  resize: vertical;
+  min-height: 72px;
+  line-height: 1.5;
+}
+
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
   outline: none;
   border-color: var(--color-primary);
 }
 
 .mt-4 {
   margin-top: 16px;
+}
+
+/* Inline examples in a settings description. */
+.settings-desc code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--color-surface-container-highest);
 }
 
 /* ── Remote access panel ── */

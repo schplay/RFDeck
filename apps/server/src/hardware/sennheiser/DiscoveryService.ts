@@ -9,6 +9,7 @@ import { mcpBus } from './McpBus';
 import { ShureSlpListener } from '../shure/slp';
 import { probeShure, describeIdentity, logIdentity } from '../shure/probe';
 import { log } from '../../logger';
+import { IgnoreRule, parseIgnoreList, isIgnored } from './discoveryIgnore';
 
 export interface DiscoveredDevice {
   ip: string;
@@ -54,7 +55,9 @@ export function resolveDiscoveryDisabled(env: NodeJS.ProcessEnv = process.env): 
   return true;
 }
 
-const MCP_PORT = 53212;
+/** The UDP port G3/G4 receivers speak MCP on. Exported because the inventory
+ *  stores it, and it is the one unambiguous "this is a G3" signal. */
+export const MCP_PORT = 53212;
 const SSC_PORT  = 443;
 const SHURE_PORT = 2202;
 
@@ -73,6 +76,12 @@ const HOST_PROBE_CONCURRENCY = 512;
 // ~51s a full /16 takes, because cutting a working sweep short is what made a
 // receiver look undiscoverable in the first place.
 const SCAN_GUARD_MS = 180_000;
+
+// How long a "this is not a Sennheiser device" verdict stands before an
+// automatic scan will try the address again. Long enough that a resident
+// server is not re-probing the neighbours all evening; short enough that a
+// receiver given a recycled DHCP lease is still found without anyone asking.
+const NOT_SENNHEISER_TTL_MS = 30 * 60_000;
 
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
@@ -167,6 +176,22 @@ export class DiscoveryService extends EventEmitter {
   private seenSerials  = new Map<string, string>();
   private scanInProgress = false;
 
+  // Addresses the operator has told RFDeck to leave alone. Applied before any
+  // socket is opened, not to the results afterwards.
+  private ignoreRules: IgnoreRule[] = [];
+
+  // Hosts that answered on 443 and turned out not to be Sennheiser.
+  //
+  // Identification is not free: two HTTPS GETs and, when those are
+  // inconclusive, a TLS handshake to read the certificate. Repeating that on
+  // every scan — three at startup, then one a minute for as long as any
+  // tracked device is unreachable — meant RFDeck presenting unauthenticated
+  // requests to the same NAS, camera or hypervisor indefinitely. The verdict
+  // is remembered and not revisited for a while; an operator asking for a
+  // scan from the Add Device dialog clears it, because that is the moment
+  // they are telling RFDeck that something on the network has changed.
+  private notSennheiser = new Map<string, number>();
+
   private readonly disabled: boolean;
 
   /**
@@ -198,9 +223,52 @@ export class DiscoveryService extends EventEmitter {
     // Active scanning (UDP probes + HTTP host sweep) is triggered on-demand via scan().
   }
 
+  /**
+   * Which addresses discovery must never contact.
+   *
+   * Takes effect immediately, including on a scan already running — the point
+   * is that RFDeck stops touching someone else's equipment, and "after the
+   * current sweep finishes" is not that.
+   */
+  setIgnoreList(spec: string | null | undefined): void {
+    this.ignoreRules = parseIgnoreList(spec);
+    if (this.ignoreRules.length > 0) {
+      log.info(
+        `[Discovery] Not contacting ${this.ignoreRules.map(r => r.text).join(', ')} — ` +
+        `excluded in Settings`,
+      );
+    }
+  }
+
+  /** Excluded by the operator, so nothing is ever sent to it. */
+  private excluded(ip: string): boolean {
+    return isIgnored(ip, this.ignoreRules);
+  }
+
+  /**
+   * Already probed and found not to be a Sennheiser device, recently enough
+   * that asking again would just be noise on somebody else's appliance.
+   */
+  private recentlyRejected(ip: string): boolean {
+    const at = this.notSennheiser.get(ip);
+    if (at === undefined) return false;
+    if (Date.now() - at < NOT_SENNHEISER_TTL_MS) return true;
+    this.notSennheiser.delete(ip);
+    return false;
+  }
+
   // ── On-demand scan ───────────────────────────────────────────────────────
 
-  async scan(): Promise<void> {
+  /**
+   * @param operatorRequested The operator pressed Rescan, rather than this
+   *   being a startup or recovery sweep. Forgets what was previously rejected,
+   *   so "scan again" means what it says.
+   */
+  async scan(operatorRequested = false): Promise<void> {
+    if (operatorRequested && this.notSennheiser.size > 0) {
+      log.debug(`[Discovery] Operator rescan — re-probing ${this.notSennheiser.size} previously rejected host(s)`);
+      this.notSennheiser.clear();
+    }
     if (this.disabled) return;
     if (this.scanInProgress) {
       log.debug('[Discovery] Scan already in progress, skipping');
@@ -319,6 +387,7 @@ export class DiscoveryService extends EventEmitter {
     this.shureSlp = listener;
 
     listener.on('announce', ({ ip }: { ip: string }) => {
+      if (this.excluded(ip)) return;
       if (this.shureProbed.has(ip)) return;
       if (this.seenIps.has(`${ip}:${SHURE_PORT}`)) return;
       // Claim the address before the probe, not after: announcements repeat
@@ -399,8 +468,10 @@ export class DiscoveryService extends EventEmitter {
         const base  = `${parts[0]}.${parts[1]}.${parts[2]}`;
         log.debug(`[Discovery] Large subnet — unicast scan of ${base}.1–254`);
         for (let host = 1; host <= 254; host++) {
-          mcpBus.sendTo(`${base}.${host}`, MCP_PUSH);
-          mcpBus.sendTo(`${base}.${host}`, 'Name');
+          const ip = `${base}.${host}`;
+          if (this.excluded(ip)) continue;
+          mcpBus.sendTo(ip, MCP_PUSH);
+          mcpBus.sendTo(ip, 'Name');
         }
       }
     }
@@ -419,6 +490,7 @@ export class DiscoveryService extends EventEmitter {
       const o2 = (network[1] + carry2) & 0xff;
       const o1 = network[0];
       const ip = `${o1}.${o2}.${o3}.${o4}`;
+      if (this.excluded(ip)) continue;
       mcpBus.sendTo(ip, MCP_PUSH);
       mcpBus.sendTo(ip, 'Name');
     }
@@ -475,7 +547,9 @@ export class DiscoveryService extends EventEmitter {
     // when it is, the whole thing is over in two seconds.
     const near = all.filter(a => a.startsWith(`${local}.`));
     const far  = all.filter(a => !a.startsWith(`${local}.`));
-    return [...near, ...far];
+    // Excluded addresses never reach the sweep, so not even a bare TCP connect
+    // is opened to them.
+    return [...near, ...far].filter(a => !this.excluded(a));
   }
 
   /**
@@ -615,6 +689,11 @@ export class DiscoveryService extends EventEmitter {
   private async httpProbeHost(ip: string): Promise<void> {
     const key = `${ip}:${SSC_PORT}`;
     if (this.seenIps.has(key)) return;
+    // Asked and answered. Re-presenting unauthenticated requests to a host
+    // that has already said it is not a receiver is the part of discovery
+    // that is nobody else's problem to put up with.
+    if (this.recentlyRejected(ip)) return;
+    if (this.excluded(ip)) return;
 
     // Probe both SSC paths concurrently, but decide only once BOTH have answered.
     //
@@ -653,7 +732,12 @@ export class DiscoveryService extends EventEmitter {
     const hits = settled
       .filter((s): s is PromiseFulfilledResult<Hit> => s.status === 'fulfilled')
       .map(s => s.value);
-    if (hits.length === 0) return; // nothing answered — not a Sennheiser device
+    if (hits.length === 0) {
+      // Something is listening on 443 but neither SSC path answered — a web
+      // UI, a NAS, an appliance. Remember, so the next sweep leaves it alone.
+      this.notSennheiser.set(ip, Date.now());
+      return;
+    }
 
     const bodies = hits.filter((h): h is BodyHit => h.kind === 'body');
     const identifying = bodies.filter(b => bodyIdentifiesSennheiser(b.data));
@@ -666,6 +750,7 @@ export class DiscoveryService extends EventEmitter {
       // Nothing in the bodies names the vendor — auth-only, or JSON that any
       // appliance might return. The certificate is the remaining evidence.
       if (!(await this.certificateIdentifiesSennheiser(ip))) {
+        this.notSennheiser.set(ip, Date.now());
         const summary = bodies.length > 0
           ? `answered on 443 but the response is not SSC (${JSON.stringify(bodies[0].data).slice(0, 120)})`
           : 'answered on 443 with HTTPS 401 on every path';
@@ -693,6 +778,7 @@ export class DiscoveryService extends EventEmitter {
       this.seenSerials.set(serial, ip);
     }
 
+    this.notSennheiser.delete(ip);
     log.debug(`[Discovery] HTTP probe found EW-DX at ${ip}: ${name}`);
     this.emitDiscovered(ip, SSC_PORT, name, 'ssc');
   }
@@ -719,6 +805,10 @@ export class DiscoveryService extends EventEmitter {
   ) {
     const key = `${ip}:${port}`;
     if (this.seenIps.has(key)) return;
+    // A passive listener can hear from an excluded address without anything
+    // having been sent to it. Offering it would put the operator back where
+    // they started, so the exclusion is honoured on the way out too.
+    if (this.excluded(ip)) return;
     this.seenIps.add(key);
     // Finding a device is the event this whole subsystem exists to produce, and
     // it was logged where a deployed server would never print it.
@@ -774,6 +864,9 @@ export class DiscoveryService extends EventEmitter {
     // Also clear the probe record, or a removed Shure device would announce
     // itself forever without ever being offered again.
     this.shureProbed.delete(ip);
+    // And any "not a Sennheiser device" verdict, so re-adding an address the
+    // operator has just corrected does not wait out the cache.
+    this.notSennheiser.delete(ip);
     this.deviceNames.delete(ip);
     // Clear serial registrations for this IP so an EW-DX coming back at a new IP
     // won't be blocked by the dual-NIC dedup guard.
