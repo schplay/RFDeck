@@ -1263,13 +1263,23 @@ plainly, rather than implying it knows what is legal where you are standing.
 
 ## Stages D and R — cloud, and the paid application *(planned, not started)*
 
-Two plans, written 2026-09-13, sit alongside this one:
+Two plans sit alongside this one:
 
-- **`docs/CLOUD_INTEGRATION_PLAN.md`** — Stage D. Accounts and the cloud:
-  a rig link (OAuth device flow) and a person link (PKCE); entitlements as
-  signed documents verified offline; show files and profiles (free); the
-  notification relay and regional data feeding the coordinator (paid). Phases
-  D.0–D.6. Almost all of it is open-repository work.
+- **`docs/CLOUD_INTEGRATION_PLAN.md`** — Stage D. **Revised 2026-09-23** against
+  the Meros hand-off: **meros.co is the cloud**, and RFDeck consumes it as a
+  relying party rather than defining one. An *instance* link (OAuth device
+  grant) and a *person* link (PKCE, joined on the OIDC `sub`), both pointing at
+  a Meros **account** — there is no "rig" object and no organisation of our
+  own. Entitlements come from Meros in a fixed, account-scoped shape with
+  `rfdeck.*` feature names, verified offline for appliances; gating is
+  deferred, so the gate gets built and nothing is walled off yet. Show files
+  and profiles ride Meros's document- and profile-sync services (free); the
+  notification relay and the regional-data packs feeding the coordinator are
+  the paid tier. Phases D.0–D.7. Almost all of it is open-repository work.
+
+  The first version of that plan invented an identity provider, a rig/org
+  model and an entitlement format, all of which are now deleted — worth knowing
+  if you remember reading them.
 - **`docs/REPO_SEPARATION_PLAN.md`** — Stage R. The open repository has no
   licence yet (R.0 is that decision); extension points in the core with an
   in-tree example (R.1); the `rfdeck-pro` repository carrying the core as a
@@ -1278,4 +1288,8 @@ Two plans, written 2026-09-13, sit alongside this one:
   year" rule (R.3); named users and roles as the first paid feature (R.4);
   appliances (R.5).
 
-Neither begins until the decisions each lists are made.
+Neither begins until the decisions each lists are made. Stage D's remaining
+decisions are mostly questions *for Meros* now rather than choices of ours —
+client registration, the scope vocabulary, redirect URIs for a server reached
+over a show LAN, and the refresh-token policy. D.0 (internal types and a fake
+Meros for the test harness) is not blocked on any of them.

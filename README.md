@@ -822,9 +822,13 @@ firewall requirements, and verification procedures are in
 Private / Proprietary — All rights reserved.
 
 That is the state today, not the intended one. RFDeck is planned to ship as a
-free, open-source desktop application, with a paid edition and cloud services
-aimed at organisations and venues. The editions, and the reasoning behind where
-the line falls, are in [`docs/EDITIONS.md`](docs/EDITIONS.md).
+free, open-source desktop application, with a paid edition aimed at
+organisations and venues, and cloud features hosted by
+[Meros Cloud](https://meros.co) — which is the identity provider and the home of
+the shared services those features are built on, rather than anything RFDeck
+runs itself. The editions, and the reasoning behind where the line falls, are in
+[`docs/EDITIONS.md`](docs/EDITIONS.md); how the cloud is reached is in
+[`docs/CLOUD_INTEGRATION_PLAN.md`](docs/CLOUD_INTEGRATION_PLAN.md).
 
 None of it is implemented: paid functionality is blocked on separating the
 repository and building licence enforcement, and no feature should assume an

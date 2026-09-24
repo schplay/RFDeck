@@ -150,7 +150,11 @@ file beside the database for headless installs). The rule that implements
   issues a new document with a later date; nothing else changes.
 
 No phone-home is required. A cloud-linked rig *may* refresh its licence
-automatically, as a convenience, never as a requirement. This lives in
+automatically, as a convenience, never as a requirement. Note that this
+licence — the paid *application* licence, verified against a key in the paid
+build — is a different document from a Meros **entitlement**, which says what
+an account has paid for in the *cloud*. Two keys, two documents, two
+questions; the cloud plan owns the second and they must not be merged. This lives in
 `packages/licensing` of the paid repo, with the verification code and its
 tests small enough to be audited by a customer's IT department.
 
@@ -190,11 +194,11 @@ rfdeck-pro/
 
 ### What is *not* paid-repository work
 
-The cloud. The rig link, show files, profiles, and the *gates* for the paid
-cloud tier are all core work: they are free-tier features plus a signature
-check on data the cloud issues. A rig running the free application can be
-linked to a paying organisation and receive regional data and relayed
-notifications. The paid *application* is about what an organisation needs on
+The cloud. The instance link, show files, profiles, and the *gates* for the
+paid cloud tier are all core work: they are free-tier features plus a signature
+check on data Meros issues. A rig running the free application can be linked to
+a paying Meros **account** — a person or an organisation — and receive regional
+data and relayed notifications. The paid *application* is about what an organisation needs on
 the machine — named users, permissions, audit — and only that goes through
 the extension mechanism. Keeping these two apart means the cloud can launch
 before the pro edition exists.

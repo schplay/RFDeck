@@ -61,10 +61,23 @@ person using the same rig.
 Pre-configured hardware with the paid version installed, for a venue that wants
 to buy a working thing rather than build one.
 
+### The cloud is Meros Cloud
+
+RFDeck does not run a cloud of its own. meros.co is the identity provider and
+the host of the shared services RFDeck's cloud features are built on; RFDeck is
+a relying party. A Meros **account** — a person or an organisation — is what
+owns entitlements and synced state. See `docs/CLOUD_INTEGRATION_PLAN.md`.
+
 ### Cloud — free tier
 
 User profiles and show files: the things an operator wants to follow them
 between machines and between venues.
+
+> **Open question.** Meros treats person-scoped profile sync as a free
+> loss-leader, which matches this. It has not yet said which tier
+> account-scoped document sync — what show files are built on — sits in. If it
+> is paid, this section is wrong and has to be corrected before it is published
+> anywhere. Tracked in the cloud plan's open questions.
 
 ### Cloud — paid tier
 
@@ -119,12 +132,18 @@ No gating, licence checking, or edition branching is to be built until the
 repository separation and licensing implementation are designed. Both are now
 planned — `docs/REPO_SEPARATION_PLAN.md` (the paid application: licence,
 extension points, the pro repository, licence keys) and
-`docs/CLOUD_INTEGRATION_PLAN.md` (accounts, the rig and person links,
-entitlements, the free and paid cloud tiers) — and neither has started. Until
-they do:
+`docs/CLOUD_INTEGRATION_PLAN.md` (Meros accounts, the instance and person
+links, entitlements, the free and paid cloud tiers) — and neither has started.
+Until they do:
 
 - Build features on the free side of the line as normal.
 - Where a feature is destined to be paid, note it in the plan and build nothing
   that assumes an enforcement mechanism.
 - Do not scatter conditionals in anticipation. A licence check retro-fitted once,
   deliberately, is cheaper to get right than fifty guesses left lying around.
+
+One correction from the cloud side, which points the same way: Meros has
+**deferred gating** on cloud entitlements. The cloud plan builds the plumbing
+and the single gate, and features are granted liberally while testing. So even
+once that plumbing exists, nothing enforces a paywall until the owner says so —
+which is the same instruction as above, arriving from the other direction.
