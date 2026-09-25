@@ -1297,5 +1297,5 @@ tokens with family revocation, one Ed25519 key (`rfdeck-2026a`) verifying both
 entitlements and data packs, and the notification relay posting on the instance
 link's own token rather than a credential of its own. What remains is Meros's to
 build: frozen request bodies for document sync, the data-pack feed and the
-relay's alert post. D.0 through D.2 are blocked on nothing but the
-`client_id`s.
+relay's alert post. The staging `client_id`s are in hand as of 2026-09-25, so
+**D.0 through D.2 are blocked on nothing but the Meros staging base URL**.

@@ -98,12 +98,36 @@ earlier version of this plan repeated it. That was a Meros gap, now closed.)
 
 ### Clients: two of them, both public
 
-Meros provides a seeder —
-`php artisan db:seed --class=Database\Seeders\RfdeckClientsSeeder` — which
-registers **RFDeck Server** and **RFDeck Desktop** and prints their
-`client_id`s. Both are **public clients with no secret**, with the device grant
-enabled and a loopback redirect also allowed. Run per environment: ids differ
-between staging and production.
+Meros provides a seeder that registers **RFDeck Server** and **RFDeck Desktop**
+and prints their `client_id`s. Both are **public clients with no secret**, with
+the device grant enabled and a loopback redirect also allowed. Run per
+environment: ids differ between staging and production.
+
+```
+php artisan db:seed --class=RfdeckClientsSeeder
+```
+
+Unqualified, deliberately. Laravel resolves the name against `Database\Seeders\`,
+and passing the fully-qualified `Database\Seeders\RfdeckClientsSeeder` fails in a
+POSIX shell, which eats the backslashes and turns it into a class name that does
+not exist. The error says "class not found", which sends you looking for a
+missing file rather than a quoting problem.
+
+**Staging client ids** (obtained 2026-09-25):
+
+| Client | `client_id` |
+|---|---|
+| RFDeck Server | `01a0d93a-4ea8-7313-92c7-c90b90c136ff` |
+| RFDeck Desktop | `01a0d93a-4eb7-7280-880e-27984005adf3` |
+
+These are recorded rather than treated as secrets because a public OAuth client
+has none: the `client_id` travels in every authorization request and is visible
+to the browser by design. They are still **environment configuration, not
+constants** — production's will differ, and so will the Meros base URL that
+discovery hangs off. Both belong in env config read at runtime, so that a
+production build cannot ship staging ids. (If this repository goes open source as
+`docs/REPO_SEPARATION_PLAN.md` intends, these two lines can move to env-only;
+there is no need to publish staging infrastructure ids.)
 
 Two clients rather than one is not tidiness. Refresh tokens rotate and a replay
 revokes the whole token family (below), so a desktop app and a headless service
@@ -463,8 +487,8 @@ services wait for their shapes.
 | Phase | What | Size | Needs |
 |---|---|---|---|
 | D.0 | Internal types + the fake Meros harness: well-known document, device grant, entitlements, signed statements, rotating refresh tokens | S | nothing — this is ours |
-| D.1 | Instance link (device grant), Cloud settings page, status UI, entitlement cache, `entitled()` / `useEntitled`; **nothing gated** | M | the `client_id`s from the seeder |
-| D.2 | Person link (browser-side device grant), link by `sub`, account menu | S | the `client_id`s |
+| D.1 | Instance link (device grant), Cloud settings page, status UI, entitlement cache, `entitled()` / `useEntitled`; **nothing gated** | M | nothing on staging — ids in hand. The Meros staging base URL |
+| D.2 | Person link (browser-side device grant), link by `sub`, account menu | S | nothing on staging — ids in hand |
 | D.3 | Profile sync | M | D.2; §8.1 shape confirmed |
 | D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1; §8.2 shape confirmed |
 | D.5 | Notification relay target | S here; the sending is Meros's | The alert-post body shape. Auth is settled (the instance link's own token) |
@@ -490,7 +514,7 @@ looks like this.
 
 | We asked | Answer |
 |---|---|
-| Client registration — how many, confidential or public? | **Two, both public, no secret**: RFDeck Server and RFDeck Desktop, from a seeder, per environment. Device grant enabled, loopback also allowed |
+| Client registration — how many, confidential or public? | **Two, both public, no secret**: RFDeck Server and RFDeck Desktop, from a seeder, per environment. Device grant enabled, loopback also allowed. **Staging ids obtained 2026-09-25** — see Identity |
 | Redirect URIs for a browser at a DHCP venue address | **Use the device grant for the person link too**, browser-side — and Meros has now CORS-enabled the device, token, userinfo, revoke, discovery and `v1/*` endpoints so that it works from any origin |
 | Scope vocabulary | Given in full; see the table under Identity. Public packs need no scope and no account |
 | Refresh-token policy | **Rotates, with reuse-detection family revocation.** Single-writer; commit the rotated token before using the new access token; `invalid_grant` means re-link. A ~60s grace window is under consideration but not decided |
@@ -519,6 +543,11 @@ honest framing, and "free forever" is not.** EDITIONS says so now.
   tested against the fake cloud, and it simply has nowhere to deliver until they
   exist.
 - Whether the rotation grace window lands. It changes nothing we build.
+- **The Meros staging base URL.** Every document says `https://meros.co`, but
+  client ids and the signing key are per-environment, so staging is elsewhere.
+  Discovery hangs off that origin, so a staging build cannot reach the cloud
+  without it. The only thing now standing between D.1/D.2 and a real end-to-end
+  link.
 - **The TV/DTV occupancy data source** — an open owner decision, and the
   perishable licensed data the paid tier exists to pay for. The feed
   *mechanism* is Meros's to build; the *data* behind the RFDeck packs is a
