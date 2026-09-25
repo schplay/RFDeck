@@ -18,7 +18,9 @@ repository, because the free cloud tier is free.
 > answered in the hand-off's §9, and some of those answers changed the design
 > rather than merely confirming it — the person link, the refresh-token rules
 > and the `nonce` handling in particular. Details are inline; the answers are
-> collected under "Questions, answered" at the end.
+> collected under "Questions, answered" at the end. The relay answer was
+> corrected on a second pass: there are two relays at Meros, and the one RFDeck
+> wants needs no new credential.
 >
 > Sources, in the `meros` repository:
 >
@@ -302,13 +304,14 @@ a service rather than getting a bespoke backend
 | **Show files** — push/pull, version history | **Document sync** (§8.2) — account-scoped, named, versioned JSON | `/v1/docs/rfdeck/shows/{key}` — PUT a new version carrying `base_version` (**409** if the head moved; never a silent overwrite), GET the head or `?version=`, GET `/versions`. Server-visible now. Small JSON only |
 | **Profiles** — layout, meters, shortcuts, solo groups | **Profile sync** (§8.1) — person-scoped, last-write-wins per key | `/v1/profiles/rfdeck` — GET/PUT. Follows the person between venues |
 | **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement |
-| **Notification relay** (email/SMS) | **Alerting + relay** (§8.5) | Post an alert event; Meros applies the account's recipient rules and sends. SMTP/SMS credentials never touch a venue machine. Browser push and webhooks stay local and free |
+| **Notification relay** (email/SMS) | **Alerting + relay** (§8.5, extending the Phase 6 alerting engine) | Post an alert event **on the instance link's own token** — no separate credential. Meros applies the account's recipient rules and sends. SMTP/SMS credentials never touch a venue machine. Browser push and webhooks stay local and free. Not the Phase 4 *remote-access* relay, which is a different thing RFDeck does not use |
 | Multi-instance dashboard, account-wide show libraries | **Roll-up** + document sync | Already the direction; largely free once the above exist |
 
-**Do not write clients against §8.2, §8.3 or §8.5 yet.** Those endpoints are
+**Do not write clients against §8.2, §8.3 or §8.5 yet.** Those bodies are
 landing, not frozen, and Phase 8 is still marked *design*. Build against the
 fake-cloud harness to the shapes above and pin when Meros confirms them. The
-**instance link, the person link and entitlements are stable** — start there.
+**instance link, the person link and entitlements are stable** — start there,
+and note that §8.5's *auth* is settled even though its body is not.
 
 Not writing clients against guessed contracts is the same call that saved a
 rework on the event envelope, and it is the right one here too.
@@ -352,7 +355,7 @@ merge, with the local copy always usable offline.
 
 ## The paid tier
 
-### Notification relay — designed, explicitly not built
+### Notification relay
 
 The C.2 dispatcher fans alerts out to webhooks and browser push. A third target,
 `dispatchToCloud`, posts the same `OutboundAlert` to Meros; the account applies
@@ -361,17 +364,28 @@ sends. SMTP and SMS credentials therefore never exist on a venue machine, and an
 account configures recipients once for every instance it owns. Gated by
 `entitled('rfdeck.notify-relay')`; without it the target is simply not attached.
 
-> **Do not build the relay client.** Meros has said plainly that the relay is
-> not implemented and its auth model — the instance's OAuth token versus a
-> separate scoped relay credential — is an open design item they will specify
-> before we write against it. Same rule as the other unfrozen contracts, and the
-> reason D.5 is marked blocked rather than merely later.
->
-> One thing to confirm when they do: we asked about the **notification** relay
-> (Phase 8 §8.5, alerting) and the answer describes the **remote-access** relay
-> (Phase 4). Those read like two different subsystems, and the hand-off's own
-> feature table puts §8.5 on Phase 6. The instruction — don't build yet — is the
-> same either way, so this is a terminology check rather than a blocker.
+**Auth is settled: the instance-link OAuth access token.** No separate relay
+credential, nothing extra for an operator to configure — the instance posts alert
+events on the link it already has, and the cloud applies the account's rules. The
+notification relay extends the Phase 6 alerting engine, which exists.
+
+There are **two different relays at Meros**, and conflating them cost a round
+trip. This is the **notification relay** (Phase 8 §8.5, on the Phase 6 alerting
+engine), and it is the one RFDeck wants. The **remote-access relay** (Phase 4) is
+a separate, unbuilt subsystem whose auth is still undecided, and RFDeck has no
+use for it. Worth naming both here so the next reader does not have to ask.
+
+What is still missing is on Meros's side and behind the boundary: the account's
+recipient rules and the SMS delivery configuration. That is a cloud-side build
+and a UI at Meros, not a contract RFDeck writes against — so **the only thing
+D.5 waits for is the alert-post body shape**, not permission and not a
+credential.
+
+One scope question, small: the instance scope table carries `events:write` "if
+RFDeck reports telemetry or alerts to roll-up". Posting an alert event for relay
+reads like exactly that, so `events:write` is presumably the scope the relay
+target needs. Confirm when the body shape lands rather than guessing — it is one
+string in a consent screen, and getting it wrong is a 403 in a venue.
 
 ### Regional data
 
@@ -453,7 +467,7 @@ services wait for their shapes.
 | D.2 | Person link (browser-side device grant), link by `sub`, account menu | S | the `client_id`s |
 | D.3 | Profile sync | M | D.2; §8.1 shape confirmed |
 | D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1; §8.2 shape confirmed |
-| D.5 | Notification relay target — **blocked** | S here; the sending is Meros's | Meros to build the relay and specify its auth |
+| D.5 | Notification relay target | S here; the sending is Meros's | The alert-post body shape. Auth is settled (the instance link's own token) |
 | D.6 | Regional data → coordinator exclusions; venue location | M | D.1; §8.3 shape; the occupancy data source |
 | D.7 | Device-profile feed | S | §8.3 shape. No link needed — public packs are read without an account |
 
@@ -481,7 +495,7 @@ looks like this.
 | Scope vocabulary | Given in full; see the table under Identity. Public packs need no scope and no account |
 | Refresh-token policy | **Rotates, with reuse-detection family revocation.** Single-writer; commit the rotated token before using the new access token; `invalid_grant` means re-link. A ~60s grace window is under consideration but not decided |
 | Which public key verifies entitlements and packs | **One key**, the active `rfdeck` Ed25519 key, kid `rfdeck-2026a`, per environment. Rotation is additive — key the verifier by `kid` |
-| The relay's auth | **Undecided, because the relay is not built.** Do not write a relay client; Meros will specify it first |
+| The relay's auth | **The instance link's own OAuth access token** — no separate credential (corrected 2026-09-25; the first answer described the unrelated Phase 4 remote-access relay). Only the account's recipient rules and SMS config remain to be built, on Meros's side |
 | Which tier is document sync in? | **Ungated as built** — it works for any account, as does profile sync. The free-versus-paid line is a deferred pricing decision the owner owns |
 
 Two of those answers changed this document rather than confirming it: the person
@@ -498,8 +512,12 @@ honest framing, and "free forever" is not.** EDITIONS says so now.
 
 ### Still owed by Meros
 
-- Frozen shapes for document sync (§8.2) and the data-pack feed (§8.3).
-- The relay: built at all, then its auth model.
+- Frozen shapes for document sync (§8.2), the data-pack feed (§8.3) and the
+  notification relay's alert-post body (§8.5). The relay's *auth* is settled.
+- The account's recipient rules and SMS delivery config, both on Meros's side of
+  the boundary. RFDeck is not blocked on either: the target can be written and
+  tested against the fake cloud, and it simply has nowhere to deliver until they
+  exist.
 - Whether the rotation grace window lands. It changes nothing we build.
 - **The TV/DTV occupancy data source** — an open owner decision, and the
   perishable licensed data the paid tier exists to pay for. The feed

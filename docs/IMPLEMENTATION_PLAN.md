@@ -1293,8 +1293,9 @@ Neither begins until the decisions each lists are made. Stage D's are now
 largely settled: **Meros answered every open question on 2026-09-24** — two
 public clients from a seeder, the scope vocabulary, a browser-side device grant
 in place of a redirect the venue LAN could never register, rotating refresh
-tokens with family revocation, and one Ed25519 key (`rfdeck-2026a`) verifying
-both entitlements and data packs. What remains is Meros's to build: frozen
-shapes for document sync and the data-pack feed, and the notification relay,
-which is explicitly not to be written against yet. D.0 through D.2 are blocked
-on nothing but the `client_id`s.
+tokens with family revocation, one Ed25519 key (`rfdeck-2026a`) verifying both
+entitlements and data packs, and the notification relay posting on the instance
+link's own token rather than a credential of its own. What remains is Meros's to
+build: frozen request bodies for document sync, the data-pack feed and the
+relay's alert post. D.0 through D.2 are blocked on nothing but the
+`client_id`s.
