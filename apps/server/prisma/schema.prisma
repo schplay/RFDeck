@@ -170,6 +170,34 @@ model Settings {
   recordingPreSec    Int      @default(15)
   recordingPostSec   Int      @default(10)
 
+  // ── Meros Cloud ──
+  //
+  // The instance link. RFDeck is an OAuth client of meros.co; the operator
+  // approves this instance into one of their accounts with the device grant, and
+  // the server then holds a short-lived access token it refreshes itself.
+  //
+  // There is no rig or org object: the owner of entitlements and synced state is
+  // a Meros *account*, and the token is user-scoped rather than account-pinned,
+  // so `cloudAccountId` is what /v1/entitlements resolved rather than something
+  // the token carries. See docs/CLOUD_INTEGRATION_PLAN.md.
+  cloudAccountId     String?
+  // Encrypted at rest with the same key that protects device passwords.
+  //
+  // Refresh tokens rotate on use and replaying a rotated one revokes the whole
+  // (user, client) family, so this is a single-writer value: it must be committed
+  // before the access token it came with is used, and two processes must never
+  // share one. That is why the desktop build and a headless install are separate
+  // OAuth clients.
+  cloudRefreshToken  String?
+  // The last entitlement statement, cached so `entitled()` answers offline.
+  cloudEntitlements  String?
+  cloudLinkedAt      DateTime?
+  cloudLastRefreshAt DateTime?
+  // Where this rig is, for the regional TV-occupancy exclusion source. Never
+  // sent anywhere: the point-in-polygon test runs locally against cached cells,
+  // so the venue's position stays in the venue.
+  venueLocation      String?
+
   // ── Browser push ──
   // VAPID keys identify this server to push services. Generated once on first
   // use and kept, because every browser subscription is bound to the public

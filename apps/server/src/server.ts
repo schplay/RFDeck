@@ -1,4 +1,8 @@
 import http from 'http';
+// Before anything reads process.env — the cloud configuration lives here in
+// development, and systemd supplies it in production.
+import { loadLocalEnv } from './env';
+const envFile = loadLocalEnv();
 import { buildApp } from './app';
 import { log } from './logger';
 import { backfillPerformers } from './performers/roster';
@@ -55,6 +59,7 @@ async function start() {
   try {
     await app.listen({ port, host });
     log.info(`RFDeck server listening on ${secure ? 'https' : 'http'}://${host}:${port}`);
+    if (envFile) log.debug(`Local environment loaded from ${envFile}`);
     // Say which capture path this machine got, at startup rather than on the
     // first attempt to listen to a mic. The desktop build shipped with none at
     // all and gave no sign of it until someone tried to use audio during a

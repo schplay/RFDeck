@@ -7,6 +7,7 @@ import { WebRTCSignaling } from '../audio/WebRTCSignaling';
 import { AES67Manager } from '../audio/AES67Manager';
 import { CaptureManager } from '../audio/CaptureManager';
 import { RecordingManager } from '../recording/RecordingManager';
+import { CloudService } from '../cloud/service';
 import { attachAlertDispatcher } from '../notify/dispatcher';
 import { listAudioInputDevices } from '../audio/deviceList';
 import { prisma } from '../db';
@@ -41,12 +42,18 @@ export default fp(async (fastify, opts) => {
     };
   });
   const webrtcSignaling = new WebRTCSignaling(io, audioManager, captureManager);
+  // Meros Cloud. Constructed unconditionally: with nothing configured it exists,
+  // answers "not configured", and does nothing — the application has never
+  // needed the cloud and still does not.
+  const cloud = new CloudService(io);
 
   fastify.decorate('io', io);
   fastify.decorate('deviceManager', deviceManager);
   fastify.decorate('audioManager', audioManager);
   fastify.decorate('captureManager', captureManager);
   fastify.decorate('recordingManager', recordingManager);
+  fastify.decorate('cloud', cloud);
+  void cloud.start();
 
   // Alerts that leave the browser: webhooks and push, fed by the same alerts
   // the dashboard shows.

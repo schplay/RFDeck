@@ -183,7 +183,7 @@ Request only what a given link uses:
 | Link | Scopes |
 |---|---|
 | **Person** (browser, profile sync) | `openid profile email profiles:read profiles:write` — plus `offline_access` only if the browser keeps a refresh token |
-| **Instance** (server: show files, entitlements) | `openid offline_access backups:read backups:write entitlements:read` — plus `events:write` if RFDeck ever reports to roll-up |
+| **Instance** (server: show files, entitlements, alert relay) | `openid offline_access entitlements:read backups:read backups:write alerts:send` |
 
 Data-pack feeds split by whether the pack is public. A **public** pack is read
 with no scope and no account at all; an **entitled** pack needs the bearer's
@@ -539,28 +539,38 @@ engine), and it is the one RFDeck wants. The **remote-access relay** (Phase 4) i
 a separate, unbuilt subsystem whose auth is still undecided, and RFDeck has no
 use for it. Worth naming both here so the next reader does not have to ask.
 
-**The endpoint does not exist yet.** Its shape is a target to build against the
-fake cloud, not a contract to point at real Meros:
+**Built at Meros as of 2026-09-25**, so this is a real target rather than a guess:
 
-- `POST /v1/alerts` (planned). *Not* `/v1/events`, which is roll-up ingest.
-- Body maps our `OutboundAlert` to
-  `{ severity: "info|warning|critical", type, message, channel: {id,name},
-  device: {id,name}, occurred_at, dedupe_key }`.
-- **Scope `alerts:write`** — a dedicated one, *not* the `events:write` this plan
-  guessed at. It is **not yet registered against the RFDeck clients**, so
-  requesting it against real Meros today is a guaranteed 403. It joins the seeder
-  when the endpoint ships.
-- **`dedupe_key` is ours to choose**, and Meros collapses retries on it. That is
-  the detail that matters operationally: a venue's link flapping must not turn one
-  dropout into five emails to a stage manager, and the idempotency key is how it
-  does not.
-- Errors: `429` with `Retry-After`; `403 not_entitled` without
-  `rfdeck.notify-relay`.
-
-Also still missing, and behind the boundary rather than in our way: the account's
-recipient rules and the SMS delivery configuration. Those are a Meros build and a
-Meros UI, so the D.5 target can be written and tested against the fake cloud long
-before they exist.
+- `POST /v1/alerts` on the instance link. *Not* `/v1/events`, which is roll-up
+  ingest — that stores a timeline, the relay stores nothing.
+- **Scope `alerts:send`.** Not `alerts:write` (that manages rules) and not
+  `events:write` (roll-up). It is in Meros's scope vocabulary already, so it just
+  joins the instance link's scope set — no per-client registration.
+- Body: `{ product: "rfdeck", type, severity, message, instance, subject, context,
+  occurred_at, dedupe_key }`. `product` is required and drives rule matching.
+  `severity` is `debug|info|notice|warning|error|critical`, which is wider than
+  our internal INFO / WARNING / CRITICAL, so there is a mapping to write.
+  **`message` is the human sentence that reaches an email or a text**, so it has
+  to read as one on its own — no "see dashboard for details".
+  `subject` is structured context (`{ kind, id, name }` — the channel) and
+  `context` is a free-form passthrough forwarded to webhooks, so the device
+  survives alongside the channel.
+- Response `202 { accepted, account_id, dedupe_key, matched_rules }`.
+  **`matched_rules: 0` is normal, not an error** — it means the account has no
+  rule matching yet. Worth being careful about: the obvious reading of "0 rules
+  matched" is failure, and treating it as one would put a warning in front of an
+  operator about something they have not configured and may not want.
+- **`dedupe_key` is ours to choose**, and a repeat inside a rule's throttle window
+  is absorbed. That is the detail that matters operationally: a venue's link
+  flapping must not turn one dropout into five texts to a stage manager. Omitting
+  it makes Meros derive one from `type|instance|subject.id`, but ours can be
+  better — a dropout should dedupe on the channel, not on the message text.
+- **Not entitlement-gated yet** (deferred monetisation). So do *not* build in a
+  hard `403 not_entitled` expectation; `alerts:send` is all it needs today, and
+  gating will be announced when it lands. The gate on our side is still
+  `entitled('rfdeck.notify-relay')` for whether to attach the target at all —
+  which, with gating deferred, means it is granted.
+- Quiet hours and escalation are not in v1: a rule is match → throttle → send.
 
 ### Regional data
 
@@ -803,9 +813,6 @@ and tested** on Meros's side. What is left is short:
 - **The `RFDeck Browser` `client_id`** — the seeder gained a third client on
   2026-09-25 and has to be re-run per environment. This is the only thing blocking
   D.2, and it is one command.
-- **§8.5, the alert-post endpoint** — not built. Its target shape is specified and
-  `alerts:write` is not yet registered, so D.5 builds against the fake cloud and
-  pins later.
 - **The device-profile pack** — not published yet. D.7 is written to read it as a
   public pack.
 - Whether the **rotation grace window** lands. Changes nothing we build.
