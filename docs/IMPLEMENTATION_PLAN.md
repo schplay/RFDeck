@@ -1259,6 +1259,15 @@ a licensed channel is a regulatory problem, not merely a noisy one. RFDeck
 coordinates *within a band the operator declares usable* and should say so
 plainly, rather than implying it knows what is legal where you are standing.
 
+Stage D.6 is what eventually lifts that caveat, and only partly. The regional
+pack carries the FCC's own station contours; RFDeck runs the point-in-polygon
+against the venue's coordinates locally and feeds the occupied channels to the
+coordinator as an exclusion source. So with the feed, RFDeck can say something
+specific about broadcast licensing at that location — mirroring the regulator
+rather than guessing. Without it, it must keep saying nothing, which is why the
+caveat stays in the UI and is not deleted on the strength of a feature most
+installs will not have.
+
 ---
 
 ## Stages D and R — cloud, and the paid application *(planned, not started)*
@@ -1297,5 +1306,12 @@ tokens with family revocation, one Ed25519 key (`rfdeck-2026a`) verifying both
 entitlements and data packs, and the notification relay posting on the instance
 link's own token rather than a credential of its own. What remains is Meros's to
 build: frozen request bodies for document sync, the data-pack feed and the
-relay's alert post. The staging `client_id`s are in hand as of 2026-09-25, so
-**D.0 through D.2 are blocked on nothing but the Meros staging base URL**.
+relay's alert post. The staging `client_id`s and the staging base URL are both in
+hand as of 2026-09-25, so **D.0 and D.1 are clear to start**; D.2 waits only on
+which client the browser should use.
+
+The TV occupancy source is settled too — FCC public-domain data, curated by Meros
+and shipped as a signed pack — but the answer moved work onto RFDeck's side of
+the boundary: the pack carries station *contours*, not conclusions, so D.6 owns a
+point-in-polygon test, a channel-to-MHz table and a per-domain pack cache. It is
+an L, not the M this plan first assumed.

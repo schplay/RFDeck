@@ -169,9 +169,16 @@ Request only what a given link uses:
 | **Person** (browser, profile sync) | `openid profile email profiles:read profiles:write` — plus `offline_access` only if the browser keeps a refresh token |
 | **Instance** (server: show files, entitlements) | `openid offline_access backups:read backups:write entitlements:read` — plus `events:write` if RFDeck ever reports to roll-up |
 
-Public data-pack feeds (regional data, device profiles) are read **without a
-scope and without an account**. A private or entitled pack would use
-`compat:read`.
+Data-pack feeds split by whether the pack is public. A **public** pack is read
+with no scope and no account at all; an **entitled** pack needs the bearer's
+account to hold an active `rfdeck` entitlement and answers `401` or
+`403 not_entitled` otherwise.
+
+**Regional TV occupancy is an entitled pack**, so it needs the instance link and
+a live entitlement — an earlier draft of this plan had it the other way round.
+Whether the **device-profile** pack is public is not yet stated; it is not named
+in either list in §8.3. That decides whether D.7 needs a link at all, so it is
+worth one question rather than an assumption.
 
 ### CORS, which the browser device flow depends on
 
@@ -348,7 +355,7 @@ a service rather than getting a bespoke backend
 |---|---|---|
 | **Show files** — push/pull, version history | **Document sync** (§8.2) — account-scoped, named, versioned JSON | `/v1/docs/rfdeck/shows/{key}` — PUT a new version carrying `base_version` (**409** if the head moved; never a silent overwrite), GET the head or `?version=`, GET `/versions`. Server-visible now. Small JSON only |
 | **Profiles** — layout, meters, shortcuts, solo groups | **Profile sync** (§8.1) — person-scoped, last-write-wins per key | `/v1/profiles/rfdeck` — GET/PUT. Follows the person between venues |
-| **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement |
+| **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement. `regional-us-fcc` is an **entitled** pack and carries station contours, not answers: RFDeck runs the point-in-polygon locally |
 | **Notification relay** (email/SMS) | **Alerting + relay** (§8.5, extending the Phase 6 alerting engine) | Post an alert event **on the instance link's own token** — no separate credential. Meros applies the account's recipient rules and sends. SMTP/SMS credentials never touch a venue machine. Browser push and webhooks stay local and free. Not the Phase 4 *remote-access* relay, which is a different thing RFDeck does not use |
 | Multi-instance dashboard, account-wide show libraries | **Roll-up** + document sync | Already the direction; largely free once the above exist |
 
@@ -434,28 +441,76 @@ string in a consent screen, and getting it wrong is a 403 in a venue.
 
 ### Regional data
 
-Two signed data packs the server fetches, verifies and caches:
+Two signed data packs the server fetches, verifies and caches. Both are gated by
+`entitled('rfdeck.regional-data')`; without it the coordinator works exactly as
+it does today, against the shipped tables and whatever scans the operator has.
 
-- **TV/DTV occupancy by location.** The instance declares its venue location
-  (postcode/coordinates, stored locally). The pack gives the occupied TV
-  channels there, and the coordinator (C.13) offers "keep out of TV channels
-  licensed here" as an exclusion source alongside scans. This is what makes a
-  coordination plan lawful, not merely clean.
-- **Device profiles.** The band tables in `hardware/coordination/profiles.ts`
-  become the *shipped baseline*; the pack delivers updates — a new band, a
-  corrected range, an assumed figure verified — as data, applied without a
-  release. The profile module already flags what is assumed versus read; the
-  feed is where "read" comes from over time.
+#### TV/DTV occupancy — and the computation is ours
 
-Gated by `entitled('rfdeck.regional-data')`. Without it the coordinator works
-exactly as it does today, against the shipped tables.
+Meros's design is settled (full version: `spec/phase-10-regional-tv-occupancy.md`
+in the meros repository). The shape of it matters to us because **RFDeck does the
+geography, not the cloud**:
 
-A note on how packs are fetched: a **public** pack is read with no scope and no
-account at all — so the device-profile feed does not require a link, and an
-unlinked rig can still be up to date on band tables. Only a private or entitled
-pack needs an account, with `compat:read`. That is a better arrangement than this
-plan originally assumed, and it means the device-profile feed (D.7) has no
-dependency on the link beyond the entitlement question.
+- **Source.** The FCC's LMS station registry — RF channel, service, status,
+  coordinates — joined by application id to the FCC's TV Service Contour Data
+  Points, which give the service-area polygon per station. Public domain.
+  Deliberately *not* a live PAWS / white-space database: those have wound down
+  (Key Bridge moved to CBRS, Nominet to RED), and an offline-first rig could not
+  depend on one anyway.
+- **What we fetch.** `GET /v1/feeds/rfdeck/regional-us-fcc` while online,
+  verified offline with the embedded `rfdeck-2026a` key like any pack. Payload is
+  `{ domain, generated_at, source, channel_plan, stations[] }`, each station
+  carrying `facility_id`, `call_sign`, `rf_channel`, `service`, `lat`, `lon` and
+  a `contour` of `[lat, lon]` points.
+- **What we compute, at show time, with no network.** Point-in-polygon of the
+  venue location against each station's `contour`. The matching stations'
+  `rf_channel`s are occupied; map channel to MHz via `channel_plan`; hand the
+  result to the coordinator (C.13) as an exclusion source alongside scans.
+- **Refresh.** Meros republishes weekly — TV facilities change slowly. The cached
+  pack keeps working offline; `ETag` / `If-None-Match` makes a re-poll cheap.
+  Pre-fetch on link and on a schedule whenever online.
+- **Multi-region.** Packs are domain-tagged: `US-FCC` now, `UK-OFCOM` next. A
+  touring rig fetches every domain it operates in, so the cache is keyed by
+  domain rather than being a single file.
+- **Optional online path.** `GET /v1/regional/tv-occupancy?lat=&lon=&domain=`
+  returns the occupied channels directly, Meros running the polygon test. A
+  convenience only; the offline pack is the show-critical path and the one that
+  gets built.
+
+This is the "keep out of TV channels licensed here" input, and it is the
+regulator's own protection statement mirrored rather than anything RFDeck
+invents. Not in v1: protected wireless-mic *registrations*, which are a separate
+live licensed-user layer. Scanning stays on the rig.
+
+**New work on our side that the earlier plan did not account for**, because it
+assumed the cloud answered "which channels are occupied here":
+
+| Piece | Note |
+|---|---|
+| Point-in-polygon | Ray casting over a per-station contour. Pure geometry, no dependency, and eminently unit-testable — a station whose contour is known, a venue inside it and one outside |
+| Channel → MHz | Per `channel_plan`. A US table exists in the literature and the profile module is already the natural home for it |
+| Pack cache, keyed by domain | On disk beside the database, with the `ETag` so a weekly poll is one cheap request |
+| Venue location | Postcode or coordinates, stored locally, never sent — the polygon test is local, so the venue's position stays in the venue |
+
+That last point is worth noting against Principle 7: taking the offline path
+means the venue's location **never leaves the building**. The online convenience
+endpoint would send it, which is a reason to treat that path as genuinely
+optional rather than the default.
+
+**One question to settle before D.6:** how large is the pack? Every US station
+with a full contour polygon could be many megabytes of JSON, and it lands on a
+venue machine. Is it filterable — by state, by region, by a bounding box round
+the venue — or is one national pack the intended unit? This changes whether the
+cache is a file or a store, and it is the only thing in the design that looks
+like it might be awkward.
+
+#### Device profiles
+
+The band tables in `hardware/coordination/profiles.ts` become the *shipped
+baseline*; the pack delivers updates — a new band, a corrected range, an assumed
+figure verified — as data, applied without a release. The profile module already
+flags what is assumed versus read; the feed is where "read" comes from over
+time.
 
 ## Where it lands in the code
 
@@ -513,8 +568,8 @@ services wait for their shapes.
 | D.3 | Profile sync | M | D.2; §8.1 shape confirmed |
 | D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1; §8.2 shape confirmed |
 | D.5 | Notification relay target | S here; the sending is Meros's | The alert-post body shape. Auth is settled (the instance link's own token) |
-| D.6 | Regional data → coordinator exclusions; venue location | M | D.1; §8.3 shape; the occupancy data source |
-| D.7 | Device-profile feed | S | §8.3 shape. No link needed — public packs are read without an account |
+| D.6 | Regional TV occupancy: pack fetch and cache per domain, point-in-polygon, channel→MHz, coordinator exclusions, venue location | **L** — the geography is ours, not the cloud's | D.1 **and a live entitlement** (the pack is gated); the pack-size answer |
+| D.7 | Device-profile feed | S | §8.3 shape; whether that pack is public or entitled |
 
 The fake Meros in D.0 should **rotate refresh tokens and revoke a replayed
 family**, because that behaviour is the one most likely to break a real venue and
@@ -537,7 +592,7 @@ looks like this.
 |---|---|
 | Client registration — how many, confidential or public? | **Two, both public, no secret**: RFDeck Server and RFDeck Desktop, from a seeder, per environment. Device grant enabled, loopback also allowed. **Staging ids obtained 2026-09-25** — see Identity |
 | Redirect URIs for a browser at a DHCP venue address | **Use the device grant for the person link too**, browser-side — and Meros has now CORS-enabled the device, token, userinfo, revoke, discovery and `v1/*` endpoints so that it works from any origin |
-| Scope vocabulary | Given in full; see the table under Identity. Public packs need no scope and no account |
+| Scope vocabulary | Given in full; see the table under Identity. Public packs need no scope and no account, but **regional data is an entitled pack** and does need both |
 | Refresh-token policy | **Rotates, with reuse-detection family revocation.** Single-writer; commit the rotated token before using the new access token; `invalid_grant` means re-link. A ~60s grace window is under consideration but not decided |
 | Which public key verifies entitlements and packs | **One key**, the active `rfdeck` Ed25519 key, kid `rfdeck-2026a`, per environment. Rotation is additive — key the verifier by `kid` |
 | The relay's auth | **The instance link's own OAuth access token** — no separate credential (corrected 2026-09-25; the first answer described the unrelated Phase 4 remote-access relay). Only the account's recipient rules and SMS config remain to be built, on Meros's side |
@@ -555,6 +610,18 @@ live. But the formal line is deliberately deferred, which has a consequence for
 copy rather than for code: **"included today, pricing to be decided" is the
 honest framing, and "free forever" is not.** EDITIONS says so now.
 
+### The TV occupancy source, settled
+
+This was the last genuinely open owner decision, and the answer is a good one:
+**FCC public-domain data**, the LMS station registry joined to the TV Service
+Contour Data Points. Curated and republished weekly by Meros, shipped as a signed
+pack, and evaluated locally against the venue's coordinates.
+
+Two consequences worth carrying forward. It makes the paid tier's case *stronger*
+rather than weaker — see `docs/EDITIONS.md`, because charging for public-domain
+data needs its reasoning stated plainly. And it moves real work onto our side of
+the boundary: the cloud sends contours, not conclusions.
+
 ### Still owed by Meros
 
 - Frozen shapes for document sync (§8.2), the data-pack feed (§8.3) and the
@@ -567,10 +634,11 @@ honest framing, and "free forever" is not.** EDITIONS says so now.
 - **Which `client_id` the browser person link should use**, given that refresh
   families are `(user, client)`-scoped — see Identity. A third client, or no
   `offline_access` in the browser.
-- **The TV/DTV occupancy data source** — an open owner decision, and the
-  perishable licensed data the paid tier exists to pay for. The feed
-  *mechanism* is Meros's to build; the *data* behind the RFDeck packs is a
-  separate sourcing question. Flagged, and the mechanism is not blocked on it.
+- **The size and granularity of `regional-us-fcc`** — national or filterable.
+- **Whether the device-profile pack is public or entitled**, which decides
+  whether D.7 needs a link.
+- Nothing further on regional data: the source is settled (above) and the pack
+  shape is specified. Only its size and granularity are unanswered.
 
 ### Still ours
 

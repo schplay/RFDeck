@@ -118,6 +118,33 @@ works offline against whatever profiles shipped with the build; the maintained,
 auto-updating data feed is the subscription. That charges for the ongoing cost
 without withholding the capability.
 
+#### A wrinkle worth answering out loud: the TV data is public domain
+
+The TV/DTV occupancy pack is built from FCC public-domain data — the LMS station
+registry joined to the FCC's own service-contour points. Anyone can download
+both. So what exactly is being charged for?
+
+**Curation and freshness, not access.** What the subscription buys is the join
+between two datasets that are published separately, the contour geometry in a
+form a rig can evaluate offline, a weekly rebuild as facilities change, and a
+signature so the result can be trusted on a machine with no internet. Nobody is
+being charged for the right to know which TV channels are licensed near them;
+they are being charged for not having to assemble it every week.
+
+That distinction is worth stating plainly rather than hoping nobody asks,
+because the honest version is defensible and the evasive version is not. It is
+also the same shape as the device profiles: the data is knowable, the
+maintenance is the product.
+
+And it stays on the right side of the rule above — **diagnosis is never behind
+the paywall.** The coordinator is free and works against the shipped band tables
+and the operator's own scans. Without the feed RFDeck does not tell you that you
+are on a licensed channel and then ask for money to say which one; it simply has
+no opinion about broadcast licensing, and
+[`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) already requires it to
+say so plainly rather than implying it knows what is legal where you are
+standing. The feed adds a regulatory layer; it does not unlock a withheld answer.
+
 ### Email and SMS alerting is a cloud feature, not an application feature
 
 Stage C.2 originally justified its tiering by what each delivery method costs to
