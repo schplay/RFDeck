@@ -125,6 +125,7 @@ repository that is intended to go open source.
 |---|---|
 | `MEROS_BASE_URL` | Origin OIDC discovery hangs off. `https://staging.meros.co` for staging, `https://meros.co` for production |
 | `MEROS_CLIENT_ID` | This install's client — the *RFDeck Server* id for a headless install, the *RFDeck Desktop* id for the desktop build |
+| `MEROS_PACK_KEYS` | Meros's Ed25519 public key(s) for product `rfdeck`, as `<kid>=<base64url>` pairs. Verifies both signed entitlements and signed packs. Public by nature, but environment-specific — staging and production sign with different keys. A map rather than one value because rotation is additive |
 
 Values live outside the repository. In production they are systemd
 `Environment=` lines, which is how `PORT`, `HOST` and `DATABASE_URL` already
@@ -659,6 +660,19 @@ data needs its reasoning stated plainly. And it moves real work onto our side of
 the boundary: the cloud sends contours, not conclusions.
 
 ### Still owed by Meros
+
+Written out endpoint by endpoint, with field-level specifics, in
+[`docs/CLOUD_CONTRACT_QUESTIONS.md`](CLOUD_CONTRACT_QUESTIONS.md) — that is the
+document to hand over, rather than this summary.
+
+The sharpest one: **the `rfdeck-2026a` public key is in hand and verified as a
+valid 32-byte Ed25519 key, and it is still unusable**, because nothing states
+which bytes it signs. §8.3 describes a pack envelope carrying a `signature` field;
+§10's payload examples show no signature at all. Until that is pinned — where the
+signature travels, what is excluded before verifying, raw bytes or canonicalised
+— D.6 and D.7 cannot verify a pack, and a verifier that is subtly too lenient is
+worse than one that plainly does not work.
+
 
 - Frozen shapes for document sync (§8.2), the data-pack feed (§8.3) and the
   notification relay's alert-post body (§8.5). The relay's *auth* is settled.
