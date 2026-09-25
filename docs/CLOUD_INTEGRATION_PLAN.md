@@ -113,21 +113,42 @@ POSIX shell, which eats the backslashes and turns it into a class name that does
 not exist. The error says "class not found", which sends you looking for a
 missing file rather than a quoting problem.
 
-**Staging client ids** (obtained 2026-09-25):
+### Environment, not constants
 
-| Client | `client_id` |
+The `client_id` and the Meros origin are **per-environment configuration** and
+are never compiled in. A public OAuth client has no secret, so these are not
+credentials — but a production build that shipped a staging id would still be
+broken, and there is no reason for staging infrastructure ids to sit in a
+repository that is intended to go open source.
+
+| Variable | Meaning |
 |---|---|
-| RFDeck Server | `01a0d93a-4ea8-7313-92c7-c90b90c136ff` |
-| RFDeck Desktop | `01a0d93a-4eb7-7280-880e-27984005adf3` |
+| `MEROS_BASE_URL` | Origin OIDC discovery hangs off. `https://staging.meros.co` for staging, `https://meros.co` for production |
+| `MEROS_CLIENT_ID` | This install's client — the *RFDeck Server* id for a headless install, the *RFDeck Desktop* id for the desktop build |
 
-These are recorded rather than treated as secrets because a public OAuth client
-has none: the `client_id` travels in every authorization request and is visible
-to the browser by design. They are still **environment configuration, not
-constants** — production's will differ, and so will the Meros base URL that
-discovery hangs off. Both belong in env config read at runtime, so that a
-production build cannot ship staging ids. (If this repository goes open source as
-`docs/REPO_SEPARATION_PLAN.md` intends, these two lines can move to env-only;
-there is no need to publish staging infrastructure ids.)
+Values live outside the repository. In production they are systemd
+`Environment=` lines, which is how `PORT`, `HOST` and `DATABASE_URL` already
+reach the server — `scripts/install-ubuntu.sh` writes the unit, and the cloud
+variables belong in the same place. For development they are in
+`apps/server/.env.local`, which is gitignored; note that `apps/server/.env` is
+**tracked** and exists only for the Prisma CLI, so nothing environment-specific
+goes there.
+
+One thing D.1 has to add: **nothing loads a dotenv file at runtime today.** The
+server reads `process.env` directly and Prisma reads `.env` itself, so
+`.env.local` is a convention with no reader yet. D.1 either adds the loader
+(preferring `.env.local`) or documents that developers export the variables
+themselves. Production is unaffected — systemd provides them either way.
+
+**Which client does the browser use?** Unresolved, and it matters more than it
+looks. Refresh-token families are scoped to `(user, client)`, so if the browser
+person link requests `offline_access` under the same `client_id` the server's
+instance link uses, and the same Meros user is behind both, a rotation on one
+could revoke the other — the single-writer hazard, arriving through the back
+door. Two ways out: give the browser its own client, or **have the person link
+not request `offline_access` at all**, so it holds no refresh token and there is
+nothing to rotate. The second is simpler and costs a re-approval when the access
+token expires. Ask Meros before building D.2.
 
 Two clients rather than one is not tidiness. Refresh tokens rotate and a replay
 revokes the whole token family (below), so a desktop app and a headless service
@@ -487,8 +508,8 @@ services wait for their shapes.
 | Phase | What | Size | Needs |
 |---|---|---|---|
 | D.0 | Internal types + the fake Meros harness: well-known document, device grant, entitlements, signed statements, rotating refresh tokens | S | nothing — this is ours |
-| D.1 | Instance link (device grant), Cloud settings page, status UI, entitlement cache, `entitled()` / `useEntitled`; **nothing gated** | M | nothing on staging — ids in hand. The Meros staging base URL |
-| D.2 | Person link (browser-side device grant), link by `sub`, account menu | S | nothing on staging — ids in hand |
+| D.1 | Instance link (device grant), Cloud settings page, status UI, entitlement cache, `entitled()` / `useEntitled`; **nothing gated** | M | **nothing — clear to start** |
+| D.2 | Person link (browser-side device grant), link by `sub`, account menu | S | Which `client_id` the browser uses (see Identity) |
 | D.3 | Profile sync | M | D.2; §8.1 shape confirmed |
 | D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1; §8.2 shape confirmed |
 | D.5 | Notification relay target | S here; the sending is Meros's | The alert-post body shape. Auth is settled (the instance link's own token) |
@@ -543,11 +564,9 @@ honest framing, and "free forever" is not.** EDITIONS says so now.
   tested against the fake cloud, and it simply has nowhere to deliver until they
   exist.
 - Whether the rotation grace window lands. It changes nothing we build.
-- **The Meros staging base URL.** Every document says `https://meros.co`, but
-  client ids and the signing key are per-environment, so staging is elsewhere.
-  Discovery hangs off that origin, so a staging build cannot reach the cloud
-  without it. The only thing now standing between D.1/D.2 and a real end-to-end
-  link.
+- **Which `client_id` the browser person link should use**, given that refresh
+  families are `(user, client)`-scoped — see Identity. A third client, or no
+  `offline_access` in the browser.
 - **The TV/DTV occupancy data source** — an open owner decision, and the
   perishable licensed data the paid tier exists to pay for. The feed
   *mechanism* is Meros's to build; the *data* behind the RFDeck packs is a
