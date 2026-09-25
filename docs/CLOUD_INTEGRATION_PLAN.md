@@ -98,10 +98,16 @@ earlier version of this plan repeated it. That was a Meros gap, now closed.)
 
 ### Clients: two of them, both public
 
-Meros provides a seeder that registers **RFDeck Server** and **RFDeck Desktop**
-and prints their `client_id`s. Both are **public clients with no secret**, with
-the device grant enabled and a loopback redirect also allowed. Run per
-environment: ids differ between staging and production.
+Meros provides a seeder that registers **three** public clients and prints their
+`client_id`s. All are **public with no secret**, with the device grant enabled and
+a loopback redirect also allowed. Run per environment: ids differ between staging
+and production.
+
+| Client | Used by | Link |
+|---|---|---|
+| **RFDeck Server** | A headless install | Instance |
+| **RFDeck Desktop** | The desktop build's embedded server | Instance |
+| **RFDeck Browser** | The web UI in an operator's browser | Person |
 
 ```
 php artisan db:seed --class=RfdeckClientsSeeder
@@ -124,7 +130,8 @@ repository that is intended to go open source.
 | Variable | Meaning |
 |---|---|
 | `MEROS_BASE_URL` | Origin OIDC discovery hangs off. `https://staging.meros.co` for staging, `https://meros.co` for production |
-| `MEROS_CLIENT_ID` | This install's client — the *RFDeck Server* id for a headless install, the *RFDeck Desktop* id for the desktop build |
+| `MEROS_CLIENT_ID` | This install's client for the **instance** link — the *RFDeck Server* id for a headless install, the *RFDeck Desktop* id for the desktop build |
+| `MEROS_CLIENT_ID_BROWSER` | The *RFDeck Browser* id, for the **person** link. The server does not use it; it serves it to the web UI, which runs its own device flow |
 | `MEROS_PACK_KEYS` | Meros's Ed25519 public key(s) for product `rfdeck`, as `<kid>=<base64url>` pairs. Verifies both signed entitlements and signed packs. Public by nature, but environment-specific — staging and production sign with different keys. A map rather than one value because rotation is additive |
 
 Values live outside the repository. In production they are systemd
@@ -151,10 +158,18 @@ not request `offline_access` at all**, so it holds no refresh token and there is
 nothing to rotate. The second is simpler and costs a re-approval when the access
 token expires. Ask Meros before building D.2.
 
-Two clients rather than one is not tidiness. Refresh tokens rotate and a replay
-revokes the whole token family (below), so a desktop app and a headless service
-on the same box must be separate clients holding separate links, or they revoke
-each other.
+Three clients rather than one is not tidiness. Refresh-token families are scoped
+to `(user, client)` and a replay revokes the whole family (below), so any two
+things that hold their own refresh token for the same Meros user must be separate
+clients or they revoke each other. That covers both hazards: a desktop app and a
+headless service on the same box, and the browser's person link against the
+server's instance link.
+
+The browser having its own client is what closes the second hazard
+**structurally** rather than by convention — it was previously going to depend on
+the browser politely declining `offline_access`. It may still decline it, and
+probably should (Principle 3: nothing personal persisted on a venue machine), but
+that is now a free choice rather than the only safe option.
 
 Public clients mean **no secret ships in a build**, which is the only workable
 answer for a desktop application and removes the problem this plan previously
@@ -217,6 +232,19 @@ which is the point.
 The linked instance **acts within an account context**. It does not become a
 first-class object at Meros, and RFDeck should not build UI or data structures
 that assume it is one.
+
+**And the token is user-scoped, not account-pinned** (§11.C.5) — a correction to
+what this plan first assumed. The account is resolved per request: the
+`X-Meros-Account` header if RFDeck sends one, otherwise the caller's **personal
+account**. So `cloudAccountId` is a value RFDeck *learns* rather than a property of
+the token, and it comes from the `account_id` field of `GET /v1/entitlements`,
+which returns the account it resolved.
+
+For v1 that means: send no header, get the personal account, which matches
+"instance linked to an account" for every case RFDeck has. Acting inside an **org**
+account means sending the header with that account's id — and there is no
+list-my-accounts endpoint yet, so org selection is a later feature, not something
+to build UI for now.
 
 ### Refresh tokens rotate, and a replay is treated as a breach
 
@@ -281,12 +309,18 @@ redirect URI is involved, and nothing personal is written to the shared venue
 machine — Principle 3 holds exactly. This works because Meros CORS-enables the
 device, token, userinfo and revoke endpoints for a public client.
 
-The desktop application is the one case that *can* use auth-code + PKCE with a
-loopback redirect, since its browser is on the same machine and the seeded
-clients allow loopback. Whether to have two code paths or one is an
-implementation choice, not a design one — the device grant works in both places,
-so **start with the device grant only** and add the redirect path only if the
-desktop experience demands it.
+It uses its own **RFDeck Browser** client (§11.F), which is the point: with a
+separate client the person link cannot revoke the server's instance link for the
+same Meros user, however either side handles its tokens. RFDeck should still have
+the browser **decline `offline_access`** — it then holds no refresh token at all,
+nothing personal outlives the tab, and the cost is re-approving when the
+hour-long access token expires. That is Principle 3 taken literally, and it is now
+a choice rather than a workaround.
+
+The desktop application is the one case that *could* use auth-code + PKCE with a
+loopback redirect, since its browser is on the same machine. Not worth a second
+code path: the device grant works in both places, so **build the device grant
+only**.
 
 Used for **profile sync**. A person can be signed in on an instance that is not
 linked, and vice versa — that separation was the original insight and it holds.
@@ -316,6 +350,48 @@ token:
 the build and honoured through a grace period. This *is* the entitlement
 document the first version of this plan wanted; it already exists, and we do not
 design its crypto.
+
+### How a signed pack is verified — confirmed against a test vector
+
+The envelope was the missing piece: the payload is never signed in isolation, it
+is **wrapped**. `GET /v1/feeds/{product}/{pack}` returns
+
+```json
+{ "product": "rfdeck", "pack": "regional-us-fcc-tn40w076", "version": 1,
+  "kid": "rfdeck-2026a", "issued_at": "…",
+  "payload": { "…the pack object…": true },
+  "signature": "<base64url detached Ed25519>",
+  "signed": "MEROSPACK1.<base64url(header)>.<base64url(payload)>" }
+```
+
+and verification is exactly:
+
+```
+Ed25519_verify(base64url_decode(signature), utf8_bytes(signed), pubkey)
+```
+
+Four rules that matter more than they look:
+
+1. **The server hands us the signed string.** `signed` is not reconstructed from
+   the response — no re-serialising, no sorting keys, no canonicalisation. Its
+   raw ASCII bytes are the message. base64url is unpadded, `-_` alphabet.
+2. **Read the payload out of `signed`, not out of the response's `payload`
+   field.** Base64url-decode the third segment and parse that. The `payload` field
+   is a convenience, and trusting it means a re-serialisation could drift from
+   what was actually signed — a gap between "verified" and "used".
+3. **`kid` lives inside the signed header**, so a swapped `kid` fails
+   verification. Read it from the decoded header, look it up in `MEROS_PACK_KEYS`,
+   and refuse an unknown one while naming which key it wanted.
+4. **One verifier covers everything.** The same `MEROSPACK1.…` construction signs
+   entitlement statements, the index and every cell — the index is an ordinary
+   pack on the same terms.
+
+Meros supplied a worked vector under a throwaway demo key, and **it has been run:
+the signature verifies, a single flipped byte in `signed` is rejected, and the
+header and payload decode as documented** (`kid: rfdeck-demo`, cell `tn40w076`,
+one station on RF 26 with null `lat`/`lon`). It belongs in the D.0 harness as the
+verifier's first unit test, since it is a known-good pair that does not depend on
+any environment's real key.
 
 ### One key verifies both entitlements and data packs
 
@@ -391,9 +467,27 @@ the show file is that shape made round-trippable.
   ("Open from cloud"). Manual, explicit, named — not a background sync. An
   operator moving between venues wants "get my show from last week", not merge
   semantics on a live rig.
-- Conflicts are the client's call. A push carries the `base_version` it was
-  edited from; a 409 means the head moved, and RFDeck asks rather than
-  overwriting. A pull that would clobber unsaved local changes also asks.
+- Conflicts are the client's call, and the contract is now specific enough to
+  offer a real one. A version is a **monotonic integer per document from 1**, head
+  is the largest, and a push carries the `base_version` it was edited from. A stale
+  base returns **409 `version_conflict`** with the head attached —
+  `{ version, updated_at, content_hash }` — so the prompt can say *"the cloud copy
+  changed at 19:04, keep yours or take theirs?"* rather than just refusing.
+  Comparing `head.content_hash` against the local body's sha256 detects the case
+  where the bodies are identical and there is **no real conflict to raise**, which
+  is the one worth getting right: an operator asked to resolve a non-conflict
+  learns to click through the dialog.
+- Creating a brand-new key with a non-zero `base_version` is also a 409, head 0.
+- `body` is an arbitrary JSON object — not a string — capped at 1 MB
+  (**413 `document_too_large`**). Keys match
+  `^[A-Za-z0-9][A-Za-z0-9._-]{0,190}$`, so the show's uuid is fine.
+- The list is `{ account_id, product, collection, documents: [ { key, head_version,
+  updated_at } ] }`, newest-updated first; per-version detail (`content_hash`,
+  `size_bytes`, `author_user_id`, `created_at`) comes from `GET …/{key}/versions`.
+- **DELETE is soft.** History is retained, the key leaves the list, and a later
+  PUT to the same key revives it and continues its version line. There is no
+  restore call because pushing *is* the restore — worth knowing before building a
+  "restore deleted show" button that does not need to exist.
 - Performer photos go with the file, resized as they already are. **Nothing else
   binary** — this is where the no-media rule gets tested, and it holds.
 
@@ -403,8 +497,26 @@ A person's preferences follow them: layout, dense grid, meter settings, solo
 groups, shortcuts, notification thresholds. Today these live in `localStorage`
 per browser. With a person link they are also written to the Meros profile and
 read back on sign-in elsewhere. The stores already exist (`layoutStore`,
-`meterStore`, …); the work is a serialiser and the last-write-wins-per-key
-merge, with the local copy always usable offline.
+`meterStore`, …); the work is a serialiser and the merge.
+
+The contract, now settled — one namespace, `rfdeck`:
+
+- `GET /v1/profiles/rfdeck` returns parallel maps, with the per-key timestamps in
+  their own **`key_meta`** map rather than wrapped into the values:
+  `{ namespace, keys: { layout: …, meters: … }, key_meta: { layout: "ISO", … }, updated_at }`.
+  That settles the question this plan could not answer by guessing.
+- `PUT` takes `{ keys: { … } }` as a **partial merge**: only the keys sent are
+  touched, omitted keys are left alone, and a key sent as **`null` is removed**.
+  So two machines editing different preferences genuinely cannot clobber each
+  other — the property the whole feature depends on.
+- PUT **returns the merged document** at 200, same shape as GET, so there is no
+  read-back round trip and no guessing what the server decided.
+- A first-ever GET is **200 with empty `keys` and `key_meta`**, not a 404. "No
+  profile yet" never travels as an error, which keeps it out of the error path in
+  the UI.
+- The cap is 256 KB measured on the encoded `keys`, over which it is
+  **413 `profile_too_large`** — worth surfacing as itself rather than as "failed",
+  since the cause is a store that has grown something it should not be syncing.
 
 ## The paid tier
 
@@ -419,8 +531,7 @@ account configures recipients once for every instance it owns. Gated by
 
 **Auth is settled: the instance-link OAuth access token.** No separate relay
 credential, nothing extra for an operator to configure — the instance posts alert
-events on the link it already has, and the cloud applies the account's rules. The
-notification relay extends the Phase 6 alerting engine, which exists.
+events on the link it already has, and the cloud applies the account's rules.
 
 There are **two different relays at Meros**, and conflating them cost a round
 trip. This is the **notification relay** (Phase 8 §8.5, on the Phase 6 alerting
@@ -428,17 +539,28 @@ engine), and it is the one RFDeck wants. The **remote-access relay** (Phase 4) i
 a separate, unbuilt subsystem whose auth is still undecided, and RFDeck has no
 use for it. Worth naming both here so the next reader does not have to ask.
 
-What is still missing is on Meros's side and behind the boundary: the account's
-recipient rules and the SMS delivery configuration. That is a cloud-side build
-and a UI at Meros, not a contract RFDeck writes against — so **the only thing
-D.5 waits for is the alert-post body shape**, not permission and not a
-credential.
+**The endpoint does not exist yet.** Its shape is a target to build against the
+fake cloud, not a contract to point at real Meros:
 
-One scope question, small: the instance scope table carries `events:write` "if
-RFDeck reports telemetry or alerts to roll-up". Posting an alert event for relay
-reads like exactly that, so `events:write` is presumably the scope the relay
-target needs. Confirm when the body shape lands rather than guessing — it is one
-string in a consent screen, and getting it wrong is a 403 in a venue.
+- `POST /v1/alerts` (planned). *Not* `/v1/events`, which is roll-up ingest.
+- Body maps our `OutboundAlert` to
+  `{ severity: "info|warning|critical", type, message, channel: {id,name},
+  device: {id,name}, occurred_at, dedupe_key }`.
+- **Scope `alerts:write`** — a dedicated one, *not* the `events:write` this plan
+  guessed at. It is **not yet registered against the RFDeck clients**, so
+  requesting it against real Meros today is a guaranteed 403. It joins the seeder
+  when the endpoint ships.
+- **`dedupe_key` is ours to choose**, and Meros collapses retries on it. That is
+  the detail that matters operationally: a venue's link flapping must not turn one
+  dropout into five emails to a stage manager, and the idempotency key is how it
+  does not.
+- Errors: `429` with `Retry-After`; `403 not_entitled` without
+  `rfdeck.notify-relay`.
+
+Also still missing, and behind the boundary rather than in our way: the account's
+recipient rules and the SMS delivery configuration. Those are a Meros build and a
+Meros UI, so the D.5 target can be written and tested against the fake cloud long
+before they exist.
 
 ### Regional data
 
@@ -549,6 +671,18 @@ figure verified — as data, applied without a release. The profile module alrea
 flags what is assumed versus read; the feed is where "read" comes from over
 time.
 
+**Built as a public pack** (Meros's recommendation, and the right one): read with
+no scope and no account, so an **unlinked rig stays current on band tables**. It
+is a data-quality baseline, not a premium feature, and it is not in the paid list
+in `docs/EDITIONS.md`. The pack does not exist yet, and the free/paid line remains
+a deferred owner call — so build D.7 to read it as public, and if it is ever gated
+the only change on our side is attaching the instance link. Not a blocker either
+way.
+
+Note this means D.7 is the one cloud feature with **no dependency on the link at
+all**, which makes it the cheapest thing in Stage D to ship and the only one that
+does something useful for an operator who never signs in.
+
 ## Where it lands in the code
 
 Server (`apps/server/src/cloud/`):
@@ -601,12 +735,12 @@ services wait for their shapes.
 |---|---|---|---|
 | D.0 | Internal types + the fake Meros harness: well-known document, device grant, entitlements, signed statements, rotating refresh tokens | S | nothing — this is ours |
 | D.1 | Instance link (device grant), Cloud settings page, status UI, entitlement cache, `entitled()` / `useEntitled`; **nothing gated** | M | **nothing — clear to start** |
-| D.2 | Person link (browser-side device grant), link by `sub`, account menu | S | Which `client_id` the browser uses (see Identity) |
-| D.3 | Profile sync | M | D.2; §8.1 shape confirmed |
-| D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1; §8.2 shape confirmed |
-| D.5 | Notification relay target | S here; the sending is Meros's | The alert-post body shape. Auth is settled (the instance link's own token) |
+| D.2 | Person link (browser-side device grant on the *RFDeck Browser* client), link by `sub`, account menu | S | The **RFDeck Browser `client_id`** — re-run the seeder |
+| D.3 | Profile sync | M | D.2. Contract settled and built |
+| D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1. Contract settled and built |
+| D.5 | Notification relay target, against the fake cloud only | S here; the sending is Meros's | Nothing to start. Meros must build §8.5 and register `alerts:write` before it points anywhere real |
 | D.6 | Regional TV occupancy: index and cell fetch per domain, cell arithmetic, point-in-polygon, channel→MHz, coordinator exclusions, venue location | **L** — the geography is ours, not the cloud's | D.1 **and a live entitlement** (the packs are gated). Contract fully specified |
-| D.7 | Device-profile feed | S | §8.3 shape; whether that pack is public or entitled |
+| D.7 | Device-profile feed | S | Meros to publish the pack. No link needed — it is public |
 
 The fake Meros in D.0 should **rotate refresh tokens and revoke a replayed
 family**, because that behaviour is the one most likely to break a real venue and
@@ -661,35 +795,27 @@ the boundary: the cloud sends contours, not conclusions.
 
 ### Still owed by Meros
 
-Written out endpoint by endpoint, with field-level specifics, in
-[`docs/CLOUD_CONTRACT_QUESTIONS.md`](CLOUD_CONTRACT_QUESTIONS.md) — that is the
-document to hand over, rather than this summary.
+Everything RFDeck asked for in
+[`docs/CLOUD_CONTRACT_QUESTIONS.md`](CLOUD_CONTRACT_QUESTIONS.md) has been
+answered (hand-off §11), and profile sync, document sync and the feed are **built
+and tested** on Meros's side. What is left is short:
 
-The sharpest one: **the `rfdeck-2026a` public key is in hand and verified as a
-valid 32-byte Ed25519 key, and it is still unusable**, because nothing states
-which bytes it signs. §8.3 describes a pack envelope carrying a `signature` field;
-§10's payload examples show no signature at all. Until that is pinned — where the
-signature travels, what is excluded before verifying, raw bytes or canonicalised
-— D.6 and D.7 cannot verify a pack, and a verifier that is subtly too lenient is
-worse than one that plainly does not work.
+- **The `RFDeck Browser` `client_id`** — the seeder gained a third client on
+  2026-09-25 and has to be re-run per environment. This is the only thing blocking
+  D.2, and it is one command.
+- **§8.5, the alert-post endpoint** — not built. Its target shape is specified and
+  `alerts:write` is not yet registered, so D.5 builds against the fake cloud and
+  pins later.
+- **The device-profile pack** — not published yet. D.7 is written to read it as a
+  public pack.
+- Whether the **rotation grace window** lands. Changes nothing we build.
+- The account's recipient rules and SMS delivery config for the relay — a Meros
+  build and a Meros UI, behind the boundary rather than in our way.
 
-
-- Frozen shapes for document sync (§8.2), the data-pack feed (§8.3) and the
-  notification relay's alert-post body (§8.5). The relay's *auth* is settled.
-- The account's recipient rules and SMS delivery config, both on Meros's side of
-  the boundary. RFDeck is not blocked on either: the target can be written and
-  tested against the fake cloud, and it simply has nowhere to deliver until they
-  exist.
-- Whether the rotation grace window lands. It changes nothing we build.
-- **Which `client_id` the browser person link should use**, given that refresh
-  families are `(user, client)`-scoped — see Identity. A third client, or no
-  `offline_access` in the browser.
-- **Whether the device-profile pack is public or entitled**, which decides
-  whether D.7 needs a link.
-- Nothing further on regional data. The source is settled, the sharding answers
-  the sizing question, and the index-plus-cells contract is fully specified — this
-  one is ready to build as soon as D.1 lands and an account carries the
-  entitlement.
+Nothing further on regional data: source settled, sharding answers the sizing
+question, the index-and-cells contract is fully specified, and the signature
+scheme has been verified against a test vector. It is ready to build as soon as
+D.1 lands and an account carries the entitlement.
 
 ### Still ours
 

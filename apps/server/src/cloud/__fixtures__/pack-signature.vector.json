@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "Known-good Meros pack signature, supplied in hand-off 11.A under a throwaway",
+    "demo key. Verified working 2026-09-25: the signature checks out, a single",
+    "flipped byte in `signed` is rejected, and the header and payload decode as",
+    "documented.",
+    "",
+    "This is the verifier's first unit test. It uses a demo key rather than any",
+    "environment's real one, so it is safe to commit and does not go stale when",
+    "rfdeck-2026a rotates.",
+    "",
+    "Verification is exactly:",
+    "  Ed25519_verify(base64url_decode(signature), utf8_bytes(signed), publicKey)",
+    "Then read the payload from signed's third segment - NOT from a response's",
+    "`payload` field - so what is used can never drift from what was signed."
+  ],
+  "publicKeyBase64Url": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+  "signed": "MEROSPACK1.eyJwcm9kdWN0IjoicmZkZWNrIiwicGFjayI6InJlZ2lvbmFsLXVzLWZjYy10bjQwdzA3NiIsInZlcnNpb24iOjEsImtpZCI6InJmZGVjay1kZW1vIiwiaXNzdWVkX2F0IjoiMjAyNi0wOS0yNVQwMDowMDowMCswMDowMCJ9.eyJkb21haW4iOiJVUy1GQ0MiLCJjaGFubmVsX3BsYW4iOiJVUyIsImNlbGwiOiJ0bjQwdzA3NiIsImNlbGxfZGVnIjoyLCJzdGF0aW9ucyI6W3siZmFjaWxpdHlfaWQiOjEyNDc3LCJjYWxsX3NpZ24iOiJXVEVTVCIsInJmX2NoYW5uZWwiOjI2LCJzZXJ2aWNlIjoiRFQiLCJsYXQiOm51bGwsImxvbiI6bnVsbCwiY29udG91ciI6W1s0MC4xLC03NS4xXSxbMzkuOSwtNzQuOV1dfV19",
+  "signatureBase64Url": "VklGnwVHfGAYNuXBni9SaI3JMrv5QhhjHBDru2lhl4384q1CnapSyXZHW5jAkzKz9_jQT_R2QKY0j7rISR76Aw",
+  "expected": {
+    "header": {
+      "product": "rfdeck",
+      "pack": "regional-us-fcc-tn40w076",
+      "version": 1,
+      "kid": "rfdeck-demo",
+      "issued_at": "2026-09-25T00:00:00+00:00"
+    },
+    "payloadCell": "tn40w076",
+    "payloadChannelPlan": "US",
+    "payloadStationCount": 1,
+    "payloadFirstStationRfChannel": 26,
+    "payloadFirstStationLatLonAreNull": true
+  }
+}

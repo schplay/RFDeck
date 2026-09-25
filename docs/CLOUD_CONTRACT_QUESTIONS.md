@@ -1,4 +1,18 @@
-# What RFDeck still needs from Meros to write the cloud clients
+# What RFDeck needed from Meros to write the cloud clients
+
+> **All answered, 2026-09-25** — hand-off §11. Kept as the record of what was
+> asked and why, because the reasoning behind each question is what makes the
+> answers checkable. The answers themselves live in
+> [`CLOUD_INTEGRATION_PLAN.md`](CLOUD_INTEGRATION_PLAN.md), not here.
+>
+> | Asked | Answer |
+> |---|---|
+> | **A** Pack signature | A wrapped envelope: verify the server-supplied `signed` string (`MEROSPACK1.<b64url header>.<b64url payload>`) with detached Ed25519, no canonicalisation, and read the payload out of `signed` rather than the convenience field. **Verified here against Meros's test vector** |
+> | **B** Profile sync | Parallel maps with timestamps in `key_meta`; partial merge, `null` removes; PUT returns the merged doc; first GET is 200-empty; 413 `profile_too_large` |
+> | **C** Document sync | Monotonic integer versions from 1; 409 `version_conflict` carries the head; `body` is a JSON object, 1 MB; account resolved from `X-Meros-Account` or the personal account; soft delete, and a later PUT revives |
+> | **D** Alert post | `POST /v1/alerts` and a body shape, both **planned not built**; scope is `alerts:write`, not the `events:write` we guessed, and not yet registered |
+> | **E** Device-profile pack | Publish it **public** — an unlinked rig stays current on band tables |
+> | **F** Browser client | A dedicated **RFDeck Browser** public client, so the person link can never revoke the instance link |
 
 Companion to `docs/CLOUD_INTEGRATION_PLAN.md`. Every question here is answerable
 without RFDeck writing any code first, and each one names the phase it blocks.
