@@ -73,11 +73,14 @@ owns entitlements and synced state. See `docs/CLOUD_INTEGRATION_PLAN.md`.
 User profiles and show files: the things an operator wants to follow them
 between machines and between venues.
 
-> **Open question.** Meros treats person-scoped profile sync as a free
-> loss-leader, which matches this. It has not yet said which tier
-> account-scoped document sync — what show files are built on — sits in. If it
-> is paid, this section is wrong and has to be corrected before it is published
-> anywhere. Tracked in the cloud plan's open questions.
+> **How to write about this (Meros, 2026-09-24).** Both services are **ungated
+> as built** — document sync, which show files ride on, works for any account,
+> and profile sync is a free loss-leader by design. So this section matches what
+> is live. But the formal free-versus-paid line is a pricing decision the owner
+> has deliberately deferred, which constrains the *copy* rather than the code:
+> **"included today, pricing to be decided" is the honest framing, and "free
+> forever" is not.** Say the former anywhere this is published, and do not
+> hard-code a paywall against either service.
 
 ### Cloud — paid tier
 

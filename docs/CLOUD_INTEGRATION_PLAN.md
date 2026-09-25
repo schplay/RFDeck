@@ -14,6 +14,12 @@ repository, because the free cloud tier is free.
 > consumes it as a relying party. Where this document and the hand-off
 > disagree, the hand-off wins.
 >
+> **Second pass, 2026-09-25.** Every open question this plan raised has been
+> answered in the hand-off's §9, and some of those answers changed the design
+> rather than merely confirming it — the person link, the refresh-token rules
+> and the `nonce` handling in particular. Details are inline; the answers are
+> collected under "Questions, answered" at the end.
+>
 > Sources, in the `meros` repository:
 >
 > - `docs/handoff/rfdeck-cloud-integration.md` — the authority for this plan
@@ -79,19 +85,58 @@ returns. Per `meros-sso-oidc.md` that is `authorization_endpoint`,
 `token_endpoint`, `userinfo_endpoint`, `jwks_uri` and `end_session_endpoint`,
 with grants including `device_code`, and PKCE `S256`.
 
-Two caveats from the SSO doc that our client must respect:
+Identity comes from the `id_token` (RS256; verify against JWKS by `kid`, check
+`iss=https://meros.co` and `aud=<client_id>`) or from `/userinfo`. Either is
+fine.
 
-- **`nonce` is not echoed** into the id_token. Because we use
-  authorization-code + PKCE, nonce is not required — but a generic OIDC library
-  sends and validates it by default. **Turn that off**, or the person link
-  fails for a reason that looks like nothing.
-- Identity comes from the `id_token` (RS256; verify against JWKS by `kid`,
-  check `iss=https://meros.co` and `aud=<client_id>`) or from `/userinfo`.
-  Either is fine.
+**Keep `nonce` validation on.** Meros echoes the OIDC `nonce` into the id_token
+per OIDC Core §3.1.2.1 — send it, validate it, and leave the library's default
+behaviour alone. (An earlier version of the SSO doc said the opposite, and an
+earlier version of this plan repeated it. That was a Meros gap, now closed.)
 
-Meros registers our client and issues the `client_id`. We supply the redirect
-URIs — see the open question about what those can be for a server reached over
-a show LAN.
+### Clients: two of them, both public
+
+Meros provides a seeder —
+`php artisan db:seed --class=Database\Seeders\RfdeckClientsSeeder` — which
+registers **RFDeck Server** and **RFDeck Desktop** and prints their
+`client_id`s. Both are **public clients with no secret**, with the device grant
+enabled and a loopback redirect also allowed. Run per environment: ids differ
+between staging and production.
+
+Two clients rather than one is not tidiness. Refresh tokens rotate and a replay
+revokes the whole token family (below), so a desktop app and a headless service
+on the same box must be separate clients holding separate links, or they revoke
+each other.
+
+Public clients mean **no secret ships in a build**, which is the only workable
+answer for a desktop application and removes the problem this plan previously
+had to flag. Authorisation rests on the operator's consent and its granted
+scopes, not on RFDeck keeping a secret.
+
+### Scopes
+
+Request only what a given link uses:
+
+| Link | Scopes |
+|---|---|
+| **Person** (browser, profile sync) | `openid profile email profiles:read profiles:write` — plus `offline_access` only if the browser keeps a refresh token |
+| **Instance** (server: show files, entitlements) | `openid offline_access backups:read backups:write entitlements:read` — plus `events:write` if RFDeck ever reports to roll-up |
+
+Public data-pack feeds (regional data, device profiles) are read **without a
+scope and without an account**. A private or entitled pack would use
+`compat:read`.
+
+### CORS, which the browser device flow depends on
+
+Meros sends `Access-Control-Allow-Origin: *` (credentials disabled) on
+`oauth/device/code`, `oauth/token`, `oauth/userinfo`, `oauth/revoke`, the
+`.well-known` discovery and JWKS documents, and the `v1/*` API. These
+authenticate by device code or bearer token and never by cookie, so the wildcard
+is safe. `oauth/authorize` and `/cloud/*` are deliberately **not** CORS-enabled —
+they are session-bearing, top-level navigation only.
+
+This is what makes the person link work from a browser at an arbitrary venue
+address, and it is worth knowing it is deliberate rather than incidental.
 
 ## Instance link — OAuth 2.0 Device Authorization Grant (RFC 8628)
 
@@ -118,6 +163,38 @@ The linked instance **acts within an account context**. It does not become a
 first-class object at Meros, and RFDeck should not build UI or data structures
 that assume it is one.
 
+### Refresh tokens rotate, and a replay is treated as a breach
+
+This is the part of the design most likely to fail in a venue at 19:45, so it is
+spelled out rather than left to the HTTP client.
+
+Meros **rotates the refresh token on every use**, and replaying an
+already-rotated one **revokes the entire (user, client) token family** —
+deliberately, as a breach response. Three consequences, all of which shape
+`link.ts`:
+
+1. **The link is a single-writer resource.** One process, one link. A desktop
+   app and a headless service on the same machine must be separate clients with
+   separate links (which is why there are two `client_id`s); two processes
+   rotating the same token revoke each other. RFDeck must make sharing one
+   impossible rather than merely discouraged — the link belongs to the process
+   that owns the database.
+2. **Persist the rotated token durably before acting on the new access token.**
+   If we take the new access token and crash before the new refresh token is
+   committed, the next start presents a stale one, the family is revoked, and
+   the link is *dead* — not degraded. Commit first, then use.
+3. **`invalid_grant` on refresh means "unlinked", not "retry".** It is surfaced
+   to the operator as a link that has to be re-established by the device flow
+   again, with the reason. Retrying cannot help, and a background retry loop
+   would hide the one thing they need to know.
+
+Meros is *considering* a short rotation grace window — accepting the immediately
+previous refresh token for about 60 seconds, so a crash-before-commit heals
+itself — at the cost of slightly softer reuse detection. That call is the
+owner's and is not made. **Build for single-writer and re-link regardless:** it
+is correct either way, and a grace window would only turn a rare hard failure
+into a rare invisible recovery.
+
 ### Alternative: device-signed activation, for appliances
 
 If RFDeck ships appliances with a burned-in identity, the Ed25519
@@ -128,12 +205,33 @@ install on someone else's hardware); use device-signed activation for
 appliances. `docs/EDITIONS.md` already anticipates appliances as a product, so
 this is worth designing for even though it is not the first thing built.
 
-## Person link — Authorization Code + PKCE
+## Person link — the device grant, in the browser
 
-Exactly `meros-sso-oidc.md`: header → account menu → *Sign in with Meros*.
-Tokens are held in that browser only. RFDeck links its local person record by
-the **`sub`** claim — a stable, opaque Meros user id. `sub` is the join key;
-**email is a mutable claim** we may display or prefill, never key on.
+Header → account menu → *Sign in with Meros*. Tokens are held in **that browser
+only**, and RFDeck links its local person record by the **`sub`** claim — a
+stable, opaque Meros user id. `sub` is the join key; **email is a mutable claim**
+we may display or prefill, never key on.
+
+The mechanism is **not** the ordinary auth-code redirect, and the reason is
+RFDeck-shaped. RFDeck's UI is served by the venue's own server and an operator
+reaches it from a phone or laptop at something like `http://192.168.1.50:3000` —
+DHCP-assigned, different at every venue, impossible to pre-register as a
+redirect URI, and not loopback. So there is nowhere for a redirect to come back
+to.
+
+**The person link uses the RFC 8628 device grant too, browser-side** (confirmed
+by Meros): the page shows a user code and a QR, the operator approves on their
+phone, and the **browser** polls the token endpoint and keeps the tokens. No
+redirect URI is involved, and nothing personal is written to the shared venue
+machine — Principle 3 holds exactly. This works because Meros CORS-enables the
+device, token, userinfo and revoke endpoints for a public client.
+
+The desktop application is the one case that *can* use auth-code + PKCE with a
+loopback redirect, since its browser is on the same machine and the seeded
+clients allow loopback. Whether to have two code paths or one is an
+implementation choice, not a design one — the device grant works in both places,
+so **start with the device grant only** and add the redirect path only if the
+desktop experience demands it.
 
 Used for **profile sync**. A person can be signed in on an instance that is not
 linked, and vice versa — that separation was the original insight and it holds.
@@ -163,6 +261,19 @@ token:
 the build and honoured through a grace period. This *is* the entitlement
 document the first version of this plan wanted; it already exists, and we do not
 design its crypto.
+
+### One key verifies both entitlements and data packs
+
+Signed entitlement statements and signed data packs are both signed with the
+**product's active Ed25519 key** for `rfdeck`, key id **`rfdeck-2026a`**. So a
+build embeds **one** public key (32 bytes, handed over base64url) and it verifies
+both. Staging uses a committed development key; production uses a generated one,
+so the key is per-environment build configuration, not a constant.
+
+**Rotation is additive, so ship a table keyed by `kid` from the start** — not a
+single constant. A future `rfdeck-2026b` is then a data change rather than an
+application update, which matters for a build sitting in a flight case. A pack or
+statement carrying an unknown `kid` is refused, and says which key it wanted.
 
 Feature names are namespaced `rfdeck.*` — `rfdeck.regional-data`,
 `rfdeck.notify-relay`, `rfdeck.battery-prediction`, `rfdeck.cross-venue-rf`.
@@ -241,7 +352,7 @@ merge, with the local copy always usable offline.
 
 ## The paid tier
 
-### Notification relay
+### Notification relay — designed, explicitly not built
 
 The C.2 dispatcher fans alerts out to webhooks and browser push. A third target,
 `dispatchToCloud`, posts the same `OutboundAlert` to Meros; the account applies
@@ -249,6 +360,18 @@ its own rules (who gets email, who gets SMS, quiet hours, escalation) and Meros
 sends. SMTP and SMS credentials therefore never exist on a venue machine, and an
 account configures recipients once for every instance it owns. Gated by
 `entitled('rfdeck.notify-relay')`; without it the target is simply not attached.
+
+> **Do not build the relay client.** Meros has said plainly that the relay is
+> not implemented and its auth model — the instance's OAuth token versus a
+> separate scoped relay credential — is an open design item they will specify
+> before we write against it. Same rule as the other unfrozen contracts, and the
+> reason D.5 is marked blocked rather than merely later.
+>
+> One thing to confirm when they do: we asked about the **notification** relay
+> (Phase 8 §8.5, alerting) and the answer describes the **remote-access** relay
+> (Phase 4). Those read like two different subsystems, and the hand-off's own
+> feature table puts §8.5 on Phase 6. The instruction — don't build yet — is the
+> same either way, so this is a terminology check rather than a blocker.
 
 ### Regional data
 
@@ -268,6 +391,13 @@ Two signed data packs the server fetches, verifies and caches:
 Gated by `entitled('rfdeck.regional-data')`. Without it the coordinator works
 exactly as it does today, against the shipped tables.
 
+A note on how packs are fetched: a **public** pack is read with no scope and no
+account at all — so the device-profile feed does not require a link, and an
+unlinked rig can still be up to date on band tables. Only a private or entitled
+pack needs an account, with `compat:read`. That is a better arrangement than this
+plan originally assumed, and it means the device-profile feed (D.7) has no
+dependency on the link beyond the entitlement question.
+
 ## Where it lands in the code
 
 Server (`apps/server/src/cloud/`):
@@ -275,8 +405,8 @@ Server (`apps/server/src/cloud/`):
 | Module | Job |
 |---|---|
 | `client.ts` | HTTP client; discovers endpoints from the well-known document; attaches the access token; refreshes; reports "offline" as a state, not an exception |
-| `link.ts` | Device grant: start, poll, store, unlink |
-| `entitlements.ts` | Verify, cache, `entitled()`, grace handling |
+| `link.ts` | Device grant: start, poll, store, unlink. Owns the rotation discipline — commit the new refresh token before using the new access token, and turn `invalid_grant` into "re-link required" |
+| `entitlements.ts` | Verify (by `kid`, from a table so rotation is additive), cache, `entitled()`, grace handling |
 | `showfiles.ts` | Build a show file from the database; apply one to it |
 | `relay.ts` | The dispatcher's cloud target |
 | `feeds.ts` | Fetch, verify and cache data packs; hand exclusions to the coordinator and updates to the profile table |
@@ -296,11 +426,20 @@ Web: `stores/cloudStore.ts`; Settings → *Cloud* page (link, status, unlink,
 venue location); header account menu (person sign-in); *Save to cloud* / *Open
 from cloud* on Shows; the `useEntitled` hook.
 
+The person link is entirely browser-side and has **no server module**: the
+browser runs its own device flow against Meros and keeps the tokens in that
+browser. Nothing about it passes through `apps/server`, which is the mechanical
+form of Principle 3 — a personal token cannot end up on a shared venue machine
+if the server has no code that could store one.
+
 Testing follows the E2E harness pattern already in `e2e/serve.mjs`: a small fake
 Meros (Fastify, in-process) that serves a well-known document, the device grant,
-`/v1/entitlements` and the Phase 8 shapes; signs entitlements with a test key;
-and can be told to go offline or revoke. This is how the flows get built ahead
-of frozen endpoints without guessing, and it is the reason building now is safe.
+`/v1/entitlements` and the Phase 8 shapes; signs entitlements and packs with a
+test key under a `kid`; and can be told to go offline or revoke. It must also
+**rotate refresh tokens and revoke a replayed family**, because that is the
+behaviour most likely to break a real venue and a hostile harness is the only
+safe place to meet it. This is how the flows get built ahead of frozen endpoints
+without guessing, and it is the reason building now is safe.
 
 ## Phases
 
@@ -309,75 +448,59 @@ services wait for their shapes.
 
 | Phase | What | Size | Needs |
 |---|---|---|---|
-| D.0 | Internal types + the fake Meros harness: well-known document, device grant, entitlements, signed statements | S | nothing — this is ours |
-| D.1 | Instance link (device grant), Cloud settings page, status UI, entitlement cache, `entitled()` / `useEntitled`; **nothing gated** | M | `client_id` |
-| D.2 | Person link (PKCE), link by `sub`, account menu | S | `client_id`; the redirect-URI answer below |
+| D.0 | Internal types + the fake Meros harness: well-known document, device grant, entitlements, signed statements, rotating refresh tokens | S | nothing — this is ours |
+| D.1 | Instance link (device grant), Cloud settings page, status UI, entitlement cache, `entitled()` / `useEntitled`; **nothing gated** | M | the `client_id`s from the seeder |
+| D.2 | Person link (browser-side device grant), link by `sub`, account menu | S | the `client_id`s |
 | D.3 | Profile sync | M | D.2; §8.1 shape confirmed |
 | D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1; §8.2 shape confirmed |
-| D.5 | Notification relay target | S here; the sending is Meros's | D.1; §8.5 shape; recipient rules at Meros |
+| D.5 | Notification relay target — **blocked** | S here; the sending is Meros's | Meros to build the relay and specify its auth |
 | D.6 | Regional data → coordinator exclusions; venue location | M | D.1; §8.3 shape; the occupancy data source |
-| D.7 | Device-profile feed | S | D.6 |
+| D.7 | Device-profile feed | S | §8.3 shape. No link needed — public packs are read without an account |
+
+The fake Meros in D.0 should **rotate refresh tokens and revoke a replayed
+family**, because that behaviour is the one most likely to break a real venue and
+the only place it can be exercised safely is a test harness that is deliberately
+hostile about it.
 
 D.0–D.4 and the *app side* of D.5–D.7 are open-repository work: the free tier is
 free, and the paid tier's gate is a signature check on data Meros issues.
 Nothing here requires the paid application repository — see the separation plan
 for why that distinction matters.
 
-## Open questions
+## Questions, answered
 
-Ours to ask, not to assume. Several of the first version's "decisions needed"
-are now answered and have been deleted: the identity provider, data residency,
-the cloud domain and API base, and the entitlement format.
+All seven questions this plan raised were answered by Meros on 2026-09-24
+(hand-off §9). Recorded here because three of the answers are constraints rather
+than facts, and a future reader should not have to reconstruct why the design
+looks like this.
 
-### For Meros
+| We asked | Answer |
+|---|---|
+| Client registration — how many, confidential or public? | **Two, both public, no secret**: RFDeck Server and RFDeck Desktop, from a seeder, per environment. Device grant enabled, loopback also allowed |
+| Redirect URIs for a browser at a DHCP venue address | **Use the device grant for the person link too**, browser-side — and Meros has now CORS-enabled the device, token, userinfo, revoke, discovery and `v1/*` endpoints so that it works from any origin |
+| Scope vocabulary | Given in full; see the table under Identity. Public packs need no scope and no account |
+| Refresh-token policy | **Rotates, with reuse-detection family revocation.** Single-writer; commit the rotated token before using the new access token; `invalid_grant` means re-link. A ~60s grace window is under consideration but not decided |
+| Which public key verifies entitlements and packs | **One key**, the active `rfdeck` Ed25519 key, kid `rfdeck-2026a`, per environment. Rotation is additive — key the verifier by `kid` |
+| The relay's auth | **Undecided, because the relay is not built.** Do not write a relay client; Meros will specify it first |
+| Which tier is document sync in? | **Ungated as built** — it works for any account, as does profile sync. The free-versus-paid line is a deferred pricing decision the owner owns |
 
-1. **Client registration.** RFDeck needs its `client_id`(s) — plausibly one for
-   the desktop app and one for a server or appliance install, since they use
-   different grants. Which, and confidential or public? A desktop build cannot
-   keep a client secret, so if RFDeck is registered as a confidential client
-   that is a problem to solve rather than a setting to fill in.
-2. **Redirect URIs for the person link — the awkward one.** RFDeck's web UI is
-   served by the venue's own server, and an operator often reaches it from a
-   phone or laptop at `http://192.168.1.50:3000`. That origin is DHCP-assigned,
-   differs per venue, and cannot be pre-registered, so an ordinary auth-code
-   redirect cannot come back to it. A loopback redirect covers a browser on the
-   RFDeck host and not much else.
-   *A possible answer that keeps Principle 3 intact:* let the **person** link
-   use the device grant as well — the RFDeck page shows a code and a QR, the
-   operator approves on their phone, and the **browser** polls the token
-   endpoint and keeps the tokens, so nothing personal lands on the shared venue
-   machine. That needs the token endpoint to be reachable cross-origin from an
-   arbitrary LAN origin for a public client. Is it? If not, what is the intended
-   shape here?
-3. **Scopes.** The hand-off does not name any. RFDeck expects to need
-   `openid profile email`, `offline_access`, something for reading
-   entitlements, and something for document and profile sync. What is the
-   vocabulary, and are the scopes RFDeck needs registered against its client?
-4. **Refresh-token policy.** If refresh tokens rotate on use, a crash between
-   receiving a new one and committing it to SQLite means the next start presents
-   a stale token. What happens then — a plain failure we recover from by
-   re-linking, or something more severe? And is one account's refresh token safe
-   to hold in two places (a desktop app and a headless service on the same box),
-   or must that be prevented? This decides whether the link is a single-writer
-   resource, and it is the kind of thing that fails at 19:45.
-5. **The entitlement signing key.** Which public key does an RFDeck build ship
-   in order to verify Meros's signed entitlements and data packs, what is its
-   key id, and what is the rollover story? The hand-off refers to it slightly
-   differently in two places ("the RFDeck public key you ship" in §4, "a
-   Meros/RFDeck public key" in §5); we read both as *Meros's per-product public
-   key for `rfdeck`, compiled into our build*. Confirm.
-6. **Which tier are show files and profiles in?** `docs/EDITIONS.md` promises
-   both in the **free** cloud tier. Phase 8 calls profile sync a free
-   loss-leader and does not say either way for document sync. If document sync
-   is paid, EDITIONS needs correcting before it is published anywhere.
-7. **The relay's auth.** Does posting an alert event use the instance's OAuth
-   access token, or a separate ingest credential? This changes `relay.ts`, and
-   whether there is anything extra for an operator to configure.
+Two of those answers changed this document rather than confirming it: the person
+link is a device grant rather than a redirect flow, and `nonce` validation stays
+**on** (the SSO doc's earlier advice to disable it was a Meros gap, since fixed).
 
-### Tracked as owed by Meros
+### The tier question, and how to write about it
 
-- Frozen shapes for document sync (§8.2), the data-pack feed (§8.3) and the
-  relay's alert-post contract (§8.5).
+Document sync and profile sync are both ungated today, so `docs/EDITIONS.md`
+promising show files and profiles in the free tier is consistent with what is
+live. But the formal line is deliberately deferred, which has a consequence for
+copy rather than for code: **"included today, pricing to be decided" is the
+honest framing, and "free forever" is not.** EDITIONS says so now.
+
+### Still owed by Meros
+
+- Frozen shapes for document sync (§8.2) and the data-pack feed (§8.3).
+- The relay: built at all, then its auth model.
+- Whether the rotation grace window lands. It changes nothing we build.
 - **The TV/DTV occupancy data source** — an open owner decision, and the
   perishable licensed data the paid tier exists to pay for. The feed
   *mechanism* is Meros's to build; the *data* behind the RFDeck packs is a

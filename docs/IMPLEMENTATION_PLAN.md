@@ -1268,7 +1268,8 @@ Two plans sit alongside this one:
 - **`docs/CLOUD_INTEGRATION_PLAN.md`** — Stage D. **Revised 2026-09-23** against
   the Meros hand-off: **meros.co is the cloud**, and RFDeck consumes it as a
   relying party rather than defining one. An *instance* link (OAuth device
-  grant) and a *person* link (PKCE, joined on the OIDC `sub`), both pointing at
+  grant) and a *person* link (also the device grant, run browser-side, and
+  joined on the OIDC `sub`), both pointing at
   a Meros **account** — there is no "rig" object and no organisation of our
   own. Entitlements come from Meros in a fixed, account-scoped shape with
   `rfdeck.*` feature names, verified offline for appliances; gating is
@@ -1288,8 +1289,12 @@ Two plans sit alongside this one:
   year" rule (R.3); named users and roles as the first paid feature (R.4);
   appliances (R.5).
 
-Neither begins until the decisions each lists are made. Stage D's remaining
-decisions are mostly questions *for Meros* now rather than choices of ours —
-client registration, the scope vocabulary, redirect URIs for a server reached
-over a show LAN, and the refresh-token policy. D.0 (internal types and a fake
-Meros for the test harness) is not blocked on any of them.
+Neither begins until the decisions each lists are made. Stage D's are now
+largely settled: **Meros answered every open question on 2026-09-24** — two
+public clients from a seeder, the scope vocabulary, a browser-side device grant
+in place of a redirect the venue LAN could never register, rotating refresh
+tokens with family revocation, and one Ed25519 key (`rfdeck-2026a`) verifying
+both entitlements and data packs. What remains is Meros's to build: frozen
+shapes for document sync and the data-pack feed, and the notification relay,
+which is explicitly not to be written against yet. D.0 through D.2 are blocked
+on nothing but the `client_id`s.
