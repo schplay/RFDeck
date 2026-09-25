@@ -10,6 +10,7 @@ import { useBatteryStore, BatteryEstimate } from '../stores/batteryStore';
 import { getToken, serverOrigin } from '../lib/api';
 import { Channel, Alert, Show, Performer } from '@rfdeck/shared-types';
 import { usePerformerStore } from '../stores/performerStore';
+import { useCloudStore } from '../stores/cloudStore';
 import { useDetectionStore, Detection } from '../stores/detectionStore';
 import { useLiveStore, LiveState } from '../stores/liveStore';
 import { useStatusStore, ActiveCapture } from '../stores/statusStore';
@@ -270,6 +271,12 @@ function getSocket(): Socket {
   // card that is already on screen rather than leaving it frozen.
   _socket.on('channel:removed', ({ channelId }: { channelId: string }) => {
     useChannelStore.getState().removeChannel(channelId);
+  });
+
+  // The Meros link changed — linked, unlinked, refreshed, or died. Broadcast so
+  // an operator watching one browser sees what someone did in another.
+  _socket.on('cloud:status', (status: any) => {
+    useCloudStore.getState().setStatus(status);
   });
 
   // Device was explicitly removed from inventory — drop its channel strips immediately

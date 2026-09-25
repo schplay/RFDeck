@@ -1,0 +1,131 @@
+/* Settings → Cloud. Quiet: the link is set up once and then forgotten, so the
+   only thing here that should ever raise its voice is a link that has died. */
+
+.settings-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cloud-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 14px 0;
+}
+
+.cloud-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--color-surface-container-high);
+}
+
+.cloud-row:last-child { border-bottom: none; }
+
+.cloud-label {
+  flex: 0 0 120px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-on-surface-variant);
+}
+
+.cloud-value {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--color-on-surface);
+}
+
+.cloud-value.is-linked { color: var(--color-success, #46b26b); font-weight: 600; }
+
+.cloud-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.cloud-sub {
+  font-size: 12px;
+  color: var(--color-on-surface-variant);
+}
+
+/* ── Banners ───────────────────────────────────────────────────────────────
+   A dead link is the one thing on this page an operator has to act on. */
+.cloud-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.cloud-banner-error {
+  color: var(--color-error, #d05353);
+  background: color-mix(in srgb, var(--color-error, #d05353) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-error, #d05353) 35%, transparent);
+}
+
+.cloud-banner-warn {
+  color: var(--color-warning, #d08a2c);
+  background: color-mix(in srgb, var(--color-warning, #d08a2c) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning, #d08a2c) 30%, transparent);
+}
+
+.cloud-error {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--color-error, #d05353);
+}
+
+/* ── The device flow ───────────────────────────────────────────────────────
+   The code is the whole interaction, so it is the largest thing on the card and
+   readable across a rack at arm's length. */
+.cloud-pending {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px dashed var(--color-outline-variant, #444);
+  border-radius: var(--radius-md, 8px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cloud-verify-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.cloud-code {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--color-primary);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  /* Typed by hand from across the room, so the digits must not shuffle. */
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+
+@media (max-width: 640px) {
+  .cloud-row { flex-direction: column; gap: 2px; }
+  .cloud-label { flex-basis: auto; }
+  .cloud-code { font-size: 24px; letter-spacing: 0.12em; }
+}

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
 import { useSearchParams } from 'react-router-dom';
-import { Volume2, BellRing, Network, RefreshCw, ShieldCheck, Gauge } from 'lucide-react';
+import { Volume2, BellRing, Network, RefreshCw, ShieldCheck, Gauge, Cloud } from 'lucide-react';
 import { MeterSettings } from './MeterSettings';
 import { NotificationSettings } from './NotificationSettings';
 import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
 import { AudioPatchSettings } from './AudioPatch';
 import { AES67RoutingSettings } from './AES67Routing';
 import { RecordingSettings } from './RecordingSettings';
+import { CloudSettings } from './CloudSettings';
 import './Settings.css';
 
 interface AppSettings {
@@ -273,6 +274,9 @@ export default function Settings() {
           <Tabs.Trigger value="network" className="tabs-trigger">
             <Network size={16} /> Network Config
           </Tabs.Trigger>
+          <Tabs.Trigger value="cloud" className="tabs-trigger">
+            <Cloud size={16} /> Cloud
+          </Tabs.Trigger>
           <Tabs.Trigger value="access" className="tabs-trigger">
             <ShieldCheck size={16} /> Remote Access
           </Tabs.Trigger>
@@ -294,6 +298,10 @@ export default function Settings() {
           <AES67RoutingSettings />
           <AudioPatchSettings />
           <RecordingSettings />
+        </Tabs.Content>
+
+        <Tabs.Content value="cloud" className="tabs-content">
+          <CloudSettings />
         </Tabs.Content>
 
         <Tabs.Content value="access" className="tabs-content">
