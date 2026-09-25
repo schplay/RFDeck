@@ -1311,7 +1311,9 @@ hand as of 2026-09-25, so **D.0 and D.1 are clear to start**; D.2 waits only on
 which client the browser should use.
 
 The TV occupancy source is settled too — FCC public-domain data, curated by Meros
-and shipped as a signed pack — but the answer moved work onto RFDeck's side of
-the boundary: the pack carries station *contours*, not conclusions, so D.6 owns a
-point-in-polygon test, a channel-to-MHz table and a per-domain pack cache. It is
+and shipped as signed packs, sharded on a 2° grid so a rig fetches a small index
+plus its venue's cell and the eight around it rather than 60-odd MB of country.
+But the answer moved work onto RFDeck's side of the boundary: the cells carry
+station *contours*, not conclusions, so D.6 owns the cell arithmetic, a
+point-in-polygon test, a channel-to-MHz table and a per-domain cell cache. It is
 an L, not the M this plan first assumed.

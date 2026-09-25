@@ -355,7 +355,7 @@ a service rather than getting a bespoke backend
 |---|---|---|
 | **Show files** — push/pull, version history | **Document sync** (§8.2) — account-scoped, named, versioned JSON | `/v1/docs/rfdeck/shows/{key}` — PUT a new version carrying `base_version` (**409** if the head moved; never a silent overwrite), GET the head or `?version=`, GET `/versions`. Server-visible now. Small JSON only |
 | **Profiles** — layout, meters, shortcuts, solo groups | **Profile sync** (§8.1) — person-scoped, last-write-wins per key | `/v1/profiles/rfdeck` — GET/PUT. Follows the person between venues |
-| **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement. `regional-us-fcc` is an **entitled** pack and carries station contours, not answers: RFDeck runs the point-in-polygon locally |
+| **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement. Regional data is **entitled**, **sharded on a 2° grid** (an index plus the venue's cell and its eight neighbours), and carries station contours rather than answers: RFDeck runs the point-in-polygon locally |
 | **Notification relay** (email/SMS) | **Alerting + relay** (§8.5, extending the Phase 6 alerting engine) | Post an alert event **on the instance link's own token** — no separate credential. Meros applies the account's recipient rules and sends. SMTP/SMS credentials never touch a venue machine. Browser push and webhooks stay local and free. Not the Phase 4 *remote-access* relay, which is a different thing RFDeck does not use |
 | Multi-instance dashboard, account-wide show libraries | **Roll-up** + document sync | Already the direction; largely free once the above exist |
 
@@ -457,25 +457,47 @@ geography, not the cloud**:
   Deliberately *not* a live PAWS / white-space database: those have wound down
   (Key Bridge moved to CBRS, Nominet to RED), and an offline-first rig could not
   depend on one anyway.
-- **What we fetch.** `GET /v1/feeds/rfdeck/regional-us-fcc` while online,
-  verified offline with the embedded `rfdeck-2026a` key like any pack. Payload is
-  `{ domain, generated_at, source, channel_plan, stations[] }`, each station
-  carrying `facility_id`, `call_sign`, `rf_channel`, `service`, `lat`, `lon` and
-  a `contour` of `[lat, lon]` points.
-- **What we compute, at show time, with no network.** Point-in-polygon of the
-  venue location against each station's `contour`. The matching stations'
-  `rf_channel`s are occupied; map channel to MHz via `channel_plan`; hand the
-  result to the coordinator (C.13) as an exclusion source alongside scans.
-- **Refresh.** Meros republishes weekly — TV facilities change slowly. The cached
-  pack keeps working offline; `ETag` / `If-None-Match` makes a re-poll cheap.
-  Pre-fetch on link and on a schedule whenever online.
-- **Multi-region.** Packs are domain-tagged: `US-FCC` now, `UK-OFCOM` next. A
-  touring rig fetches every domain it operates in, so the cache is keyed by
-  domain rather than being a single file.
+- **What we fetch: an index, then a few cells.** A whole-US pack would be about
+  9,300 stations by up to 360 contour points — 60–70 MB of JSON, 15–25 MB
+  gzipped, on a venue machine, weekly. So it is **sharded on a fixed 2° lat/lon
+  grid** and we only ever hold the neighbourhood.
+  - **Index** — `GET /v1/feeds/rfdeck/regional-us-fcc`, fetched once on link.
+    Small, and it doubles as confirmation that the domain is published:
+    `{ domain, channel_plan, generated_at, source, cell_deg, cells: { "tn40w076": { stations }, … } }`.
+  - **Cells** — `GET /v1/feeds/rfdeck/regional-us-fcc-<cell>` for the cell
+    containing the venue **plus its eight neighbours**. A 6°×6° window far
+    exceeds any TV contour's reach, so nothing that could cover the venue is
+    missed, and a station is placed in *every* cell its contour overlaps so
+    edge-spanning coverage is not lost either. Each cell is
+    `{ domain, channel_plan, generated_at, source, cell, cell_deg, stations[] }`,
+    each station carrying `facility_id`, `call_sign`, `rf_channel`, `service`
+    and a `contour` of `[lat, lon]` points.
+
+  Both are entitled and both verify offline with the embedded `rfdeck-2026a` key.
+  This is the answer to the sizing question this plan raised: the cache is a
+  handful of small files, not a store.
+- **What we compute, at show time, with no network.** Union the stations across
+  the fetched cells, then point-in-polygon of the venue location against each
+  station's `contour`. The matching stations' `rf_channel`s are occupied; map
+  channel to MHz via `channel_plan`; hand the result to the coordinator (C.13) as
+  an exclusion source alongside scans.
+
+  **`lat` and `lon` are null for FCC data.** The contour drives occupancy, not the
+  transmitter's position, so there is no distance test to fall back on and no
+  temptation to write one.
+- **Refresh.** Meros republishes weekly — TV facilities change slowly. Cached
+  cells keep working offline; `ETag` / `If-None-Match` makes a re-poll cheap per
+  cell. Pre-fetch the index and the venue's cells on link and on a schedule
+  whenever online. **A touring rig re-derives its cells when the venue location
+  changes**, which makes venue location the trigger for a fetch rather than a
+  field that sits there.
+- **Multi-region.** Domain-tagged, same index-plus-cells scheme per domain:
+  `US-FCC` now, `UK-OFCOM` next. Fetch the domains and cells actually operated
+  in.
 - **Optional online path.** `GET /v1/regional/tv-occupancy?lat=&lon=&domain=`
-  returns the occupied channels directly, Meros running the polygon test. A
-  convenience only; the offline pack is the show-critical path and the one that
-  gets built.
+  returns `{ occupied_channels, exclusions, cell, source, generated_at }`, with
+  Meros loading the venue's cell and running the polygon test. A convenience only;
+  the offline cells are the show-critical path and the one that gets built.
 
 This is the "keep out of TV channels licensed here" input, and it is the
 regulator's own protection statement mirrored rather than anything RFDeck
@@ -489,7 +511,8 @@ assumed the cloud answered "which channels are occupied here":
 |---|---|
 | Point-in-polygon | Ray casting over a per-station contour. Pure geometry, no dependency, and eminently unit-testable — a station whose contour is known, a venue inside it and one outside |
 | Channel → MHz | Per `channel_plan`. A US table exists in the literature and the profile module is already the natural home for it |
-| Pack cache, keyed by domain | On disk beside the database, with the `ETag` so a weekly poll is one cheap request |
+| Cell cache | Index plus up to nine cells per domain, on disk beside the database, each with its own `ETag`. Files, not a store |
+| Cell id arithmetic | `floor(lat/2)*2`, `floor(lon/2)*2`, encoded `t{n\|s}{lat:02}{e\|w}{lon:03}` from the south-west corner. Neighbours are ±2° on each axis. Two traps below |
 | Venue location | Postcode or coordinates, stored locally, never sent — the polygon test is local, so the venue's position stays in the venue |
 
 That last point is worth noting against Principle 7: taking the offline path
@@ -497,12 +520,25 @@ means the venue's location **never leaves the building**. The online convenience
 endpoint would send it, which is a reason to treat that path as genuinely
 optional rather than the default.
 
-**One question to settle before D.6:** how large is the pack? Every US station
-with a full contour polygon could be many megabytes of JSON, and it lands on a
-venue machine. Is it filterable — by state, by region, by a bounding box round
-the venue — or is one national pack the intended unit? This changes whether the
-cache is a file or a store, and it is the only thing in the design that looks
-like it might be awkward.
+**Three things to get right in the cell arithmetic**, each of which fails quietly
+rather than loudly:
+
+1. **`floor`, never truncation.** For a western longitude these disagree:
+   `Math.trunc(-76.3 / 2) * 2` is −76, `Math.floor(-76.3 / 2) * 2` is −78, and
+   −78 is the correct south-west corner of the cell spanning `[-78, -76)`.
+   Truncating returns a real, adjacent, plausible cell full of real stations —
+   the wrong ones — for the entire western hemisphere, with nothing to indicate
+   anything went wrong. This deserves a unit test naming the hemisphere.
+2. **Derive neighbours in signed degrees, then encode.** Never by manipulating the
+   cell-id string. The hemisphere letter flips at zero: a venue at longitude −0.5
+   sits in `w002`, and its eastern neighbour is `e000`. `US-FCC` never crosses
+   either zero, but `UK-OFCOM` is named as next and straddles the prime
+   meridian — so a string-munging shortcut works right up until the feature it
+   would break is the reason it was written.
+3. **A missing cell is an answer, not a failure.** A cell absent from the index,
+   or one that 404s, means no stations there and nothing to exclude. The cloud
+   client reports unreachability as a state, so this must not be routed through
+   that path and shown to an operator as a problem.
 
 #### Device profiles
 
@@ -568,7 +604,7 @@ services wait for their shapes.
 | D.3 | Profile sync | M | D.2; §8.1 shape confirmed |
 | D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1; §8.2 shape confirmed |
 | D.5 | Notification relay target | S here; the sending is Meros's | The alert-post body shape. Auth is settled (the instance link's own token) |
-| D.6 | Regional TV occupancy: pack fetch and cache per domain, point-in-polygon, channel→MHz, coordinator exclusions, venue location | **L** — the geography is ours, not the cloud's | D.1 **and a live entitlement** (the pack is gated); the pack-size answer |
+| D.6 | Regional TV occupancy: index and cell fetch per domain, cell arithmetic, point-in-polygon, channel→MHz, coordinator exclusions, venue location | **L** — the geography is ours, not the cloud's | D.1 **and a live entitlement** (the packs are gated). Contract fully specified |
 | D.7 | Device-profile feed | S | §8.3 shape; whether that pack is public or entitled |
 
 The fake Meros in D.0 should **rotate refresh tokens and revoke a replayed
@@ -634,11 +670,12 @@ the boundary: the cloud sends contours, not conclusions.
 - **Which `client_id` the browser person link should use**, given that refresh
   families are `(user, client)`-scoped — see Identity. A third client, or no
   `offline_access` in the browser.
-- **The size and granularity of `regional-us-fcc`** — national or filterable.
 - **Whether the device-profile pack is public or entitled**, which decides
   whether D.7 needs a link.
-- Nothing further on regional data: the source is settled (above) and the pack
-  shape is specified. Only its size and granularity are unanswered.
+- Nothing further on regional data. The source is settled, the sharding answers
+  the sizing question, and the index-plus-cells contract is fully specified — this
+  one is ready to build as soon as D.1 lands and an account carries the
+  entitlement.
 
 ### Still ours
 
