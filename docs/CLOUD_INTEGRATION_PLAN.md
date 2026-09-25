@@ -512,7 +512,7 @@ assumed the cloud answered "which channels are occupied here":
 | Point-in-polygon | Ray casting over a per-station contour. Pure geometry, no dependency, and eminently unit-testable — a station whose contour is known, a venue inside it and one outside |
 | Channel → MHz | Per `channel_plan`. A US table exists in the literature and the profile module is already the natural home for it |
 | Cell cache | Index plus up to nine cells per domain, on disk beside the database, each with its own `ETag`. Files, not a store |
-| Cell id arithmetic | `floor(lat/2)*2`, `floor(lon/2)*2`, encoded `t{n\|s}{lat:02}{e\|w}{lon:03}` from the south-west corner. Neighbours are ±2° on each axis. Two traps below |
+| Cell id arithmetic | `floor(lat/2)*2`, `floor(lon/2)*2`, encoded `t{n\|s}{lat:02}{e\|w}{lon:03}` from the south-west corner. Neighbours are ±2° on each axis. Three traps below |
 | Venue location | Postcode or coordinates, stored locally, never sent — the polygon test is local, so the venue's position stays in the venue |
 
 That last point is worth noting against Principle 7: taking the offline path
