@@ -88,6 +88,78 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
     return cloud.unlink();
   });
 
+  // ── Show files ────────────────────────────────────────────────────────────
+  //
+  // Explicit and named. An operator moving between venues wants "get my show
+  // from last week", not merge semantics on a live rig, so every one of these is
+  // something they asked for.
+
+  /** What is in the cloud, annotated with what this machine already has. */
+  fastify.get('/cloud/showfiles', async (request, reply) => {
+    const cloud = service();
+    if (!cloud?.showFiles) return reply.code(409).send({ error: 'not_configured', shows: [] });
+    try {
+      return { shows: await cloud.showFiles.list() };
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'unavailable', message: err?.message, shows: [] });
+    }
+  });
+
+  /**
+   * Save a show to the cloud.
+   *
+   * Three outcomes, all of which the UI needs to tell apart: pushed, already
+   * current (the cloud has a byte-identical copy, so nothing to do and nothing to
+   * ask), or a conflict that only the operator can settle.
+   */
+  fastify.post('/cloud/showfiles/:showId', async (request, reply) => {
+    const { showId } = request.params as { showId: string };
+    const cloud = service();
+    if (!cloud?.showFiles) {
+      return reply.code(409).send({ error: 'not_configured' });
+    }
+    try {
+      const result = await cloud.showFiles.push(showId);
+      if (result.status === 'conflict') {
+        // 409 rather than 200: this is a refusal, and the body carries what the
+        // operator needs in order to choose.
+        return reply.code(409).send({
+          error: 'version_conflict',
+          message: result.conflict.message,
+          head: {
+            version: result.conflict.headVersion,
+            updatedAt: result.conflict.headUpdatedAt,
+          },
+        });
+      }
+      return result;
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'push_failed', message: err?.message });
+    }
+  });
+
+  /**
+   * Open a show from the cloud, overwriting the local copy.
+   *
+   * Destructive by design — it is the answer to "I want the cloud's version" —
+   * so the confirmation belongs in the UI, which knows whether there are local
+   * changes to lose.
+   */
+  fastify.post('/cloud/showfiles/:showId/pull', async (request, reply) => {
+    const { showId } = request.params as { showId: string };
+    const { version } = (request.body ?? {}) as { version?: number };
+    const cloud = service();
+    if (!cloud?.showFiles) return reply.code(409).send({ error: 'not_configured' });
+    try {
+      const result = await cloud.showFiles.pull(showId, version);
+      // Every open client is showing this show's cast; tell them it changed.
+      (fastify as any).io?.emit('shows:updated');
+      return result;
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'pull_failed', message: err?.message });
+    }
+  });
+
   /**
    * The venue's location, for the regional TV-occupancy exclusion source.
    *

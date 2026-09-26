@@ -6,6 +6,8 @@ import { CloudConfig, readCloudConfig } from './config';
 import { CloudLink, PendingLink } from './link';
 import { PrismaLinkStore, PrismaEntitlementCache } from './linkStore';
 import { Entitlements } from './entitlements';
+import { Documents } from './documents';
+import { ShowFiles } from './showFiles';
 import { CloudStatus } from './types';
 
 /**
@@ -21,6 +23,8 @@ export class CloudService {
   private readonly client: CloudClient | null;
   private readonly link: CloudLink | null;
   private readonly entitlements: Entitlements | null;
+  /** Show files. Null when the cloud is not configured. */
+  readonly showFiles: ShowFiles | null;
   private refreshTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly io: Server, config: CloudConfig | null = readCloudConfig()) {
@@ -29,6 +33,7 @@ export class CloudService {
       this.client = null;
       this.link = null;
       this.entitlements = null;
+      this.showFiles = null;
       log.debug('[Cloud] Not configured (no MEROS_BASE_URL / MEROS_CLIENT_ID) — cloud features are off');
       return;
     }
@@ -36,6 +41,7 @@ export class CloudService {
     const announce = () => void this.announce();
     this.link = new CloudLink(config, this.client, new PrismaLinkStore(), announce);
     this.entitlements = new Entitlements(this.client, this.link, new PrismaEntitlementCache(), announce);
+    this.showFiles = new ShowFiles(new Documents(this.client, this.link));
     this.config = config;
     log.info(`[Cloud] Configured for ${config.baseUrl} as client ${config.clientId}`);
   }

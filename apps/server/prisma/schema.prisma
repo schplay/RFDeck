@@ -112,6 +112,31 @@ model MaintenanceEntry {
   @@index([deviceId, at])
 }
 
+// What RFDeck knows about a document it has synced to Meros.
+//
+// Document sync versions a document with a monotonic integer, and a push must
+// carry the `base_version` it was edited from — a stale one comes back 409 with
+// the head attached rather than silently overwriting. So the version RFDeck last
+// saw has to be remembered somewhere, and it is cloud bookkeeping rather than
+// anything the Show model should carry.
+//
+// `contentHash` is Meros's sha256 of the body. Comparing it against a freshly
+// built file answers "has this actually changed since I pushed it", which is what
+// turns a 409 into either a real conflict or a no-op.
+model CloudDocument {
+  // "<collection>/<key>", e.g. "shows/<show uuid>".
+  path        String   @id
+  collection  String
+  key         String
+  version     Int
+  contentHash String?
+  pushedAt    DateTime @default(now())
+  // Null until a pull; set when this document was last read from the cloud.
+  pulledAt    DateTime?
+
+  @@index([collection])
+}
+
 model Settings {
   id                 String   @id @default(uuid())
   aes67MulticastIp   String   @default("239.69.0.1")

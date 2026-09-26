@@ -875,14 +875,10 @@ and tested** on Meros's side. What is left is short:
   D.2, and it is one command.
 - **The device-profile pack** — not published yet. D.7 is written to read it as a
   public pack.
-- **How RFDeck finds and authenticates to a local Imperio.** The protocol half of
-  this question is answered: a collector is anything that accepts the envelope
-  binding, and an Imperio accepts the same `POST /v1/events`, so there is one
-  emitter rather than two integrations. Still unstated: **discovery** (mDNS, a
-  configured address, something else) and **what bearer token a local one takes** —
-  it accepts events with no cloud account at all, so it cannot want the instance
-  link's token. And: should RFDeck send to an Imperio *and* the cloud when both are
-  present, or does the Imperio relay make that a duplicate?
+- **Imperio — parked (owner, 2026-09-26).** Not a concern for now. The emitter is
+  being built around a *list* of collectors rather than one cloud URL, so adding
+  an Imperio later is configuration rather than a rewrite. The details to settle
+  when it returns are discovery and what token a local one takes.
 - Whether the **rotation grace window** lands. Changes nothing we build.
 
 Nothing further on regional data: source settled, sharding answers the sizing
@@ -894,24 +890,12 @@ D.1 lands and an account carries the entitlement.
 
 - Whether the free tier has quotas (show files per account, storage).
 
-### Ours to raise, because nobody else will
+### Settled: the privacy tier
 
-**Which privacy tier should RFDeck's events carry, and does the operator get a
-say?**
+Asked and answered (owner, 2026-09-26): **not a concern.** Meros Cloud is not a
+public portal, so the fact that RFDeck's channel names are frequently performers'
+names does not call for a reduced privacy tier or an operator-facing switch.
+Events go out at the ordinary tier with everything else.
 
-The event envelope has privacy tiers — `full`, `operational`, `anonymous` — and
-RFDeck's stream is an awkward case for the most permissive one. Channel names in
-this application are routinely *people's names*: the mic check is built from a
-cast list, and a dropout event on "Elphaba" or "Fiyero" names a performer at a
-venue at a time. That is not telemetry in the sense the word usually implies.
-
-None of this is a reason not to send events — the owner has decided they flow,
-remote capability depends on them, and it is their product. It is a reason to
-decide *deliberately* which tier they go out at, and probably to let the operator
-choose: a touring A2 may be relaxed about it and a West End production may not.
-The mechanism appears to exist already, so this is a choice to make rather than a
-thing to build.
-
-Worth settling before D.5 rather than after, because retrofitting a tier onto an
-event stream people are already receiving is a migration, and retrofitting an
-operator-facing switch onto it is a conversation about what was already sent.
+Recorded rather than deleted, so it reads as a decision that was taken rather
+than a question nobody thought of.

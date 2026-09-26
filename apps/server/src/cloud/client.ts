@@ -29,6 +29,15 @@ export class CloudRefused extends Error {
     readonly code: string | null,
     message: string,
     readonly retryAfterSec: number | null = null,
+    /**
+     * The parsed error body, when there was one.
+     *
+     * Kept because some refusals are *informative* rather than merely negative:
+     * a 409 from document sync carries the current head so a conflict can be
+     * turned into a real choice for the operator, and discarding it would leave
+     * only "conflict" to show them.
+     */
+    readonly body: any = null,
   ) {
     super(message);
     this.name = 'CloudRefused';
@@ -139,6 +148,7 @@ export class CloudClient {
         parsed?.error_description ?? parsed?.message ?? parsed?.error ?? text.slice(0, 200) ??
           `HTTP ${response.status}`,
         Number.isFinite(retryAfter) ? retryAfter : null,
+        parsed,
       );
     }
     return parsed as T;

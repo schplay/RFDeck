@@ -47,6 +47,8 @@ export class FakeMeros {
   private accessTokens = new Set<string>();
   /** Events received, keyed (source.instance, id) so dedupe is real. */
   readonly events = new Map<string, any>();
+  /** Documents, by "collection/key". Versioned the way Meros versions them. */
+  readonly documents = new Map<string, { version: number; body: any; updated_at: string; hash: string }[]>();
   private signingKey: crypto.KeyObject;
 
   readonly publicKeyBase64Url: string;
@@ -55,6 +57,8 @@ export class FakeMeros {
   readonly requests: { method: string; path: string; body: string; auth: string | null }[] = [];
   /** Set when a replay revoked a family — the thing a test wants to know happened. */
   familyRevocations = 0;
+  /** Soft-deleted document paths — history is kept, the key leaves the listing. */
+  readonly deletedDocuments = new Set<string>();
 
   constructor(private readonly options: FakeMerosOptions = {}) {
     const pair = crypto.generateKeyPairSync('ed25519');
@@ -212,6 +216,96 @@ export class FakeMeros {
           expires_at: this.options.expiresAt ?? new Date(Date.now() + 30 * 86400_000).toISOString(),
         }],
       });
+    }
+
+    // ── Document sync ──────────────────────────────────────────────────────
+    const docs = /^\/v1\/docs\/rfdeck\/([^/]+)(?:\/([^/]+))?(\/versions)?$/.exec(path);
+    if (docs) {
+      if (!this.authorized(req)) return send(401, { error: 'invalid_token' });
+      const collection = decodeURIComponent(docs[1]);
+      const key = docs[2] ? decodeURIComponent(docs[2]) : null;
+      const wantsVersions = !!docs[3];
+
+      if (!key) {
+        const documents = [...this.documents.entries()]
+          .filter(([p]) => p.startsWith(`${collection}/`) && !this.deletedDocuments.has(p))
+          .map(([p, versions]) => ({
+            key: p.slice(collection.length + 1),
+            head_version: versions[versions.length - 1].version,
+            updated_at: versions[versions.length - 1].updated_at,
+          }))
+          .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+        return send(200, {
+          account_id: this.options.accountId ?? 'acct-fake-1',
+          product: 'rfdeck', collection, documents,
+        });
+      }
+
+      const full = `${collection}/${key}`;
+      const versions = this.documents.get(full);
+
+      if (req.method === 'GET' && wantsVersions) {
+        if (!versions) return send(404, { error: 'not_found' });
+        return send(200, {
+          versions: versions.map(v => ({
+            version: v.version, content_hash: v.hash,
+            size_bytes: JSON.stringify(v.body).length, created_at: v.updated_at,
+            author_user_id: 'user-fake-1',
+          })),
+        });
+      }
+
+      if (req.method === 'GET') {
+        if (!versions) return send(404, { error: 'not_found' });
+        const wanted = new URL(req.url ?? '', 'http://x').searchParams.get('version');
+        const found = wanted
+          ? versions.find(v => v.version === Number(wanted))
+          : versions[versions.length - 1];
+        if (!found) return send(404, { error: 'not_found' });
+        return send(200, {
+          key, version: found.version, body: found.body,
+          content_hash: found.hash, updated_at: found.updated_at,
+        });
+      }
+
+      if (req.method === 'PUT') {
+        const payload = body ? JSON.parse(body) : {};
+        if (!payload.body || typeof payload.body !== 'object') {
+          return send(422, { error: 'invalid_body', message: '`body` must be an object.' });
+        }
+        const encoded = JSON.stringify(payload.body);
+        if (encoded.length > 1024 * 1024) {
+          return send(413, { error: 'document_too_large' });
+        }
+        const head = versions?.[versions.length - 1] ?? null;
+        const headVersion = head?.version ?? 0;
+        const base = payload.base_version ?? 0;
+        if (base !== headVersion) {
+          // Meros answers 409 with the head attached, so the client can offer a
+          // real choice rather than just reporting a conflict.
+          return send(409, {
+            error: 'version_conflict',
+            message: 'The head has moved since that version.',
+            head: head
+              ? { version: head.version, updated_at: head.updated_at, content_hash: head.hash }
+              : { version: 0, updated_at: null, content_hash: null },
+          });
+        }
+        this.deletedDocuments.delete(full);
+        const hash = crypto.createHash('sha256').update(encoded, 'utf8').digest('hex');
+        const next = {
+          version: headVersion + 1, body: payload.body,
+          updated_at: new Date().toISOString(), hash,
+        };
+        if (versions) versions.push(next); else this.documents.set(full, [next]);
+        return send(200, { key, version: next.version, content_hash: hash, updated_at: next.updated_at });
+      }
+
+      if (req.method === 'DELETE') {
+        // Soft: history is retained and a later PUT revives the version line.
+        this.deletedDocuments.add(full);
+        return send(200, { deleted: true });
+      }
     }
 
     if (path === '/v1/events') {
