@@ -34,6 +34,13 @@ export interface FakeMerosOptions {
   expiresAt?: string | null;
   accountId?: string;
   kid?: string;
+  /**
+   * Answer `insufficient_scope` on the inventory endpoint.
+   *
+   * What an install linked before those scopes existed actually gets. Worth being
+   * able to reproduce, because it is a 403 that means "re-link" rather than "pay".
+   */
+  withholdInventoryScope?: boolean;
 }
 
 export class FakeMeros {
@@ -62,6 +69,9 @@ export class FakeMeros {
   readonly deletedDocuments = new Set<string>();
   /** Packs this fake publishes, by name. */
   readonly packs = new Map<string, { payload: unknown; version: number; entitled: boolean }>();
+  /** The account's inventory listing. Replaced wholesale by a PUT, as Meros does. */
+  inventory: any[] = [];
+  inventoryUpdatedAt: string | null = null;
 
   constructor(private readonly options: FakeMerosOptions = {}) {
     const pair = crypto.generateKeyPairSync('ed25519');
@@ -247,6 +257,47 @@ export class FakeMeros {
       return send(200, this.signPack(name, published.payload, published.version), { ETag: etag });
     }
 
+    // ── The online inventory listing ───────────────────────────────────────
+    //
+    // A reconcile, like the real thing: a PUT replaces the whole set, so a device
+    // absent from the body is gone. Modelled faithfully because that is the part
+    // with teeth — a client that thought this merged would silently delete.
+    if (path === '/v1/inventory/rfdeck') {
+      if (!this.authorized(req)) return send(401, { error: 'invalid_token' });
+      if (this.options.withholdInventoryScope) {
+        // What a token minted before these scopes existed gets. Distinct from
+        // `not_entitled`, and the two send an operator to different places.
+        return send(403, { error: 'insufficient_scope', scope: 'inventory:write' });
+      }
+      if (req.method === 'GET') {
+        return send(200, {
+          product: 'rfdeck',
+          count: this.inventory.length,
+          updated_at: this.inventoryUpdatedAt,
+          devices: this.inventory,
+        });
+      }
+      if (req.method === 'PUT') {
+        let parsed: any = null;
+        try { parsed = JSON.parse(body); } catch { /* handled as bad_request below */ }
+        if (!Array.isArray(parsed?.devices)) return send(400, { error: 'bad_request' });
+        if (parsed.devices.length > 5000) return send(413, { error: 'inventory_too_large' });
+        const missing = parsed.devices.findIndex((d: any) => !d || typeof d.id !== 'string' || !d.id);
+        if (missing >= 0) {
+          return send(422, {
+            error: 'invalid_inventory',
+            message: `devices[${missing}].id is required`,
+          });
+        }
+        this.inventory = parsed.devices;
+        this.inventoryUpdatedAt = new Date().toISOString();
+        return send(200, {
+          product: 'rfdeck', count: this.inventory.length, updated_at: this.inventoryUpdatedAt,
+        });
+      }
+      return send(405, { error: 'method_not_allowed' });
+    }
+
     // ── Document sync ──────────────────────────────────────────────────────
     const docs = /^\/v1\/docs\/rfdeck\/([^/]+)(?:\/([^/]+))?(\/versions)?$/.exec(path);
     if (docs) {
@@ -403,7 +454,8 @@ export class FakeMeros {
       token_type: 'Bearer',
       expires_in: 3600,
       refresh_token: refresh,
-      scope: 'openid offline_access entitlements:read backups:read backups:write events:write',
+      scope: 'openid offline_access entitlements:read backups:read backups:write events:write'
+        + ' inventory:read inventory:write',
     };
   }
 

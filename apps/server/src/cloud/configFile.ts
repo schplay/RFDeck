@@ -13,8 +13,8 @@
  *
  * ── Credentials travel, because a half-restored rig is not a restore ────────
  *
- * Device passwords and webhook secrets **are** in here, as usable values. An
- * earlier version carried only a boolean saying a password had existed, on the
+ * Device passwords **are** in here, as usable values. An earlier version carried only
+ * a boolean saying a password had existed, on the
  * reasoning that a snapshot holding credentials was a liability. That was the wrong
  * trade: an operator restoring a backup expects the rig to come back working, and
  * devices silently falling out because their passwords were dropped is exactly the
@@ -100,23 +100,6 @@ export interface ConfigPerformer {
   hadPhoto: boolean;
 }
 
-/**
- * A configured webhook, its signing secret included.
- *
- * Same reasoning as device passwords: a restored rig that has quietly stopped
- * notifying anyone is not restored. The `last*` and `failures` columns are
- * deliberately absent — they describe how delivery has been going, which is a
- * property of the install that was running, not of the configuration.
- */
-export interface ConfigWebhook {
-  id: string;
-  name: string;
-  url: string;
-  secret: string | null;
-  enabled: boolean;
-  minSeverity: string;
-}
-
 export interface ConfigAudioPatch {
   channelKey: string;
   deviceId: string;
@@ -156,7 +139,6 @@ export interface ConfigFile {
   devices: ConfigDevice[];
   performers: ConfigPerformer[];
   audioPatch: ConfigAudioPatch[];
-  webhooks: ConfigWebhook[];
 }
 
 function text(v: unknown, fallback = ''): string {
@@ -185,7 +167,6 @@ export function buildConfigFile(input: {
   devices: any[];
   performers: any[];
   audioPatch: any[];
-  webhooks?: any[];
   version?: string | null;
   edition?: string | null;
 }, now: Date = new Date()): ConfigFile {
@@ -259,16 +240,6 @@ export function buildConfigFile(input: {
         inputChannel: whole(a.inputChannel, 1),
       }))
       .sort((a, b) => a.channelKey.localeCompare(b.channelKey)),
-    webhooks: [...(input.webhooks ?? [])]
-      .map((w: any): ConfigWebhook => ({
-        id: text(w.id),
-        name: text(w.name),
-        url: text(w.url),
-        secret: nullable(w.secret),
-        enabled: flag(w.enabled, true),
-        minSeverity: text(w.minSeverity, 'CRITICAL'),
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
   };
 }
 
@@ -299,10 +270,6 @@ export function parseConfigFile(input: unknown): ConfigFile {
         : [],
       audioPatch: Array.isArray(raw.audioPatch)
         ? raw.audioPatch.filter((a: any) => a && typeof a === 'object' && text(a.channelKey))
-        : [],
-      // A webhook without a URL has nowhere to post, so it is not a webhook.
-      webhooks: Array.isArray(raw.webhooks)
-        ? raw.webhooks.filter((w: any) => w && typeof w === 'object' && text(w.id) && text(w.url))
         : [],
       version: nullable(raw.instance?.version),
       edition: nullable(raw.instance?.edition),
@@ -336,9 +303,6 @@ export function describeRestore(file: ConfigFile): {
           : ''),
       `${file.performers.length} performer${file.performers.length === 1 ? '' : 's'} on the roster`,
       `${file.audioPatch.length} audio patch assignment${file.audioPatch.length === 1 ? '' : 's'}`,
-      ...(file.webhooks.length > 0
-        ? [`${file.webhooks.length} webhook${file.webhooks.length === 1 ? '' : 's'}, with their signing secrets`]
-        : []),
       'Alert thresholds, recording settings, network and discovery settings',
       ...(file.settings.authPinEnabled
         ? ['The remote-access PIN, unchanged']

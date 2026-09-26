@@ -55,30 +55,17 @@ const input = () => ({
     { channelKey: 'dev-b:2', deviceId: 'hw:1,0', inputChannel: 4 },
     { channelKey: 'dev-a:1', deviceId: 'hw:1,0', inputChannel: 1 },
   ],
-  webhooks: [
-    {
-      id: 'wh-2', name: 'Slack', url: 'https://hooks.example/abc',
-      secret: 'signing-key-2', enabled: true, minSeverity: 'CRITICAL',
-      // Delivery history, which describes the install that was running.
-      lastAt: new Date('2026-09-25T20:00:00Z'), lastStatus: 200, failures: 3,
-    },
-    {
-      id: 'wh-1', name: 'Home automation', url: 'http://10.0.1.5/hook',
-      secret: null, enabled: false, minSeverity: 'WARNING',
-    },
-  ],
   version: '1.4.0',
   edition: 'server',
 });
 
 describe('what the snapshot carries', () => {
-  it('carries the inventory, the roster, the patch, the webhooks and the settings', () => {
+  it('carries the inventory, the roster, the patch and the settings', () => {
     const file = buildConfigFile(input(), new Date('2026-09-26T09:00:00Z'));
     expect(file.configFile).toBe(CONFIG_FILE_VERSION);
     expect(file.devices).toHaveLength(2);
     expect(file.performers).toHaveLength(2);
     expect(file.audioPatch).toHaveLength(2);
-    expect(file.webhooks).toHaveLength(2);
     expect(file.settings).toMatchObject({
       batteryWarningPct: 25, bindInterface: '10.0.1.9', discoveryIgnore: '10.0.2.0/24',
       recordingMaxMb: 4096, venueLocation: '40.7128, -74.0060',
@@ -98,7 +85,6 @@ describe('what the snapshot carries', () => {
     shuffled.devices.reverse();
     shuffled.performers.reverse();
     shuffled.audioPatch.reverse();
-    shuffled.webhooks.reverse();
     const a = JSON.stringify(buildConfigFile(input(), new Date('2026-09-26T09:00:00Z')));
     const b = JSON.stringify(buildConfigFile(shuffled, new Date('2026-09-26T09:00:00Z')));
     expect(b).toBe(a);
@@ -112,12 +98,6 @@ describe('the credentials a restore needs', () => {
     const file = buildConfigFile(input());
     expect(file.devices.find(d => d.id === 'dev-b')!.password).toBe('rack-two-access');
     expect(file.devices.find(d => d.id === 'dev-a')!.password).toBeNull();
-  });
-
-  it('carries webhook secrets, so a restored rig is still notifying', () => {
-    const file = buildConfigFile(input());
-    expect(file.webhooks.find(w => w.id === 'wh-2')!.secret).toBe('signing-key-2');
-    expect(file.webhooks.find(w => w.id === 'wh-1')!.secret).toBeNull();
   });
 
   it('carries the PIN hash, so the same PIN opens the restored machine', () => {
@@ -137,13 +117,6 @@ describe('what the snapshot must still never carry', () => {
       'rotating-refresh-token', 'vapid-private', 'vapid-public', 'instance-uuid', '4211',
     ]) {
       expect(json).not.toContain(excluded);
-    }
-  });
-
-  it('drops webhook delivery history, which belongs to the install that was running', () => {
-    const json = JSON.stringify(buildConfigFile(input()));
-    for (const field of ['lastAt', 'lastStatus', 'failures']) {
-      expect(json).not.toContain(field);
     }
   });
 
@@ -187,13 +160,10 @@ describe('the round trip', () => {
       devices: [{ id: 'ok', ip: '10.0.0.1' }, { name: 'no id' }, 'nonsense'],
       performers: [{ id: 'p' }, {}],
       audioPatch: [{ channelKey: 'a', deviceId: 'hw:1,0', inputChannel: 2 }, {}],
-      // A webhook with no URL has nowhere to post, so it is not a webhook.
-      webhooks: [{ id: 'w', url: 'https://x.test/h' }, { id: 'no-url' }],
     });
     expect(parsed.devices).toHaveLength(1);
     expect(parsed.performers).toHaveLength(1);
     expect(parsed.audioPatch).toHaveLength(1);
-    expect(parsed.webhooks).toHaveLength(1);
     // Missing settings fall back to the same defaults a fresh install has.
     expect(parsed.settings.batteryWarningPct).toBe(20);
   });
@@ -212,7 +182,6 @@ describe('describeRestore', () => {
     const { brings } = describeRestore(buildConfigFile(input()));
     const text = brings.join(' ');
     expect(text).toMatch(/password/i);
-    expect(text).toMatch(/signing secret/i);
     expect(text).toMatch(/PIN/);
   });
 

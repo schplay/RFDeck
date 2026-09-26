@@ -38,7 +38,7 @@ export class ConfigBackup {
   /**
    * Snapshot this install.
    *
-   * Device passwords and webhook secrets are unsealed here. At rest they are
+   * Device passwords are unsealed here. At rest they are
    * AES-256-GCM sealed with a key in `.rfdeck-key`, which deliberately does not
    * travel with the database — so the sealed form would restore onto replacement
    * hardware as something the new machine cannot open, and the device would look
@@ -46,18 +46,16 @@ export class ConfigBackup {
    * restore a restore.
    */
   async build(): Promise<ConfigFile> {
-    const [settings, devices, performers, audioPatch, webhooks] = await Promise.all([
+    const [settings, devices, performers, audioPatch] = await Promise.all([
       prisma.settings.findFirst(),
       prisma.inventoryDevice.findMany(),
       prisma.performer.findMany(),
       prisma.channelAudioMap.findMany(),
-      prisma.webhook.findMany(),
     ]);
     return buildConfigFile({
       settings: settings ?? {},
       performers, audioPatch,
       devices: devices.map(d => ({ ...d, password: decryptSecret(d.password) })),
-      webhooks: webhooks.map(w => ({ ...w, secret: decryptSecret(w.secret) })),
       version: process.env.RFDECK_VERSION ?? null,
       edition: process.env.RFDECK_EDITION ?? 'server',
     });
@@ -144,9 +142,7 @@ export class ConfigBackup {
    * Credentials are re-sealed with *this* machine's key on the way in, which is the
    * other half of unsealing them on the way out.
    */
-  async restore(): Promise<{
-    devices: number; performers: number; patches: number; webhooks: number;
-  }> {
+  async restore(): Promise<{ devices: number; performers: number; patches: number }> {
     const fetched = await this.documents.get(CONFIG_COLLECTION, CONFIG_KEY);
     const file = parseConfigFile(fetched.body);
 
@@ -212,18 +208,6 @@ export class ConfigBackup {
         });
       }
 
-      for (const hook of file.webhooks) {
-        const { secret, ...rest } = hook;
-        // Secret re-sealed like a device password. Without it the webhook would post
-        // unsigned bodies and a receiver checking the signature would reject them —
-        // a restored rig that looks like it is notifying and is not.
-        const row = { ...rest, secret: encryptSecret(secret) };
-        await tx.webhook.upsert({
-          where: { id: hook.id },
-          create: row,
-          update: row,
-        });
-      }
     });
 
     await this.remember(fetched.version, fetched.contentHash, true);
@@ -235,7 +219,6 @@ export class ConfigBackup {
       devices: file.devices.length,
       performers: file.performers.length,
       patches: file.audioPatch.length,
-      webhooks: file.webhooks.length,
     };
   }
 }

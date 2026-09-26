@@ -3,6 +3,7 @@ import { Cloud, CloudOff, Link2, Unlink, AlertTriangle, Check, ExternalLink, Rot
 import { useCloudStore } from '../../stores/cloudStore';
 import { API_BASE, apiFetch } from '../../lib/api';
 import { ConfigBackupCard } from './ConfigBackupCard';
+import { InventoryListingCard } from './InventoryListingCard';
 import './CloudSettings.css';
 
 /**
@@ -223,6 +224,10 @@ export function CloudSettings() {
       {/* ── Configuration backup ─────────────────────────────────────────────
           Only once linked: an unlinked rig has nowhere to back up to. */}
       {status.linked && <ConfigBackupCard />}
+
+      {/* ── Online inventory ─────────────────────────────────────────────────
+          Paid, and one-way: the rig is the source of truth. */}
+      {status.linked && <InventoryListingCard />}
 
       {/* ── Venue location ───────────────────────────────────────────────────
           Only meaningful with regional data, but harmless to set beforehand. */}

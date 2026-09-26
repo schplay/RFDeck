@@ -76,7 +76,8 @@ part worth noting: the instincts were right, the cloud just already existed.
 
    **Device passwords are a narrower rule than this once said** (owner,
    2026-09-26). They are **not** in the event stream and **not** in the online
-   inventory listing — an event log and a browsable listing have no use for them.
+   inventory listing — an event log and a browsable listing have no use for them, and
+   Meros's inventory contract has no field for one.
    They **are** in the configuration backup, because a backup that dropped them
    would restore a rig whose devices silently fall out, which is the failure a
    backup exists to prevent. Everything in a Meros account is private by nature;
@@ -840,6 +841,7 @@ services wait for their shapes.
 | D.6 | Regional TV occupancy: signed packs, per-cell cache, cell arithmetic, point-in-polygon, coordinator exclusions, the RF panel | ✅ **Built** |
 | D.7 | Device-profile feed, as a public pack with validated overrides | ✅ **Built** — waiting only on Meros publishing the pack |
 | D.8 | The install snapshot: `config/instance`, described before it restores | ✅ **Built** |
+| D.9 | The online inventory listing: one-way reconcile to `/v1/inventory/rfdeck` | ✅ **Built** |
 
 **Stage D is complete.** What remains is not RFDeck's: Meros has to publish the
 device-profile pack (D.7 reads it the moment it exists) and start issuing the

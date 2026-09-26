@@ -9,6 +9,7 @@ import { Entitlements } from './entitlements';
 import { Documents } from './documents';
 import { ShowFiles } from './showFiles';
 import { ConfigBackup } from './configBackup';
+import { InventorySync } from './inventorySync';
 import { Feeds } from './feeds';
 import { FEATURES } from './features';
 import { RegionalData, parseVenueLocation, OccupancyResult } from './regionalData';
@@ -35,6 +36,8 @@ export class CloudService {
   readonly showFiles: ShowFiles | null;
   /** The whole-install snapshot. Null when the cloud is not configured. */
   readonly configBackup: ConfigBackup | null;
+  /** The online inventory listing. Null when the cloud is not configured. */
+  readonly inventory: InventorySync | null;
   /** Regional TV occupancy. Null when the cloud is not configured. */
   readonly regional: RegionalData | null;
   /** The event stream. Always present, so callers never branch on the cloud. */
@@ -52,6 +55,7 @@ export class CloudService {
       this.entitlements = null;
       this.showFiles = null;
       this.configBackup = null;
+      this.inventory = null;
       this.regional = null;
       log.debug('[Cloud] Not configured (no MEROS_BASE_URL / MEROS_CLIENT_ID) — cloud features are off');
       return;
@@ -63,6 +67,7 @@ export class CloudService {
     const documents = new Documents(this.client, this.link);
     this.showFiles = new ShowFiles(documents);
     this.configBackup = new ConfigBackup(documents);
+    this.inventory = new InventorySync(this.client, this.link);
     const feeds = new Feeds(config, this.client, this.link);
     this.regional = new RegionalData(feeds);
     this.deviceProfiles = new DeviceProfiles(feeds, COORDINATION_FAMILIES);

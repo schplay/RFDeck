@@ -54,6 +54,11 @@ export const INSTANCE_SCOPES = [
   // `alerts:send` that briefly sat here belonged to a relay endpoint Meros
   // retracted on 2026-09-25.
   'events:write',
+  // The online inventory listing. Read as well as write, because the listing is
+  // worth showing back to the operator — "this is what the cloud has" is how they
+  // tell a successful push from one they only think happened.
+  'inventory:read',
+  'inventory:write',
 ] as const;
 
 /**

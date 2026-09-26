@@ -433,7 +433,34 @@ per document or per version. It matters more for `config` than for shows, becaus
 free account keeps the latest snapshot and that is exactly right, whereas per-document
 would mean backing up the install competes with backing up a show for the same slot.
 
-### N. The inventory fields RFDeck holds, for the online listing endpoint
+### N. The inventory fields RFDeck holds, for the online listing endpoint — ✅ BUILT
+
+**Answered and shipped on both sides** (cloud agent, 2026-09-27). `GET`/`PUT
+/v1/inventory/rfdeck`, scopes `inventory:read` / `inventory:write`, account-private,
+paid on an active `rfdeck` entitlement. RFDeck's client is `cloud/inventorySync.ts`.
+
+Three things about the contract that shaped the client:
+
+- **The push is a reconcile.** `PUT` sends the full set and the cloud drops anything
+  absent, so RFDeck is the source of truth. Right direction for this data — the rig
+  knows what hardware exists — but it means two rigs publishing to one account each
+  erase the other, so publishing is an operator action and never a background sync.
+- **There is no pull, by choice.** Meros offers `GET`, and RFDeck uses it only to show
+  the operator what landed. A listing that could rewrite the local inventory would be
+  a second, quieter path to the destruction `configBackup.restore()` makes them
+  confirm.
+- **Unknown fields are ignored rather than rejected**, so RFDeck can add a column
+  before Meros mirrors it. The `device_type` and `band_source` enums are validated
+  though, and a 422 refuses the whole batch naming one field — so a row with an
+  unexpected value is sent as null rather than costing a push of two hundred good ones.
+
+**The new scopes do not exist on already-linked installs.** A token minted before
+2026-09-27 carries neither, and Meros answers `403 insufficient_scope`. RFDeck tells
+that apart from `403 not_entitled` and says "unlink and link again" rather than
+sending the operator to a billing page.
+
+The field list below is what was supplied, and is kept for reference.
+
 
 Asked for by the cloud agent, who declined to guess the payload — correctly. This is
 what `InventoryDevice` actually holds, as of 2026-09-26:

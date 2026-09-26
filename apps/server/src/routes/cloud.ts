@@ -276,6 +276,67 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // ── The online inventory listing ──────────────────────────────────────────
+  //
+  // A mirror of this install's inventory in the operator's account, so they can
+  // look up what they own without being at the rack. Paid, and account-private.
+
+  /** What the cloud lists, and what this install would send. */
+  fastify.get('/cloud/inventory', async (request, reply) => {
+    const cloud = service();
+    if (!cloud?.inventory) return reply.code(409).send({ error: 'not_configured' });
+    const refusal = await denied(cloud, FEATURES.INVENTORY);
+    if (refusal) return reply.code(402).send(refusal);
+    try {
+      const [local, remote] = await Promise.all([
+        cloud.inventory.build(),
+        // A listing that has never been pushed is an ordinary answer, not a fault.
+        cloud.inventory.fetch().catch((err) => ({ error: err.message })),
+      ]);
+      return {
+        local: { count: local.length },
+        cloud: 'error' in remote
+          ? { available: false, reason: remote.error, count: 0, updatedAt: null }
+          : { available: true, reason: null, count: remote.count, updatedAt: remote.updated_at },
+      };
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'unavailable', message: err?.message });
+    }
+  });
+
+  /**
+   * Publish this install's inventory.
+   *
+   * A reconcile: the cloud drops anything absent from what is sent. Deliberately an
+   * operator action rather than a background sync, because two rigs pushing to one
+   * account would each erase the other's devices and neither would be wrong to.
+   */
+  fastify.post('/cloud/inventory', async (request, reply) => {
+    const cloud = service();
+    if (!cloud?.inventory) return reply.code(409).send({ error: 'not_configured' });
+    const refusal = await denied(cloud, FEATURES.INVENTORY);
+    if (refusal) return reply.code(402).send(refusal);
+    try {
+      return await cloud.inventory.push();
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'push_failed', message: err?.message });
+    }
+  });
+
+  /** Remove the listing from the account, without touching the local inventory. */
+  fastify.delete('/cloud/inventory', async (request, reply) => {
+    const cloud = service();
+    if (!cloud?.inventory) return reply.code(409).send({ error: 'not_configured' });
+    const refusal = await denied(cloud, FEATURES.INVENTORY);
+    if (refusal) return reply.code(402).send(refusal);
+    try {
+      await cloud.inventory.clear();
+      return { cleared: true };
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'clear_failed', message: err?.message });
+    }
+  });
+
   /**
    * Send events to the cloud, or stop.
    *

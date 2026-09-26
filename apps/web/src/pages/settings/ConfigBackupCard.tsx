@@ -91,16 +91,13 @@ export function ConfigBackupCard() {
 
     setNote(null); setError(null); setBusy('restore');
     try {
-      const result = await apiFetch<{
-        devices: number; performers: number; patches: number; webhooks: number;
-      }>(
+      const result = await apiFetch<{ devices: number; performers: number; patches: number }>(
         '/cloud/config-backup/restore', { method: 'POST', body: JSON.stringify({ confirm: true }) },
       );
       setNote(
         `Restored ${result.devices} device${result.devices === 1 ? '' : 's'}, ` +
-        `${result.performers} performer${result.performers === 1 ? '' : 's'}, ` +
-        `${result.patches} audio assignment${result.patches === 1 ? '' : 's'} and ` +
-        `${result.webhooks} webhook${result.webhooks === 1 ? '' : 's'}.`,
+        `${result.performers} performer${result.performers === 1 ? '' : 's'} and ` +
+        `${result.patches} audio assignment${result.patches === 1 ? '' : 's'}.`,
       );
     } catch (err) {
       setError((err as Error).message);
@@ -114,15 +111,15 @@ export function ConfigBackupCard() {
       <h3><HardDriveDownload size={16} /> Configuration backup</h3>
       <p className="settings-desc">
         A snapshot of this whole install — the inventory, the roster, audio
-        routing, webhooks, alert thresholds and network settings — so a replacement
-        machine can be made into this one. Separate from show files, which travel
-        between venues and deliberately leave the local rig alone.
+        routing, alert thresholds and network settings — so a replacement machine
+        can be made into this one. Separate from show files, which travel between
+        venues and deliberately leave the local rig alone.
       </p>
       <p className="settings-desc">
-        <strong>It includes your device passwords and webhook secrets</strong>, so a
-        restored rig connects and notifies without anything being re-entered. They
-        are re-encrypted with the new machine's own key on the way in. Recordings,
-        captured audio and performer photos are never included.
+        <strong>It includes your device passwords</strong>, so a restored rig
+        connects without them being re-entered — they are re-encrypted with the new
+        machine's own key on the way in. Recordings, captured audio and performer
+        photos are never included.
       </p>
 
       {!allowed ? (
