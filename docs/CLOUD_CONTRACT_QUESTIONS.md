@@ -318,7 +318,7 @@ behaviour astonishing, and RFDeck would be the thing that appeared to lose their
 work. If it is per document, RFDeck should say so plainly *before* the second push
 rather than after — which is a real feature, and one worth not guessing at.
 
-### J. What are the `rfdeck.*` flag names for the new paid features?
+### J. What are the `rfdeck.*` flag names for the new paid features? — ✅ ANSWERED
 
 Entitlements are consumed by feature flag, and the tier breakdown names features in
 prose. `rfdeck.regional-data` is documented (§4) and spectrum data still maps to it.
@@ -348,29 +348,128 @@ deliberately *not* gated: a paywall appearing because somebody has not signed in
 would be a paywall nobody asked for, and an unlinked rig has no cloud data to
 withhold in the first place.
 
-### J-bis. The exact flag strings RFDeck needs
+### J-bis. The exact flag strings RFDeck needs — ✅ ANSWERED
 
-Expanding question J into a list that can be answered literally, since that is what
-RFDeck consumes. For each capability, the `rfdeck.*` string that will appear in
-`GET /v1/entitlements?product=rfdeck`:
+Answered authoritatively (cloud agent, 2026-09-26) and implemented verbatim in
+`apps/server/src/cloud/features.ts`, mirrored in `apps/web/src/hooks/useEntitled.ts`.
+Quoted rather than paraphrased, because a flag string that does not match silently
+never matches.
 
-| Capability (tier breakdown wording) | Flag RFDeck uses today | Confirmed? |
+**Free**
+
+| Capability | Flag |
+|---|---|
+| Whole-install configuration backup | `rfdeck.backup.config` |
+| Show-file backup (most recent only) | `rfdeck.backup.showfile` |
+| Email / webhook alerts | `rfdeck.alerts.basic` |
+| Profile / preference sync | `rfdeck.profile` |
+
+**Individual (paid)**
+
+| Capability | Flag |
+|---|---|
+| Backup history, 100 versions FIFO | `rfdeck.backup.history` |
+| SMS alerts | `rfdeck.alerts.sms` |
+| Spectrum / TV-occupancy packs | `rfdeck.spectrum` |
+| RF environment history | `rfdeck.rf.history` |
+| Post-show RF reports | `rfdeck.rf.reports` |
+| Online inventory listing | `rfdeck.inventory` |
+
+**Paid, and only on an RFDeck Pro device**
+
+| Capability | Flag |
+|---|---|
+| Remote restore / provisioning | `rfdeck.remote.restore` |
+| Remote UI / control | `rfdeck.remote.control` |
+| Attributed change history / audit | `rfdeck.audit` |
+
+**Team add-on, account-level**
+
+| Capability | Flag |
+|---|---|
+| Fleet view | `rfdeck.team.fleet` |
+| Alert routing | `rfdeck.team.alert_routing` |
+| Member management | `rfdeck.team.members` |
+
+Resolved along with it:
+
+- `rfdeck.regional-data` is **dead** and replaced by `rfdeck.spectrum`. RFDeck no
+  longer references the old name anywhere.
+- `rfdeck.notify-relay`, `rfdeck.battery-prediction` and `rfdeck.cross-venue-rf` from
+  §4's examples correspond to nothing in the finalized tiers. RFDeck has stopped
+  carrying them.
+- Only the `TEAM_*` flags and `rfdeck.alerts.sms` are things Meros acts on rather
+  than RFDeck — SMS is a delivery channel, and the team flags describe portal
+  features. `GATED_BY_RFDECK` in `features.ts` names the five RFDeck actually checks,
+  so nobody adds a gate for a flag that was never meant to control anything here.
+
+**One consequence to expect rather than discover.** The names are pinned but the
+Meros-side strategy that emits them is not built yet, so today an account receives
+only the spectrum entitlement. With gating enforced, that means **the free-tier
+features are currently gated off too** — configuration backup and show-file backup
+both read as "your account does not include this" until the strategy ships. That is
+the two changes landing in the wrong order rather than a fault in either, and it
+resolves itself the moment Meros starts issuing the free flags.
+
+### M. Does the show-file / config split need anything cloud-side? — ✅ ANSWERED, NO
+
+RFDeck now writes two different documents for two different jobs:
+
+- `shows/{showId}` — a **portable** production: cast, channel assignments, quick
+  changes, mic-check state. Carries a show to another venue and deliberately does not
+  touch the local inventory, because two venues have different hardware.
+- `config/instance` — the **whole install**: inventory, roster, audio routing, alert
+  thresholds, network and discovery settings. One document per account, so a restore
+  has one obvious thing to take.
+
+Nothing is needed from Meros. `/v1/docs/{product}/{collection}/{key}` already
+namespaces by collection, `config` is an ordinary collection name, and the two
+separate free flags (`rfdeck.backup.config`, `rfdeck.backup.showfile`) confirm the
+split was anticipated on that side too.
+
+The only thing still open that touches it is **question I** — whether the FIFO cap is
+per document or per version. It matters more for `config` than for shows, because
+`config/instance` is a single key that is rewritten repeatedly: per-version means a
+free account keeps the latest snapshot and that is exactly right, whereas per-document
+would mean backing up the install competes with backing up a show for the same slot.
+
+### N. The inventory fields RFDeck holds, for the online listing endpoint
+
+Asked for by the cloud agent, who declined to guess the payload — correctly. This is
+what `InventoryDevice` actually holds, as of 2026-09-26:
+
+| Field | Type | Notes |
 |---|---|---|
-| Spectrum data (FCC, etc.) | `rfdeck.regional-data` | Documented in §4 — assumed still right |
-| Backup history (100 files FIFO) | *none — needs a name* | ❓ |
-| RF environment history | *none — needs a name* | ❓ |
-| Post-show RF report generation | *none — needs a name* | ❓ |
-| Online inventory listing | *none — needs a name* | ❓ |
-| Remote restore / provisioning (Pro) | *none — needs a name* | ❓ |
-| Remote UI / control (Pro) | *none — needs a name* | ❓ |
-| Attributed change history / audit (Pro) | *none — needs a name* | ❓ |
+| `id` | uuid | RFDeck's own identifier. Stable; channel assignments are keyed on it. |
+| `name` | string | Operator-assigned label, e.g. "Rack 2 SR". |
+| `manufacturer` | string | "Sennheiser", "Shure", "Wisycom". |
+| `model` | string | "EW-DX EM 2", "ULXD4Q", "AD4Q". |
+| `deviceType` | `input` \| `output` | Receiver vs IEM transmitter. |
+| `serial` | string \| null | Reported by the device, not always present. |
+| `mac` | string \| null | Reported by the device. |
+| `firmware` | string \| null | Reported by the device. |
+| `band` | string \| null | e.g. "G50", "470-608". |
+| `bandSource` | string \| null | `reported` or `manual` — whether the band was read or typed. |
+| `carrierMinKHz` / `carrierMaxKHz` / `carrierStepKHz` | int \| null | The tuning range, in kHz. |
+| `dense` | bool | Whether the unit supports dense/link mode. |
+| `location` | string \| null | Free text: "SR wing", "FOH", "truck 2". |
+| `notes` | string \| null | Free text. |
+| `active` | bool | Whether RFDeck polls it. |
+| `disabledSlots` | string | Comma-separated slot numbers switched off on a multi-channel unit. |
+| `addedAt` | timestamp | When it entered this install's inventory. |
+| `ip` / `port` | string / int | **Venue-local addressing.** See below. |
 
-Two flags RFDeck currently references that may no longer correspond to anything:
-`rfdeck.notify-relay` (alerts are now free except SMS, and SMS is a Meros-side
-channel rather than an RFDeck capability) and `rfdeck.battery-prediction` /
-`rfdeck.cross-venue-rf` from §4's examples, which appear in no tier. Confirmation
-that these are dead would let RFDeck stop carrying them.
+There is no condition/status field and no asset id — RFDeck tracks hardware it can
+talk to, not an asset register. If the listing wants either, they are new fields and
+RFDeck would need to add them to the inventory UI first.
 
-**Why it matters concretely:** gating is now on. A flag RFDeck guesses wrong never
-matches, so the feature is silently unavailable to a paying account — which presents
-as a bug in RFDeck, not a naming mismatch.
+**`password` exists on the row and must never travel.** It is not in this list, it is
+not in the config backup, and it is not in the event stream — a device password
+unlocks somebody's rack, and a cloud listing carrying one would turn a single
+compromised account into physical access.
+
+**Recommendation: account-private by default.** A shareable or client-facing variant
+should omit `ip`, `port`, `mac` and `serial`. Addressing is useless off the venue LAN
+and tells an attacker the shape of the network; serials are what a stolen unit gets
+traced by and what a warranty claim turns on. Make/model/band/count is what a client
+or a rental partner actually wants to see, and that survives the omissions intact.

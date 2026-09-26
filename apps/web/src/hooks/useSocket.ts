@@ -244,6 +244,12 @@ function getSocket(): Socket {
     useDeviceStore.getState().fetchInventory();
   });
 
+  // The whole inventory was replaced — a cloud config restore. Too much changed
+  // to patch in place, so refetch rather than try to reconcile.
+  _socket.on('inventory:updated', () => {
+    useDeviceStore.getState().fetchInventory();
+  });
+
   // Server removed a duplicate inventory entry created by re-discovery
   _socket.on('device:removed', (data: { id: string }) => {
     useDeviceStore.setState((state) => ({

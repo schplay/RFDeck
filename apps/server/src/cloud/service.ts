@@ -8,7 +8,9 @@ import { PrismaLinkStore, PrismaEntitlementCache } from './linkStore';
 import { Entitlements } from './entitlements';
 import { Documents } from './documents';
 import { ShowFiles } from './showFiles';
+import { ConfigBackup } from './configBackup';
 import { Feeds } from './feeds';
+import { FEATURES } from './features';
 import { RegionalData, parseVenueLocation, OccupancyResult } from './regionalData';
 import { Events, EmitInput } from './events';
 import { DeviceProfiles } from './deviceProfiles';
@@ -31,6 +33,8 @@ export class CloudService {
   private readonly entitlements: Entitlements | null;
   /** Show files. Null when the cloud is not configured. */
   readonly showFiles: ShowFiles | null;
+  /** The whole-install snapshot. Null when the cloud is not configured. */
+  readonly configBackup: ConfigBackup | null;
   /** Regional TV occupancy. Null when the cloud is not configured. */
   readonly regional: RegionalData | null;
   /** The event stream. Always present, so callers never branch on the cloud. */
@@ -47,6 +51,7 @@ export class CloudService {
       this.link = null;
       this.entitlements = null;
       this.showFiles = null;
+      this.configBackup = null;
       this.regional = null;
       log.debug('[Cloud] Not configured (no MEROS_BASE_URL / MEROS_CLIENT_ID) — cloud features are off');
       return;
@@ -55,7 +60,9 @@ export class CloudService {
     const announce = () => void this.announce();
     this.link = new CloudLink(config, this.client, new PrismaLinkStore(), announce);
     this.entitlements = new Entitlements(this.client, this.link, new PrismaEntitlementCache(), announce);
-    this.showFiles = new ShowFiles(new Documents(this.client, this.link));
+    const documents = new Documents(this.client, this.link);
+    this.showFiles = new ShowFiles(documents);
+    this.configBackup = new ConfigBackup(documents);
     const feeds = new Feeds(config, this.client, this.link);
     this.regional = new RegionalData(feeds);
     this.deviceProfiles = new DeviceProfiles(feeds, COORDINATION_FAMILIES);
@@ -139,9 +146,10 @@ export class CloudService {
   /**
    * Is this feature available? The one question, asked in one place.
    *
-   * Always true while gating is deferred — see `entitlements.ts`. Unconfigured
-   * or unlinked installs answer the same way, because a paywall that appears
-   * because somebody has not signed in is not a paywall anyone asked for.
+   * Enforced since the tiers were finalized — see `entitlements.ts`. An
+   * unconfigured install answers true, because a paywall on a rig that was never
+   * meant to reach the cloud is not a paywall anyone asked for; a linked account
+   * without the flag answers false.
    */
   async entitled(feature: string): Promise<boolean> {
     if (!this.entitlements) return true;
@@ -235,7 +243,7 @@ export class CloudService {
     // Gated, so an account without the subscription does not poll a feed it
     // cannot read. With gating deferred this is granted, which is the point of
     // there being one gate.
-    if (!(await this.entitled('rfdeck.regional-data'))) return;
+    if (!(await this.entitled(FEATURES.SPECTRUM))) return;
     try {
       await this.regional.refresh(await this.venue());
     } catch (err) {
@@ -257,7 +265,7 @@ export class CloudService {
         cellsUsed: [], reason: 'Meros Cloud is not configured on this server.',
       };
     }
-    if (!(await this.entitled('rfdeck.regional-data'))) {
+    if (!(await this.entitled(FEATURES.SPECTRUM))) {
       return {
         exclusions: null, unmapped: [], source: 'none', oldestFetchedAt: null,
         cellsUsed: [],

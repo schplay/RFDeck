@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Cloud, CloudOff, Link2, Unlink, AlertTriangle, Check, ExternalLink, RotateCcw } from 'lucide-react';
 import { useCloudStore } from '../../stores/cloudStore';
 import { API_BASE, apiFetch } from '../../lib/api';
+import { ConfigBackupCard } from './ConfigBackupCard';
 import './CloudSettings.css';
 
 /**
@@ -218,6 +219,10 @@ export function CloudSettings() {
           </div>
         </div>
       )}
+
+      {/* ── Configuration backup ─────────────────────────────────────────────
+          Only once linked: an unlinked rig has nowhere to back up to. */}
+      {status.linked && <ConfigBackupCard />}
 
       {/* ── Venue location ───────────────────────────────────────────────────
           Only meaningful with regional data, but harmless to set beforehand. */}

@@ -222,7 +222,7 @@ export class FakeMeros {
           product: 'rfdeck',
           sku: 'rfdeck-cloud',
           kind: 'subscription',
-          features: this.options.features ?? ['rfdeck.regional-data', 'rfdeck.notify-relay'],
+          features: this.options.features ?? ['rfdeck.spectrum', 'rfdeck.backup.showfile'],
           expires_at: this.options.expiresAt ?? new Date(Date.now() + 30 * 86400_000).toISOString(),
         }],
       });

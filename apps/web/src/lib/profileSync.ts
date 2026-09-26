@@ -18,6 +18,16 @@ import { PersonSession, accessTokenFor } from './personLink';
  * RFDeck works.
  */
 
+/**
+ * The namespace preferences live under.
+ *
+ * Meros also offers a shared `meros` namespace for preferences that should follow a
+ * person across the whole portfolio rather than belonging to one product. Nothing
+ * RFDeck syncs today qualifies — layout, meter settings and UI state are all about
+ * *this* application's screens — so everything goes in `rfdeck`. A genuinely
+ * portfolio-wide preference, such as a theme or a locale, would belong in `meros`,
+ * and would want a second namespace here rather than a rename of this one.
+ */
 const NAMESPACE = 'rfdeck';
 
 /** The stores worth carrying. Keyed by the `localStorage` key each one persists to. */

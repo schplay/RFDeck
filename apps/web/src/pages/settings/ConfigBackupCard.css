@@ -1,0 +1,30 @@
+/* Configuration backup card.
+   Leans on the shared `.cloud-*` classes from CloudSettings.css — this only adds
+   what is specific to the two-button layout and the caveat list. */
+
+.config-backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* The list an operator reads before overwriting a rig, so it is indented and
+   spaced rather than crammed into the banner as one sentence. */
+.config-backup-caveats {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.config-backup-caveats li + li {
+  margin-top: 4px;
+}
+
+.cloud-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--color-success, #4b9e5f);
+}

@@ -54,10 +54,37 @@ export function useEntitled(feature: string): Entitlement {
   return { allowed: false, held, reason };
 }
 
-/** Feature names, so a typo is a compile error rather than a silent false. */
+/**
+ * The `rfdeck.*` flags Meros pins, so a typo is a compile error rather than a
+ * silent false — which, with gating on, is a paid feature that just is not there.
+ *
+ * Mirrors `apps/server/src/cloud/features.ts`. Duplicated rather than imported
+ * because the web app does not depend on the server package, and a shared package
+ * for four lines would be worse than the duplication.
+ *
+ * Most of these are not issued yet: the names are pinned but the strategy at Meros
+ * that emits them is unbuilt, so only `spectrum` is live today. Anything gated on
+ * the rest reads as unavailable until that ships.
+ */
 export const FEATURES = {
-  regionalData: 'rfdeck.regional-data',
-  notifyRelay: 'rfdeck.notify-relay',
-  batteryPrediction: 'rfdeck.battery-prediction',
-  crossVenueRf: 'rfdeck.cross-venue-rf',
+  // Free
+  backupConfig: 'rfdeck.backup.config',
+  backupShowfile: 'rfdeck.backup.showfile',
+  alertsBasic: 'rfdeck.alerts.basic',
+  profile: 'rfdeck.profile',
+  // Individual
+  backupHistory: 'rfdeck.backup.history',
+  alertsSms: 'rfdeck.alerts.sms',
+  spectrum: 'rfdeck.spectrum',
+  rfHistory: 'rfdeck.rf.history',
+  rfReports: 'rfdeck.rf.reports',
+  inventory: 'rfdeck.inventory',
+  // Individual, and only on an RFDeck Pro device
+  remoteRestore: 'rfdeck.remote.restore',
+  remoteControl: 'rfdeck.remote.control',
+  audit: 'rfdeck.audit',
+  // Team add-on
+  teamFleet: 'rfdeck.team.fleet',
+  teamAlertRouting: 'rfdeck.team.alert_routing',
+  teamMembers: 'rfdeck.team.members',
 } as const;

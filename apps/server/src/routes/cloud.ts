@@ -1,5 +1,8 @@
 import { FastifyPluginAsync } from 'fastify';
 import { CloudService } from '../cloud/service';
+import { FEATURES } from '../cloud/features';
+import { prisma } from '../db';
+import { listPerformers } from '../performers/roster';
 
 /**
  * The cloud link, for the Settings → Cloud page.
@@ -10,6 +13,22 @@ import { CloudService } from '../cloud/service';
  */
 export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
   const service = () => (fastify as any).cloud as CloudService | undefined;
+
+  /**
+   * The gate, phrased the way the UI phrases it.
+   *
+   * 402 rather than 403: this is "your account does not include this", not
+   * "you may not". The message is what the operator reads, so it says which tier
+   * and where to change it rather than naming a flag.
+   */
+  const denied = async (cloud: CloudService, feature: string) => {
+    if (await cloud.entitled(feature)) return null;
+    return {
+      error: 'not_entitled',
+      feature,
+      message: 'Your Meros account does not currently include this. Check your subscription at meros.co.',
+    };
+  };
 
   fastify.get('/cloud/status', async () => {
     const cloud = service();
@@ -158,6 +177,102 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
       return result;
     } catch (err: any) {
       return reply.code(502).send({ error: 'pull_failed', message: err?.message });
+    }
+  });
+
+  // ── The install snapshot ──────────────────────────────────────────────────
+  //
+  // The other half of the split: a show file carries a production to another
+  // venue and deliberately leaves the local rig alone, whereas this rebuilds
+  // *this* rig on replacement hardware. One document, `config/instance`, so a
+  // restore has one obvious thing to take.
+
+  /** What this install would send, without sending it. */
+  fastify.get('/cloud/config-backup/preview', async (request, reply) => {
+    const cloud = service();
+    if (!cloud?.configBackup) return reply.code(409).send({ error: 'not_configured' });
+    const refusal = await denied(cloud, FEATURES.BACKUP_CONFIG);
+    if (refusal) return reply.code(402).send(refusal);
+    const local = await cloud.configBackup.build();
+    return {
+      local: {
+        devices: local.devices.length,
+        performers: local.performers.length,
+        audioPatch: local.audioPatch.length,
+      },
+      cloud: await cloud.configBackup.preview(),
+    };
+  });
+
+  /** Back this install up. */
+  fastify.post('/cloud/config-backup', async (request, reply) => {
+    const cloud = service();
+    if (!cloud?.configBackup) return reply.code(409).send({ error: 'not_configured' });
+    const refusal = await denied(cloud, FEATURES.BACKUP_CONFIG);
+    if (refusal) return reply.code(402).send(refusal);
+    try {
+      const result = await cloud.configBackup.push();
+      if (result.status === 'conflict') {
+        // Another install backed up to this account. Which is very probably a
+        // mistake — one document per account means the second machine would
+        // overwrite the first — so it is a refusal with the head attached rather
+        // than a silent last-writer-wins.
+        return reply.code(409).send({
+          error: 'version_conflict',
+          message: result.conflict.message,
+          head: {
+            version: result.conflict.headVersion,
+            updatedAt: result.conflict.headUpdatedAt,
+          },
+        });
+      }
+      return result;
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'backup_failed', message: err?.message });
+    }
+  });
+
+  /**
+   * Restore this install from the cloud.
+   *
+   * Requires `confirm: true` in the body. A restore rewrites the inventory and
+   * the roster, and the operator should have read `preview` first — a route that
+   * did it on a bare POST would be one mistyped URL away from rewriting a rig
+   * mid-show.
+   */
+  fastify.post('/cloud/config-backup/restore', async (request, reply) => {
+    const { confirm } = (request.body ?? {}) as { confirm?: boolean };
+    const cloud = service();
+    if (!cloud?.configBackup) return reply.code(409).send({ error: 'not_configured' });
+    const refusal = await denied(cloud, FEATURES.BACKUP_CONFIG);
+    if (refusal) return reply.code(402).send(refusal);
+    if (confirm !== true) {
+      return reply.code(400).send({
+        error: 'confirmation_required',
+        message: "A restore rewrites this install's inventory and settings, so it must be confirmed.",
+      });
+    }
+    try {
+      const result = await cloud.configBackup.restore();
+
+      // The rig itself changed, not just the screen. Devices that came back have
+      // to be picked up by the poller or a restored inventory would sit there
+      // showing everything offline until the next restart.
+      const dm = (fastify as any).deviceManager;
+      if (dm) {
+        for (const device of await prisma.inventoryDevice.findMany()) {
+          try { dm.updateTrackedDevice(device); } catch { /* one bad row must not stop the rest */ }
+        }
+      }
+
+      // Then tell every open client, with the roster inline because that is the
+      // contract for this event — clients replace their whole list from it.
+      const io = (fastify as any).io;
+      io?.emit('inventory:updated');
+      io?.emit('performers:updated', await listPerformers());
+      return result;
+    } catch (err: any) {
+      return reply.code(502).send({ error: 'restore_failed', message: err?.message });
     }
   });
 

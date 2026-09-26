@@ -831,10 +831,13 @@ services wait for their shapes.
 | D.5 | Events: the envelope, a persisted instance id and sequence, batching, a bounded queue, a collector list | ✅ **Built** |
 | D.6 | Regional TV occupancy: signed packs, per-cell cache, cell arithmetic, point-in-polygon, coordinator exclusions, the RF panel | ✅ **Built** |
 | D.7 | Device-profile feed, as a public pack with validated overrides | ✅ **Built** — waiting only on Meros publishing the pack |
+| D.8 | The install snapshot: `config/instance`, described before it restores | ✅ **Built** |
 
 **Stage D is complete.** What remains is not RFDeck's: Meros has to publish the
-device-profile pack (D.7 reads it the moment it exists) and, when it wants to,
-turn gating on — which is one constant on each side.
+device-profile pack (D.7 reads it the moment it exists) and start issuing the
+`rfdeck.*` entitlement flags — the names are pinned and consumed, but only the
+spectrum flag is issued today, so with gating on the free-tier features read as
+unavailable until that ships.
 
 ### What the finalized tiers added (2026-09-26)
 
@@ -884,7 +887,8 @@ the two serve different purposes and one payload cannot do both well:
 - **Restoring to replacement hardware** — Phase 8's own stated driver — wants
   everything, including the inventory and the settings.
 
-**Proposal: two collections, which is also what the free tier's own wording implies.**
+**Approved and built** (owner, 2026-09-26), which is also what the free tier's own
+wording implies:
 The tier breakdown lists "app config / settings backup" *and* "showfile backup" as
 separate items, and if a show file were all-encompassing the first would be redundant.
 
@@ -894,9 +898,27 @@ separate items, and if a show file were all-encompassing the first would be redu
 | `config/instance` | Inventory, settings, audio routing, the performer roster | Restore this install onto replacement hardware |
 
 That keeps a show portable and makes a whole-install restore a separate, clearly
-destructive action rather than a side effect of opening last week's show. The
-`config/instance` half is not built; it is small, and it is what "app config /
-settings backup" in the free tier presumably means.
+destructive action rather than a side effect of opening last week's show.
+
+**Nothing was needed from Meros to do it.** `/v1/docs/{product}/{collection}/{key}`
+already namespaces by collection, `config` is an ordinary collection name, and the
+two separate free flags — `rfdeck.backup.config` and `rfdeck.backup.showfile` —
+confirm the split was anticipated on that side too.
+
+Both halves are now built: `configFile.ts` (the format), `configBackup.ts` (build,
+push, preview, restore), routes under `/api/cloud/config-backup`, and a card in
+Settings → Cloud. Three things about the restore are deliberate:
+
+- **It describes itself first.** `describeRestore()` produces the list an operator
+  reads before confirming — how many devices and performers, which passwords will
+  need re-entering, whether a PIN was set. "Are you sure?" does not convey that this
+  rewrites a rig.
+- **It upserts and never deletes.** Devices and performers are matched by id;
+  anything added since the backup is left alone. An operator who wanted a device gone
+  can remove it, whereas one whose device vanished has no way to know what it was.
+- **It touches nothing that identifies this install.** Not the cloud link, the PIN
+  hash, the VAPID keys or the event instance id — a restore must not make one install
+  start reporting as another.
 
 ### The backup cap, which changes an assumption
 
@@ -910,10 +932,16 @@ reports, `versions()` returns however many there are, and a missing version is a
 and the open question below has to be answered before anything is built on top of
 version history.
 
-Two things are deliberately *not* built, and both are decisions rather than gaps.
+One thing is deliberately *not* built, and it is a decision rather than a gap:
 **Imperio** is parked; the emitter takes a list of collectors, so adding one is
-configuration rather than a rewrite. And **gating is deferred**, so `entitled()`
-returns true for everything while `holds()` reports the truth beside it.
+configuration rather than a rewrite.
+
+**Gating is now enforced** on both sides (owner, 2026-09-26). One consequence to
+expect rather than discover: the flag *names* are pinned but the Meros-side strategy
+that issues them is not built yet, so an account currently receives only the spectrum
+entitlement. Until that ships, the free-tier backup features are gated off too — the
+two changes are landing in the wrong order, and it resolves itself the moment Meros
+starts issuing the free flags. `holds()` still reports the truth beside the gate.
 
 D.0–D.4 and the *app side* of D.5–D.7 are open-repository work: the free tier is
 free, and the paid tier's gate is a signature check on data Meros issues.

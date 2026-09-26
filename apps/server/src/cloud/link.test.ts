@@ -206,8 +206,8 @@ describe('entitlements', () => {
     // is under test.
     const ents = new Entitlements(client, link, new MemoryEntitlementCache());
     const snap = await ents.refresh().then(() => ents.snapshot());
-    expect(snap.features).toContain('rfdeck.regional-data');
-    expect(snap.features).toContain('rfdeck.notify-relay');
+    expect(snap.features).toContain('rfdeck.spectrum');
+    expect(snap.features).toContain('rfdeck.backup.showfile');
   });
 
   it('withholds a feature the account does not hold, now that gating is on', async () => {
@@ -216,34 +216,34 @@ describe('entitlements', () => {
     await settle(link);
     const ents = new Entitlements(client, link, new MemoryEntitlementCache());
     await ents.refresh();
-    expect(await ents.entitled('rfdeck.regional-data')).toBe(false);
-    expect(await ents.holds('rfdeck.regional-data')).toBe(false);
+    expect(await ents.entitled('rfdeck.spectrum')).toBe(false);
+    expect(await ents.holds('rfdeck.spectrum')).toBe(false);
   });
 
   it('allows a feature the account does hold', async () => {
-    const { client, link } = await harness({ features: ['rfdeck.regional-data'] });
+    const { client, link } = await harness({ features: ['rfdeck.spectrum'] });
     await link.start();
     await settle(link);
     const ents = new Entitlements(client, link, new MemoryEntitlementCache());
     await ents.refresh();
-    expect(await ents.entitled('rfdeck.regional-data')).toBe(true);
-    expect(await ents.holds('rfdeck.regional-data')).toBe(true);
+    expect(await ents.entitled('rfdeck.spectrum')).toBe(true);
+    expect(await ents.holds('rfdeck.spectrum')).toBe(true);
     // A feature nobody has bought is still withheld, so holding one thing does
     // not open everything.
-    expect(await ents.entitled('rfdeck.notify-relay')).toBe(false);
+    expect(await ents.entitled('rfdeck.rf.history')).toBe(false);
   });
 
   it('keeps `holds` honest and separate from the gate', async () => {
     // The two exist apart so a status page can show what an account actually has
     // rather than what the gate concluded — which is what makes "your
     // subscription covers X" truthful.
-    const { client, link } = await harness({ features: ['rfdeck.regional-data'] });
+    const { client, link } = await harness({ features: ['rfdeck.spectrum'] });
     await link.start();
     await settle(link);
     const ents = new Entitlements(client, link, new MemoryEntitlementCache());
     await ents.refresh();
     const snap = await ents.snapshot();
-    expect(snap.features).toEqual(['rfdeck.regional-data']);
+    expect(snap.features).toEqual(['rfdeck.spectrum']);
   });
 
   it('keeps answering from cache when Meros goes away', async () => {
@@ -256,7 +256,7 @@ describe('entitlements', () => {
 
     await ents.refresh();                   // fails, quietly
     const snap = await ents.snapshot();
-    expect(snap.features).toContain('rfdeck.regional-data');
+    expect(snap.features).toContain('rfdeck.spectrum');
     expect(snap.lastError).toBeTruthy();
   });
 });
