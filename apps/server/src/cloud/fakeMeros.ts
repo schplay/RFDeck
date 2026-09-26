@@ -45,6 +45,8 @@ export class FakeMeros {
   /** Refresh tokens that have been rotated away (replaying one is the breach). */
   private rotated = new Set<string>();
   private accessTokens = new Set<string>();
+  /** Events received, keyed (source.instance, id) so dedupe is real. */
+  readonly events = new Map<string, any>();
   private signingKey: crypto.KeyObject;
 
   readonly publicKeyBase64Url: string;
@@ -212,6 +214,32 @@ export class FakeMeros {
       });
     }
 
+    if (path === '/v1/events') {
+      if (!this.authorized(req)) return send(401, { error: 'invalid_token' });
+      const parsed = body ? JSON.parse(body) : null;
+      const batch: any[] = Array.isArray(parsed) ? parsed : [parsed];
+      if (batch.length > 500) {
+        return send(400, { error: 'batch_too_large', message: 'At most 500 events per request.' });
+      }
+      let accepted = 0, duplicates = 0, rejected = 0;
+      const errors: { id?: string; reason: string }[] = [];
+      for (const event of batch) {
+        // The collector dedupes on (source.instance, id) — the emitter's ULID is
+        // the idempotency key, so a retried batch must not double-count.
+        const key = `${event?.source?.instance}|${event?.id}`;
+        if (!event?.id || !event?.occurred_at || !event?.type || !event?.source?.product) {
+          rejected += 1;
+          errors.push({ id: event?.id, reason: 'missing a required envelope field' });
+        } else if (this.events.has(key)) {
+          duplicates += 1;
+        } else {
+          this.events.set(key, event);
+          accepted += 1;
+        }
+      }
+      return send(202, { accepted, duplicates, rejected, errors });
+    }
+
     return send(404, { error: 'not_found', path });
   }
 
@@ -231,7 +259,7 @@ export class FakeMeros {
       token_type: 'Bearer',
       expires_in: 3600,
       refresh_token: refresh,
-      scope: 'openid offline_access entitlements:read backups:read backups:write',
+      scope: 'openid offline_access entitlements:read backups:read backups:write events:write',
     };
   }
 

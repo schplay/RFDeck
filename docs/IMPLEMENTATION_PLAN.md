@@ -1304,16 +1304,19 @@ refresh-token rotation discipline, entitlements, the single `entitled()` gate, a
 Settings → Cloud. Three public clients are registered and the staging credentials
 and signing key are in hand.
 
-What remains of Stage D is mostly ours, with one real blocker: **the reworked
-events and alerts contract**. Meros retracted the alert-relay endpoint RFDeck had
-briefly built against — events are the whole stream of what RFDeck does, going to
-a local Imperio or direct to the cloud at the user's choice, with alerts
-configured in the cloud *over* them rather than posted to it. That also retired
-the cloud plan's "telemetry never leaves the venue" line, which was RFDeck's
-invention rather than Meros's rule; what survives is the narrower and correct
-one, that **no audio, clips or media ever leave**. D.5 is blocked on that contract
-and on a description of what Imperio is, since being Imperio-aware is stated as
-required and nothing yet says what it is.
+What remains of Stage D is now almost entirely ours. The events and alerts
+contract landed on 2026-09-26, after a false start: Meros briefly specified an
+alert-relay endpoint, retracted it, and replaced it with a better model — events
+are the whole stream of what RFDeck does, emitted on the instance link, and alerts
+are rules the user configures in the cloud *over* them. So RFDeck's job is to emit
+good events and to gate nothing.
+
+That correction also retired the cloud plan's "telemetry never leaves the venue"
+line, which was RFDeck's invention rather than Meros's rule. What survives is the
+narrower and correct one: **no audio, clips or media ever leave.** The remaining
+open item is how RFDeck finds and authenticates to a local **Imperio** collector —
+the protocol is the same as the cloud's, so it is one emitter, but discovery and a
+local token are unstated.
 
 The TV occupancy source is settled too — FCC public-domain data, curated by Meros
 and shipped as signed packs, sharded on a 2° grid so a rig fetches a small index

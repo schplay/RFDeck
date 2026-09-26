@@ -63,12 +63,11 @@ describe('the instance link', () => {
     expect(scope).toContain('entitlements:read');
     expect(scope).toContain('backups:read');
     expect(scope).toContain('backups:write');
-    // No events or alerts scope until Meros publishes the reworked contract.
-    // Asking for one an endpoint will not honour puts a meaningless line on the
-    // operator's approval screen, and `alerts:send` in particular belonged to a
-    // relay that has been retracted.
+    // Events are emitted on this link; alerts are configured in the cloud over
+    // them, so there is no alert scope to ask for. `alerts:send` belonged to a
+    // relay endpoint Meros retracted.
+    expect(scope).toContain('events:write');
     expect(scope).not.toContain('alerts:send');
-    expect(scope).not.toContain('events:write');
     link.cancel();
   });
 

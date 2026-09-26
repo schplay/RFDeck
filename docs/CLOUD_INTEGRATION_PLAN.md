@@ -447,7 +447,7 @@ a service rather than getting a bespoke backend
 | **Show files** — push/pull, version history | **Document sync** (§8.2) — account-scoped, named, versioned JSON | `/v1/docs/rfdeck/shows/{key}` — PUT a new version carrying `base_version` (**409** if the head moved; never a silent overwrite), GET the head or `?version=`, GET `/versions`. Server-visible now. Small JSON only |
 | **Profiles** — layout, meters, shortcuts, solo groups | **Profile sync** (§8.1) — person-scoped, last-write-wins per key | `/v1/profiles/rfdeck` — GET/PUT. Follows the person between venues |
 | **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement. Regional data is **entitled**, **sharded on a 2° grid** (an index plus the venue's cell and its eight neighbours), and carries station contours rather than answers: RFDeck runs the point-in-polygon locally |
-| **Events**, and the alerts configured over them | **Events ingest + cloud alert rules** | ⚠️ **Contract being reworked — build nothing yet.** Events are the whole stream, not an alert allow-list; they go to a local **Imperio**, direct to the cloud, or nowhere, at the user's choice. Alerts are rules the user configures in the cloud *over* those events — there is no "post an alert" endpoint. Ingest is moving onto the instance link, not a site token. Browser push and webhooks stay local and free |
+| **Events**, and the alerts configured over them | **Events ingest + cloud alert rules** | `POST /v1/events` on the instance link with `events:write` — one envelope or a batch of 500 at most, `202 { accepted, duplicates, rejected, errors }`, deduped on `(source.instance, id)`. Free-tier. Alerts are rules the user configures in the cloud *over* the stream, so there is nothing to post and nothing to gate. A local **Imperio** speaks the same binding, so it is one emitter with a list of collectors |
 | Multi-instance dashboard, account-wide show libraries | **Roll-up** + document sync | Already the direction; largely free once the above exist |
 
 **Do not write clients against §8.2, §8.3 or §8.5 yet.** Those bodies are
@@ -534,46 +534,103 @@ The contract, now settled — one namespace, `rfdeck`:
 
 ## The paid tier
 
-### Events and alerts — reworked at Meros, and on hold here
+### Events, and the alerts configured over them
 
-**Retracted 2026-09-25.** This section previously described posting an
-`OutboundAlert` to `POST /v1/alerts`, which Meros has withdrawn. It did not match
-their model, and the corrected one is a bigger and better idea than a relay
-endpoint:
+**The contract landed 2026-09-26.** It replaced a `POST /v1/alerts` relay that was
+briefly specified and then retracted, and the corrected model is a better idea:
 
 - **Events are the whole stream of what RFDeck does**, not a curated set of
-  alert-worthy moments. Alerts are then configured *in the cloud, over those
-  events*: the user picks which events they care about and how they want to hear
-  about it, and Meros notifies them when a matching one arrives. There is no
-  "post an alert" call, because an alert is a rule over a stream rather than a
-  message RFDeck decides to send.
-- **Three destinations, and the user chooses.** A local **Imperio** on the venue
-  network, which takes events with no internet and no cloud account and relays
-  them onward if one is configured; **direct to the cloud** when the instance is
-  linked; or **neither**, in which case events surface only through the local
-  paths RFDeck already has. Being Imperio-aware is *required* for events, alerts
-  and remote capability — which makes it a first-class part of this work rather
-  than an integration to bolt on later.
-- **Sites are not involved.** Any earlier mention of a site-scoped ingest token
-  was wrong; ingest is moving onto the instance link.
-- **Basic alert channels are free-tier; SMS is the paid channel.** That narrows
-  what `docs/EDITIONS.md` had listed as paid, and for a better reason — SMS costs
-  money per message, email does not.
+  alert-worthy moments.
+- **Alerts are rules the user configures in the cloud, over those events** —
+  product, instance, type and minimum-severity filters. There is **no client call
+  to make**: a matching event triggers the notification. Email and webhook are
+  free; SMS is the paid channel.
+- **Emitting is free-tier**, on any signed-in cloud account.
 
-**Nothing is built against this yet, deliberately.** The events-ingest and
-alert-configuration contract is being reworked, so the code that existed for the
-old model has been removed rather than left to rot: the `RelayAlert` types, the
-`/v1/alerts` handler in the fake cloud, and `alerts:send` from the instance
-scopes. That last one matters — requesting a scope for an endpoint that will not
-exist buys nothing and puts a meaningless line on the operator's approval screen.
+So RFDeck's whole job here is: emit good events. There is nothing to gate — which
+also means `rfdeck.notify-relay` is no longer a gate this application applies.
 
-What survives untouched is the local dispatcher. C.2 already fans alerts out to
-webhooks and browser push, both self-contained and free, and that keeps working
-regardless of what the cloud does with events.
+#### The wire
 
-Two things RFDeck needs before this can be built, both in the open questions:
-the reworked contract, and **what Imperio actually is** — nothing yet describes
-how it is found on a network or what it speaks.
+`POST /v1/events` on the instance link, with the **`events:write`** scope. No site
+token — sites turned out to be a portal label RFDeck neither sends nor receives.
+Body is one envelope or an array batch of **at most 500**. Response is
+`202 { accepted, duplicates, rejected, errors }`. The owner is the token's user and
+`source.instance` is registered automatically.
+
+#### The envelope (`event-envelope.md`, v1)
+
+One flat JSON object, and the important rule is that **the envelope keys are
+frozen**: anything RFDeck-specific goes inside `attrs`, never as a new top-level
+key.
+
+| Field | Req | For RFDeck |
+|---|---|---|
+| `envelope` | ✔ | Always `1` |
+| `id` | ✔ | **ULID, generated by us.** It is the idempotency key — collectors dedupe on `(source.instance, id)`, so a retried batch after a link flap costs nothing |
+| `occurred_at` | ✔ | RFC3339 UTC, millisecond, `Z`-suffixed, from our clock |
+| `source.product` | ✔ | `rfdeck` |
+| `source.version` | ✔ | The build, so behaviour correlates with a release |
+| `source.instance` | ✔ | **A stable per-install id we generate on first run.** Explicitly never a MAC address. Needs a new Settings column |
+| `source.edition` | | `desktop` \| `server` \| `appliance` |
+| `type` | ✔ | `rfdeck.<subject>.<verb>`, lowercase, past tense. We own the namespace, and collectors never reject on an unknown value — so the vocabulary can grow without asking anyone |
+| `severity` | ✔ | `debug` \| `info` \| `notice` \| `warning` \| `error` \| `critical`. Wider than RFDeck's internal three, so there is a mapping |
+| `seq` | | Optional monotonic per-instance counter, which lets a collector spot a gap. We have a database, so we should keep one — "the events stopped" is exactly the failure a monitoring product should not be silent about |
+| `subject` | | `{ kind, id, name? }` — the channel |
+| `actor` | | `{ kind, id?, name? }`, `kind` ∈ `user`\|`system`\|`device`\|`external`. Note **absent is not the same as `system`** |
+| `attrs` | | Ours, opaque to the collector, ≤ 16 KiB |
+| `trace` | | Correlation id for a caused chain |
+
+Whole event ≤ 64 KiB. Two smaller notes: `source.site` exists in the envelope as an
+optional *local* operator label, but §0 says RFDeck neither sends nor receives a
+site, so we leave it out; and the envelope's field table still describes the cloud
+assigning a site from an ingest token, which §0 supersedes.
+
+**There is no published TypeScript emitter** — the packages are PHP and Go. So
+RFDeck implements the envelope itself and validates against the published JSON
+Schema (`event-envelope-1.json`, draft 2020-12) in its own suite, which is what the
+doc asks every product to do anyway.
+
+#### A proposed catalogue
+
+Ours to define, since we own the namespace. Drawn from what the application
+already detects, so this is naming existing knowledge rather than new work:
+
+| Type | Severity | Subject |
+|---|---|---|
+| `rfdeck.channel.dropped_out` / `.recovered` | `warning` / `info` | channel |
+| `rfdeck.channel.muted` / `.unmuted` | `info` | channel |
+| `rfdeck.battery.low` / `.critical` | `warning` / `critical` | channel |
+| `rfdeck.audio.fault_detected` | `warning` | channel — with the kind (dropout, noise, click) in `attrs` |
+| `rfdeck.device.went_offline` / `.came_online` | `error` / `info` | device |
+| `rfdeck.device.auth_failed` | `error` | device |
+| `rfdeck.frequency.changed` | `notice` | channel |
+| `rfdeck.intermod.detected` | `warning` | channel |
+| `rfdeck.show.went_live` / `.stood_down` | `notice` | show |
+| `rfdeck.miccheck.completed` | `info` | show |
+
+The doc's own example is `rfdeck.link.dropout`, which is not past tense; the stated
+rule is, so the catalogue follows the rule.
+
+#### Three destinations, and the user chooses
+
+A collector is *whatever accepts the binding*: a local **Imperio**, the Meros cloud
+ingest, both, or a script. Which matters more than it sounds — **an Imperio speaks
+the same `POST /v1/events`**, so there is one emitter with a list of collectors
+rather than two integrations.
+
+- **Local Imperio** — takes events with no internet and no cloud account, and
+  relays onward on the account's link if one is configured.
+- **Direct to the cloud** — when the instance is linked.
+- **Neither** — and this is the part that matches Principle 1 exactly: *"a product
+  configured with zero collectors behaves exactly as it does today: no network
+  attempts, no degradation."* Observability is opt-in and never load-bearing. The
+  local paths RFDeck already has — browser push, webhooks, the alert feed — carry
+  on untouched either way.
+
+Emitting must never throw into the application's hot path. A collector being down
+is not an RFDeck fault, and a dropout that goes unreported is much better than a
+dropout that takes the dashboard down with it.
 
 ### Regional data
 
@@ -751,7 +808,7 @@ services wait for their shapes.
 | D.2 | Person link (browser-side device grant on the *RFDeck Browser* client), link by `sub`, account menu | S | The **RFDeck Browser `client_id`** — re-run the seeder |
 | D.3 | Profile sync | M | D.2. Contract settled and built |
 | D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1. Contract settled and built |
-| D.5 | **Events**: emit RFDeck's event stream, to a local Imperio or to the cloud, with the user choosing | **L**, not the S a relay target would have been — Imperio-awareness and discovery are part of it | ⚠️ Blocked. The reworked ingest contract, *and* a description of what Imperio is |
+| D.5 | **Events**: the envelope, a `source.instance` id, the event catalogue, batching and retry, and a collector list | **L** — the emitter is small; the catalogue and getting "never load-bearing" right are the work | Cloud half **clear to start**. The Imperio half needs discovery and its auth (below) |
 | D.6 | Regional TV occupancy: index and cell fetch per domain, cell arithmetic, point-in-polygon, channel→MHz, coordinator exclusions, venue location | **L** — the geography is ours, not the cloud's | D.1 **and a live entitlement** (the packs are gated). Contract fully specified |
 | D.7 | Device-profile feed | S | Meros to publish the pack. No link needed — it is public |
 
@@ -818,14 +875,14 @@ and tested** on Meros's side. What is left is short:
   D.2, and it is one command.
 - **The device-profile pack** — not published yet. D.7 is written to read it as a
   public pack.
-- **The reworked events and alerts contract** (§0). Ingest moving onto the
-  instance link, the scope it needs, the request shape, and how alert rules are
-  configured. This is the one real blocker left, and it blocks D.5 entirely.
-- **What Imperio is.** Being Imperio-aware is stated as *required* for events,
-  alerts and remote capability, and nothing so far describes it: how RFDeck finds
-  one on a venue network (mDNS? a configured address?), what protocol it speaks,
-  whether the event shape differs from the cloud's, and how RFDeck should behave
-  when one appears or disappears mid-show. Cannot be guessed at.
+- **How RFDeck finds and authenticates to a local Imperio.** The protocol half of
+  this question is answered: a collector is anything that accepts the envelope
+  binding, and an Imperio accepts the same `POST /v1/events`, so there is one
+  emitter rather than two integrations. Still unstated: **discovery** (mDNS, a
+  configured address, something else) and **what bearer token a local one takes** —
+  it accepts events with no cloud account at all, so it cannot want the instance
+  link's token. And: should RFDeck send to an Imperio *and* the cloud when both are
+  present, or does the Imperio relay make that a duplicate?
 - Whether the **rotation grace window** lands. Changes nothing we build.
 
 Nothing further on regional data: source settled, sharding answers the sizing
