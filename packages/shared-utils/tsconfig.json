@@ -4,5 +4,7 @@
     "outDir": "dist",
     "declaration": true
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "// exclude": "Tests are run by vitest, not compiled into dist — the same rule the server tsconfig uses. Without this, `tsc` tries to resolve vitest's types for a file that never ships.",
+  "exclude": ["src/**/*.test.ts"]
 }

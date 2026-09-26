@@ -18,6 +18,7 @@ const row = () => ({
     {
       performerId: 'p-elphaba', realName: 'Ada Lovelace', characterName: 'Elphaba',
       notes: 'wig, then hat', assignedChannelKey: 'dev-1:1', iemChannelKey: 'dev-2:1',
+      stageX: 320, stageY: 700,
       sortIndex: 0,
       quickChanges: [
         { act: 1, outCue: 'end of sc. 3', inCue: 'top of sc. 5', notes: 'pack to SR', sortIndex: 0 },
@@ -27,6 +28,9 @@ const row = () => ({
     {
       performerId: null, realName: 'Grace Hopper', characterName: 'Glinda',
       notes: '', assignedChannelKey: 'dev-1:2', iemChannelKey: null, sortIndex: 1,
+      // Never placed on the plot. Has to survive as null rather than becoming 0,
+      // which would silently move them to the upstage-left corner.
+      stageX: null, stageY: null,
       quickChanges: [],
     },
   ],
@@ -184,6 +188,33 @@ describe('showFileKey', () => {
     for (const bad of ['', '-leading', 'has space', 'slash/es', 'a'.repeat(192)]) {
       expect(() => showFileKey(bad)).toThrowError(/document key/);
     }
+  });
+});
+
+describe('the stage plot', () => {
+  it('carries positions, so a cast of thirty is not re-placed by hand at the next venue', () => {
+    const file = buildShowFile(row());
+    expect(file.players[0]).toMatchObject({ stageX: 320, stageY: 700 });
+  });
+
+  it('keeps an unplaced performer unplaced rather than moving them to the corner', () => {
+    const file = buildShowFile(row());
+    expect(file.players[1].stageX).toBeNull();
+    expect(file.players[1].stageY).toBeNull();
+    // And through a round trip, which is where a null would most easily become 0.
+    const back = parseShowFile(JSON.parse(JSON.stringify(file)));
+    expect(back.players[1].stageX).toBeNull();
+  });
+
+  it('rounds a fractional position, because the content hash cannot hold a float', () => {
+    // A client sending 320.4 must not put a float in the document — see the
+    // tripwire below for why that would break conflict detection.
+    const file = buildShowFile({
+      ...row(),
+      players: [{ ...row().players[0], stageX: 320.4, stageY: 699.6 }],
+    });
+    expect(file.players[0].stageX).toBe(320);
+    expect(file.players[0].stageY).toBe(700);
   });
 });
 

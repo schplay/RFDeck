@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Menu, X, Keyboard, Lock, Unlock } from 'lucide-react';
+import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Layout, Menu, X, Keyboard, Lock, Unlock } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { AudioMonitor } from '../components/audio/AudioMonitor';
 import { AlertFeed } from '../components/alerts/AlertFeed';
@@ -132,6 +132,14 @@ export default function RootLayout() {
           <NavLink to="/backstage" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
             <Monitor size={20} />
             Backstage View
+          </NavLink>
+          {/* Listed for every environment mode, not just Concert/Touring as the
+              README scopes it. Hiding a nav item based on which show happens to be
+              open would make it vanish with no explanation, and a seating plan is
+              just as useful for a conference panel or a worship team. */}
+          <NavLink to="/stage-plot" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
+            <Layout size={20} />
+            Stage Plot
           </NavLink>
         </div>
       </nav>

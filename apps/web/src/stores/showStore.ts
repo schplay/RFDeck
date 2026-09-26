@@ -35,6 +35,17 @@ interface ShowStore {
     characterName: string,
   ) => Promise<void>;
   updatePlayer: (showId: string, playerId: string, partial: Partial<Omit<Player, 'id' | 'showId'>>) => Promise<void>;
+  /**
+   * Move performers on the stage plot.
+   *
+   * A batch, and its own endpoint rather than `updatePlayer` per person: that route
+   * re-reads and rebroadcasts the whole show per call, which is fine for recasting
+   * and wrong for a drag. Coordinates are thousandths of the stage, 0-1000.
+   */
+  setStagePositions: (
+    showId: string,
+    positions: Array<{ playerId: string; x: number | null; y: number | null }>,
+  ) => Promise<void>;
   deletePlayer: (showId: string, playerId: string) => Promise<void>;
   addQuickChange: (showId: string, playerId: string) => Promise<void>;
   updateQuickChange: (showId: string, playerId: string, changeId: string, partial: Record<string, unknown>) => Promise<void>;
@@ -175,6 +186,29 @@ export const useShowStore = create<ShowStore>()(
           });
         } catch (err) {
           console.error('Failed to update player:', err);
+        }
+      },
+
+      setStagePositions: async (showId, positions) => {
+        // Optimistic, because this is a drag: the card has to follow the pointer,
+        // not arrive where the server says a moment later.
+        const byId = new Map(positions.map(p => [p.playerId, p]));
+        set(s => ({
+          shows: patchShow(s.shows, showId, sh => ({
+            ...sh,
+            players: sh.players.map(p => {
+              const next = byId.get(p.id);
+              return next ? { ...p, stageX: next.x, stageY: next.y } : p;
+            }),
+          })),
+        }));
+        try {
+          await apiFetch(`/shows/${showId}/stage-plot`, {
+            method: 'PUT',
+            body: JSON.stringify({ positions }),
+          });
+        } catch (err) {
+          console.error('Failed to save stage positions:', err);
         }
       },
 

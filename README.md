@@ -223,7 +223,11 @@ The log of problems RFDeck noticed on its own, each with the audio that proves i
 - **Backstage / Talent View** — read-only, large text; shareable URL or second
   window. Kept separate from the Micboard rather than merged: they are read by
   different people for different reasons
-- **Stage Plot View** — spatial layout view *(Concert/Touring mode)* 📋
+- **Stage Plot View** — who is standing where, with each performer's mic state on
+  them, so a dropout is somewhere to look rather than a row in a table. Drag to
+  place; positions belong to the show, so they are the same on every screen and
+  travel in the show file. Read-only until unlocked, and available in every
+  environment mode rather than only Concert/Touring
 
 ### Show Environment Modes
 The interface and available features adapt to the type of show:

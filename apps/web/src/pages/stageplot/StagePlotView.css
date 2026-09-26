@@ -1,0 +1,240 @@
+/* The stage plot.
+   A spatial view, so almost all of this is about the surface and the cards on it.
+   Status colour goes on the performer rather than beside their name: the point is
+   that a dropout is somewhere to look. */
+
+.sp-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sp-show-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.sp-show-mode {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-on-surface-variant, #9aa0a6);
+}
+
+.sp-desc {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-on-surface-variant, #9aa0a6);
+}
+
+/* ── The stage ──────────────────────────────────────────────────────────────
+   A fixed 3:2 aspect ratio rather than filling the viewport: positions are
+   proportional, so the surface has to have the same shape on every screen or a
+   plot dragged on a laptop would read as squashed on a phone. */
+.sp-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  /* Keeps the whole plot visible on a laptop without scrolling, which is the
+     point of a spatial view. */
+  max-height: 68vh;
+  margin: 0 auto;
+  border: 1px solid var(--color-outline-variant, #444);
+  border-radius: var(--radius-md, 8px);
+  /* Upstage darker, downstage lighter — the audience end reads as the open one. */
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--color-surface, #1e1f22) 88%, black),
+    var(--color-surface, #1e1f22)
+  );
+  overflow: hidden;
+  touch-action: none; /* dragging must not scroll the page on a tablet */
+}
+
+.sp-stage.is-editing {
+  border-color: var(--color-primary, #6aa2ff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary, #6aa2ff) 30%, transparent);
+}
+
+.sp-centre-line {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed color-mix(in srgb, var(--color-outline, #555) 60%, transparent);
+}
+
+.sp-upstage-label,
+.sp-downstage-label {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-on-surface-variant, #9aa0a6);
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.sp-upstage-label { top: 6px; }
+.sp-downstage-label { bottom: 6px; }
+
+/* ── A performer on the plot ────────────────────────────────────────────── */
+.sp-performer {
+  position: absolute;
+  /* `left`/`top` are the performer's position, so the card is centred on it
+     rather than hanging below and to the right of where they stand. */
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 96px;
+  max-width: 150px;
+  padding: 7px 10px;
+  border: 1px solid var(--tone, var(--color-outline, #555));
+  border-left-width: 3px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--color-surface-container, #26282c);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 35%);
+  text-align: center;
+  user-select: none;
+}
+
+.sp-stage.is-editing .sp-performer {
+  cursor: grab;
+}
+
+.sp-performer.is-dragging {
+  cursor: grabbing;
+  /* Above the others, so a card being dragged through a crowd stays visible. */
+  z-index: 5;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 50%);
+}
+
+.sp-performer-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  /* A long name truncates rather than widening the card and overlapping the
+     performer standing next to them. */
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-performer-role,
+.sp-performer-meta {
+  font-size: 11px;
+  color: var(--color-on-surface-variant, #9aa0a6);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-performer-status {
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--tone, var(--color-on-surface-variant, #9aa0a6));
+}
+
+/* The same four tones the dashboard and Micboard use, so no two views disagree
+   about whether a channel is a problem. */
+.sp-performer.tone-good { --tone: var(--color-success, #4b9e5f); }
+.sp-performer.tone-warn { --tone: var(--color-warning, #d08a2c); }
+.sp-performer.tone-crit { --tone: var(--color-error, #d05353); }
+.sp-performer.tone-idle { --tone: var(--color-outline, #666); }
+
+/* ── Performers not yet on the plot ─────────────────────────────────────── */
+.sp-bench {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px dashed var(--color-outline-variant, #444);
+  border-radius: var(--radius-md, 8px);
+}
+
+.sp-bench-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--color-on-surface-variant, #9aa0a6);
+}
+
+.sp-bench-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sp-bench-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-outline-variant, #444);
+  border-radius: 999px;
+  background: var(--color-surface-container, #26282c);
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sp-bench-item:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.sp-bench-item:not(:disabled):hover {
+  border-color: var(--color-primary, #6aa2ff);
+}
+
+.sp-bench-role {
+  font-size: 11px;
+  color: var(--color-on-surface-variant, #9aa0a6);
+}
+
+/* ── Nothing to show ───────────────────────────────────────────────────── */
+.sp-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--color-on-surface-variant, #9aa0a6);
+}
+
+.sp-empty-hint {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+/* On a phone the stage gets taller relative to its width, because a 3:2 box at
+   phone width leaves cards overlapping. The positions are proportional, so this
+   changes the shape of the surface, not where anybody stands. */
+@media (max-width: 640px) {
+  .sp-stage {
+    aspect-ratio: 1 / 1;
+    max-height: none;
+  }
+
+  .sp-performer {
+    min-width: 76px;
+    max-width: 110px;
+    padding: 5px 7px;
+  }
+
+  .sp-performer-name { font-size: 12px; }
+}

@@ -407,6 +407,23 @@ model Player {
   // the soundcheck is about mics only; IEMs are assigned but not checked there.
   iemChannelKey      String?
   sortIndex          Int        @default(0)
+  // Where this performer stands, for the stage plot (6.4).
+  //
+  // Thousandths of the stage width and depth, 0–1000 — a proportion rather than
+  // pixels, because the plot is dragged on whatever screen is to hand and read on
+  // another, and pixels would land somewhere else on a phone.
+  //
+  // **Integers, not the obvious 0–1 fraction.** A show file's content hash is
+  // reproduced from a canonical JSON form, and PHP and JavaScript do not always
+  // render the same float identically, so one float here could make RFDeck and Meros
+  // disagree about a document that is in fact identical. `showFile.test.ts` has a
+  // tripwire for exactly this, and it caught this field. 0.1% is far finer than
+  // anyone can drag anyway.
+  //
+  // Null means "not placed yet", which the plot shows as a performer waiting to be
+  // dragged on rather than silently stacking everyone in a corner.
+  stageX             Int?
+  stageY             Int?
 
   quickChanges       QuickChange[]
 

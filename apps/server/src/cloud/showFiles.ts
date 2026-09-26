@@ -154,6 +154,8 @@ export class ShowFiles {
             notes: player.notes,
             assignedChannelKey: player.assignedChannelKey,
             iemChannelKey: player.iemChannelKey,
+            stageX: player.stageX,
+            stageY: player.stageY,
             sortIndex: player.sortIndex,
             quickChanges: {
               create: player.quickChanges.map(q => ({

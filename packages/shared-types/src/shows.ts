@@ -43,6 +43,19 @@ export interface Player {
   /** The performer's IEM channel, by stable id, on the same terms as the mic.
    *  Assigned here; never part of the soundcheck, which is about mics only. */
   iemChannelKey: string | null;
+  /**
+   * Where this performer stands: thousandths of the stage width and depth, 0–1000.
+   *
+   * A proportion rather than pixels, because the plot is dragged on whatever screen
+   * is to hand and read on another. Integers rather than a 0–1 fraction because a
+   * show file's content hash is reproduced from canonical JSON, and a float can
+   * render differently in PHP and JavaScript — see the note in `schema.prisma`.
+   *
+   * `null` means not placed yet, which the plot shows as a performer waiting to be
+   * dragged on rather than stacking everyone at the origin.
+   */
+  stageX: number | null;
+  stageY: number | null;
   /** Costume changes that take the pack off, for this show. */
   quickChanges: QuickChange[];
 }

@@ -60,6 +60,13 @@ jobs:
       - name: Test
         run: pnpm --filter @rfdeck/server test
 
+      # The shared packages have their own suites and were not being run at all.
+      # `stagePlot` in particular guards an integer-only coordinate space that the
+      # show file's content hash depends on, which is exactly the kind of quiet
+      # property a test only helps with if something runs it.
+      - name: Test shared packages
+        run: pnpm --filter @rfdeck/shared-utils test
+
       - name: Build web
         run: pnpm --filter @rfdeck/web build
 

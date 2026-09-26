@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
 import { findOrCreatePerformer, listPerformers } from '../performers/roster';
+import { stageCoord } from '@rfdeck/shared-utils';
 
 // Shows are server-authoritative: RFDeck is a multi-client application, so a
 // mic-check tick made backstage must appear at FOH immediately. Every mutation
@@ -66,6 +67,9 @@ export function serializeShow(row: any) {
       notes:              p.notes,
       assignedChannelKey: p.assignedChannelKey ?? null,
       iemChannelKey:      p.iemChannelKey ?? null,
+      // Stage plot position, in thousandths of the stage. Null means unplaced.
+      stageX:             p.stageX ?? null,
+      stageY:             p.stageY ?? null,
       quickChanges: (p.quickChanges ?? []).map((q: any) => ({
         id:        q.id,
         playerId:  q.playerId,
@@ -244,6 +248,54 @@ export const showRoutes: FastifyPluginAsync = async (fastify) => {
       if (err?.code === 'P2025') return reply.code(404).send({ error: 'Player not found' });
       request.log.error({ err }, 'Failed to update player');
       return reply.code(500).send({ error: 'Could not save the change' });
+    }
+    return await pushShow(id);
+  });
+
+  /**
+   * Where people stand, for the stage plot.
+   *
+   * A batch rather than a field on the per-player PUT, because that route re-reads
+   * and broadcasts the whole show on every call — fine for recasting, wrong for a
+   * drag. One transaction and one broadcast, however many performers moved.
+   *
+   * Coordinates are thousandths of the stage on each axis, 0–1000. Clamped and
+   * rounded here as well as in the client: the client clamps to keep a card on
+   * screen, the server clamps because an out-of-range value would be stored forever
+   * and put somebody off the plot, and rounds because a float would break the show
+   * file's content hash. Passing null for both unplaces a performer.
+   */
+  fastify.put('/shows/:id/stage-plot', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const { positions } = (request.body ?? {}) as {
+      positions?: Array<{ playerId?: string; x?: number | null; y?: number | null }>;
+    };
+    if (!Array.isArray(positions)) {
+      return reply.code(400).send({ error: 'positions must be an array' });
+    }
+
+    const updates = positions
+      .filter(p => typeof p?.playerId === 'string' && p.playerId)
+      .map(p => ({
+        playerId: p.playerId as string,
+        x: stageCoord(p.x),
+        y: stageCoord(p.y),
+      }));
+
+    try {
+      await prisma.$transaction(
+        updates.map(u => prisma.player.update({
+          where: { id: u.playerId },
+          data: { stageX: u.x, stageY: u.y },
+        })),
+      );
+    } catch (err: any) {
+      // A player deleted by another client mid-drag. Not worth a 500: the
+      // re-broadcast below tells this client what actually exists.
+      if (err?.code !== 'P2025') {
+        request.log.error({ err }, 'Failed to save stage positions');
+        return reply.code(500).send({ error: 'Could not save the stage plot' });
+      }
     }
     return await pushShow(id);
   });

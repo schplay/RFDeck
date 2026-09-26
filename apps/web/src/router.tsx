@@ -10,6 +10,7 @@ import MicboardView from './pages/micboard/MicboardView';
 import ShowManagement from './pages/shows/ShowManagement';
 import PerformersPage from './pages/performers/PerformersPage';
 import DetectionsPage from './pages/detections/DetectionsPage';
+import StagePlotView from './pages/stageplot/StagePlotView';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ShortcutsOverlay } from './components/ShortcutsOverlay';
 
@@ -72,6 +73,10 @@ export const router = createHashRouter([
       {
         path: 'detections',
         element: guard('Detections', <DetectionsPage />)
+      },
+      {
+        path: 'stage-plot',
+        element: guard('Stage Plot', <StagePlotView />)
       }
     ]
   }

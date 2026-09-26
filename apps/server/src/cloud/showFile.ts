@@ -42,6 +42,9 @@ export interface ShowFilePlayer {
   /** Stable channel ids: the inventory row's uuid and the receiver slot. */
   assignedChannelKey: string | null;
   iemChannelKey: string | null;
+  /** Stage-plot position in thousandths of the stage, 0-1000. Integers: see below. */
+  stageX: number | null;
+  stageY: number | null;
   sortIndex: number;
   quickChanges: ShowFileQuickChange[];
 }
@@ -113,6 +116,11 @@ export function buildShowFile(row: any, now: Date = new Date()): ShowFile {
       notes: text(p.notes),
       assignedChannelKey: p.assignedChannelKey ?? null,
       iemChannelKey: p.iemChannelKey ?? null,
+      // Travels with the show: a plot is part of how a production is staged, and
+      // re-placing a cast of thirty by hand at the next venue is exactly the work a
+      // show file exists to avoid. Rounded because the float tripwire below is real.
+      stageX: p.stageX === null || p.stageX === undefined ? null : whole(p.stageX, 0),
+      stageY: p.stageY === null || p.stageY === undefined ? null : whole(p.stageY, 0),
       sortIndex: whole(p.sortIndex, 0),
       quickChanges: [...(p.quickChanges ?? [])]
         .sort((a: any, b: any) => (a.sortIndex ?? 0) - (b.sortIndex ?? 0))
@@ -204,6 +212,8 @@ export function parseShowFile(input: unknown): ShowFile {
         notes: text(p.notes),
         assignedChannelKey: nullableText(p.assignedChannelKey),
         iemChannelKey: nullableText(p.iemChannelKey),
+        stageX: p.stageX === null || p.stageX === undefined ? null : whole(p.stageX, 0),
+        stageY: p.stageY === null || p.stageY === undefined ? null : whole(p.stageY, 0),
         sortIndex: whole(p.sortIndex, i),
         quickChanges: Array.isArray(p.quickChanges)
           ? p.quickChanges.filter((q: any) => q && typeof q === 'object').map((q: any, j: number) => ({

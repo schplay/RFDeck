@@ -15,7 +15,7 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | A — Audio monitoring *(added)* | ✅ Server-side capture, any-interface patching, AES67 subscriptions from RFDeck |
 | A2 — Capture off Linux *(added)* | ✅ Per-platform capture backend; the desktop build had no audio at all before this |
 | 5 — Client reach | 5.1 responsive ✅; 5.3 web push ✅; 5.2 PWA and 5.4 QR outstanding |
-| 6 — Feature completion | ✅ 6.1 rolling capture and detection; ✅ 6.2 notebook and photos; ✅ 6.3 maintenance log; 6.4 outstanding |
+| 6 — Feature completion | ✅ Complete — 6.1 rolling capture and detection, 6.2 notebook and photos, 6.3 maintenance log, 6.4 stage plot |
 | B — Micboard & Go Live *(added)* | ✅ Read-only wall display; one action to put RFDeck on the rig |
 | 7 — Breadth & operations | In progress — ✅ 7.1 and 7.5 CI; 🚧 7.3 Shure (unverified on hardware); 7.2, 7.4 outstanding |
 | C — Competitive parity *(added)* | ✅ C.1, C.2, C.4–C.6, C.8–C.13; C.3 staged (step 1 done, 2–4 need hardware). C.7 (baseline drift) removed — see below |
@@ -722,10 +722,37 @@ Landed as specified, with two additions the spec did not call for:
     condition is its own tested function: a false positive writes an entry
     claiming work nobody did, which is worse than a missing one.
 
-### 6.4 Stage plot view — **L**
+### 6.4 Stage plot view — **L** — ✅ *complete*
 
-Spatial channel layout for Concert/Touring mode, persisted per show and shared across clients.
-The drag interaction from card reordering is a reasonable starting point.
+Spatial channel layout, persisted per show and shared across clients.
+
+The question it answers is one a list cannot: an operator hears a dropout and needs to
+know *which person on stage*. "Vocal 7" is a row in a table; "the one downstage left"
+is somewhere to look. So the status colour is on the performer, not beside their name.
+
+Four decisions worth keeping:
+
+- **Positions are thousandths of the stage, as integers.** Proportional because the
+  plot is dragged at FOH and read on a phone in the wings, and pixels would land
+  somewhere else. Integers because positions travel in the show file, whose content
+  hash is reproduced from canonical JSON — and a float can render differently in PHP
+  and JavaScript. `showFile.test.ts`'s float tripwire caught this field, which is
+  exactly what it was put there for.
+- **`null` means unplaced, and stays null.** `Number(null)` is 0, so a careless
+  coercion would silently move every unplaced performer to the upstage-left corner.
+  Tested on both the show file and the coordinate helper.
+- **Read-only unless unlocked.** A stray drag during a performance would rearrange the
+  production's plot for everyone, so moving people is a mode you enter.
+- **Available in every environment mode**, not only Concert/Touring as the README
+  scopes it. Hiding a nav item based on which show happens to be open makes it vanish
+  with no explanation, and a seating plan suits a conference panel or a worship team
+  just as well.
+
+The coordinate maths is in `@rfdeck/shared-utils` so the client and server clamp
+identically — the client to keep a card on screen, the server because a bad value
+would persist. Positions are saved through a dedicated batch endpoint rather than the
+per-player PUT, which re-reads and rebroadcasts the whole show per call: fine for
+recasting, wrong for a drag.
 
 ---
 
