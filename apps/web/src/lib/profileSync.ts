@@ -1,4 +1,4 @@
-import { PersonSession } from './personLink';
+import { PersonSession, accessTokenFor } from './personLink';
 
 /**
  * A person's preferences, following them between machines.
@@ -42,11 +42,19 @@ async function call<T>(
   session: PersonSession,
   method: 'GET' | 'PUT' | 'DELETE',
   body?: unknown,
+  clientId?: string,
+  onRenewed?: (s: PersonSession) => void,
 ): Promise<T> {
+  // Renewed here rather than by a timer, so a sync that happens after an hour
+  // idle just works instead of failing and asking the operator to sign in again.
+  const token = clientId
+    ? await accessTokenFor(baseUrl, clientId, session, onRenewed ?? (() => {}))
+    : session.accessToken;
+
   const res = await fetch(`${baseUrl}/v1/profiles/${NAMESPACE}`, {
     method,
     headers: {
-      Authorization: `Bearer ${session.accessToken}`,
+      Authorization: `Bearer ${token}`,
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
@@ -110,8 +118,13 @@ export interface SyncResult {
  * definitely written deliberately at some point, whereas an untimed local value may
  * only be a default.
  */
-export async function syncProfile(baseUrl: string, session: PersonSession): Promise<SyncResult> {
-  const remote = await call<RemoteProfile>(baseUrl, session, 'GET');
+export async function syncProfile(
+  baseUrl: string,
+  session: PersonSession,
+  clientId?: string,
+  onRenewed?: (s: PersonSession) => void,
+): Promise<SyncResult> {
+  const remote = await call<RemoteProfile>(baseUrl, session, 'GET', undefined, clientId, onRenewed);
   const local = readLocal();
   const result: SyncResult = { pulled: [], pushed: [], resolved: [] };
 
@@ -144,7 +157,7 @@ export async function syncProfile(baseUrl: string, session: PersonSession): Prom
   if (Object.keys(toPush).length > 0) {
     // Partial merge: only these keys are touched, so a preference changed on
     // another machine in the same moment survives.
-    await call(baseUrl, session, 'PUT', { keys: toPush });
+    await call(baseUrl, session, 'PUT', { keys: toPush }, clientId, onRenewed);
   }
   return result;
 }
@@ -154,6 +167,8 @@ export async function pushProfile(
   baseUrl: string,
   session: PersonSession,
   keys: string[] = [...SYNCED_KEYS],
+  clientId?: string,
+  onRenewed?: (s: PersonSession) => void,
 ): Promise<void> {
   const local = readLocal();
   const payload: Record<string, unknown> = {};
@@ -161,7 +176,7 @@ export async function pushProfile(
     if (key in local) payload[key] = local[key];
   }
   if (Object.keys(payload).length === 0) return;
-  await call(baseUrl, session, 'PUT', { keys: payload });
+  await call(baseUrl, session, 'PUT', { keys: payload }, clientId, onRenewed);
 }
 
 /**

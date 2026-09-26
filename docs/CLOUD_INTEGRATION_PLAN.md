@@ -325,11 +325,31 @@ device, token, userinfo and revoke endpoints for a public client.
 
 It uses its own **RFDeck Browser** client (§11.F), which is the point: with a
 separate client the person link cannot revoke the server's instance link for the
-same Meros user, however either side handles its tokens. RFDeck should still have
-the browser **decline `offline_access`** — it then holds no refresh token at all,
-nothing personal outlives the tab, and the cost is re-approving when the
-hour-long access token expires. That is Principle 3 taken literally, and it is now
-a choice rather than a workaround.
+same Meros user, however either side handles its tokens.
+
+**`offline_access` is requested, and the session renews itself.** This was built
+the other way round first — no refresh token, on the reasoning that a shared venue
+machine should hold nothing personal. The consequence was re-approving with a phone
+and a typed code **every hour**, which is not a trade; it is a broken feature, and
+exactly the sort of thing that makes people stop using something mid-show.
+
+The shared-machine concern is real and is handled by *where* the token lives:
+
+- **Default: this tab only.** `sessionStorage`, so the session ends when the tab
+  closes. A venue PC accumulates no identities, and the operator signs in once per
+  sitting.
+- **"Keep me signed in on this machine":** `localStorage`, for somebody's own
+  laptop. Offered as a choice because the operator knows which kind of machine they
+  are sitting at and RFDeck does not.
+
+Tokens still never reach the RFDeck server either way, which is what Principle 3
+actually asks for.
+
+One hazard that came with this and is handled explicitly: refresh tokens rotate and
+a replay revokes the whole family. With "keep me signed in" the token is visible to
+every tab, so two tabs renewing at once would look exactly like a replay and sign
+both out. A short cross-tab lock means one tab renews and the others read the
+result.
 
 The desktop application is the one case that *could* use auth-code + PKCE with a
 loopback redirect, since its browser is on the same machine. Not worth a second

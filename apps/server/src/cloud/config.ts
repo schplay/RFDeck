@@ -59,15 +59,21 @@ export const INSTANCE_SCOPES = [
 /**
  * Scopes the person link requests.
  *
- * Deliberately no `offline_access`: the browser then holds no refresh token, so
- * nothing personal outlives the tab on a shared venue machine. The cost is
- * re-approving when the hour-long access token expires, which is the right trade
- * for a machine several people touch.
+ * Recorded here for reference; the browser builds its own scope string, since it
+ * runs the flow itself and the server never holds a personal token.
+ *
+ * `offline_access` **is** requested. An earlier version left it out so that a
+ * shared venue machine would hold no refresh token — but the consequence was
+ * re-approving with a phone and a typed code every hour, which is not a trade,
+ * it is a broken feature. The shared-machine concern is handled by *where* the
+ * token is kept instead: session storage by default, so it ends with the tab, and
+ * local storage only when the operator says "keep me signed in on this machine".
  */
 export const PERSON_SCOPES = [
   'openid',
   'profile',
   'email',
+  'offline_access',
   'profiles:read',
   'profiles:write',
 ] as const;

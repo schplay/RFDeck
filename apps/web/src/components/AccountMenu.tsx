@@ -26,8 +26,8 @@ function initials(name: string | null, email: string | null): string {
 
 export function AccountMenu() {
   const browserClientId = useCloudStore(s => s.status.browserClientId);
-  const { session, pending, outcome, error, syncing, lastSync,
-          signIn, cancel, signOut, sync } = usePersonStore();
+  const { session, pending, outcome, error, syncing, lastSync, remember,
+          setRemember, signIn, cancel, signOut, sync } = usePersonStore();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
@@ -71,6 +71,11 @@ export function AccountMenu() {
                 Your layout, meter settings and solo groups follow you to any RFDeck
                 you sign in to.
               </p>
+              <p className="am-note am-quiet">
+                {session.persistent
+                  ? 'Staying signed in on this machine.'
+                  : 'Signed in until this tab closes.'}
+              </p>
               {lastSync && (
                 <p className="am-synced">
                   <Check size={12} />
@@ -107,6 +112,20 @@ export function AccountMenu() {
                 — follow you between machines and venues. It changes nothing about
                 the rig.
               </p>
+              {/* Their call, because they know whether this is their laptop or the
+                  venue's shared PC and RFDeck does not. Either way the session
+                  renews itself — signing in is not an hourly chore. */}
+              <label className="am-remember">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={e => setRemember(e.target.checked)}
+                />
+                <span>
+                  Keep me signed in on this machine
+                  <em>Leave unticked on a shared venue computer.</em>
+                </span>
+              </label>
               {outcome === 'denied' && <p className="am-error">That request was declined.</p>}
               {outcome === 'expired' && <p className="am-error">The code expired. Try again.</p>}
               {outcome === 'error' && error && <p className="am-error">{error}</p>}

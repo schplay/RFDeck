@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import {
   PersonSession, DeviceCodeStart, loadSession, saveSession,
-  startPersonLink, pollPersonLink, endPersonLink,
+  startPersonLink, pollPersonLink, endPersonLink, PersonSignedOut,
 } from '../lib/personLink';
 import { syncProfile, pushProfile, SyncResult } from '../lib/profileSync';
 import { useCloudStore } from './cloudStore';
@@ -22,6 +22,9 @@ interface PersonState {
   syncing: boolean;
   lastSync: SyncResult | null;
 
+  /** Whether to keep the session past this tab — the operator's call. */
+  remember: boolean;
+  setRemember: (remember: boolean) => void;
   signIn: () => Promise<void>;
   cancel: () => void;
   signOut: () => Promise<void>;
@@ -39,6 +42,12 @@ export const usePersonStore = create<PersonState>()((set, get) => ({
   error: null,
   syncing: false,
   lastSync: null,
+  // Off by default: a venue PC is the common case, and a session that ends with
+  // the tab is the safer default to offer there. Somebody on their own laptop
+  // ticks the box once.
+  remember: loadSession()?.persistent ?? false,
+
+  setRemember: remember => set({ remember }),
 
   signIn: async () => {
     const { baseUrl, browserClientId } = useCloudStore.getState().status;
@@ -60,7 +69,9 @@ export const usePersonStore = create<PersonState>()((set, get) => ({
           set({ outcome: 'expired', pending: null });
           return;
         }
-        const result = await pollPersonLink(baseUrl, browserClientId, current.deviceCode, current.intervalMs);
+        const result = await pollPersonLink(
+          baseUrl, browserClientId, current.deviceCode, current.intervalMs, get().remember,
+        );
         switch (result.state) {
           case 'pending':
             poller = setTimeout(() => void tick(), current.intervalMs);
@@ -111,13 +122,25 @@ export const usePersonStore = create<PersonState>()((set, get) => ({
     const session = get().session;
     const { baseUrl } = useCloudStore.getState().status;
     if (!session || !baseUrl) return;
+    const { browserClientId } = useCloudStore.getState().status;
     set({ syncing: true, error: null });
     try {
-      set({ lastSync: await syncProfile(baseUrl, session) });
+      set({
+        lastSync: await syncProfile(
+          baseUrl, session, browserClientId ?? undefined,
+          renewed => set({ session: renewed }),
+        ),
+      });
     } catch (err) {
       // A sync failure changes nothing about whether RFDeck works, so it is
-      // reported and dropped rather than retried in a loop.
-      set({ error: (err as Error).message });
+      // reported and dropped rather than retried in a loop. A session that has
+      // genuinely ended is different: clear it, so the menu offers sign-in rather
+      // than pretending somebody is still there.
+      if (err instanceof PersonSignedOut) {
+        set({ session: null, error: err.message });
+      } else {
+        set({ error: (err as Error).message });
+      }
     } finally {
       set({ syncing: false });
     }
@@ -127,10 +150,15 @@ export const usePersonStore = create<PersonState>()((set, get) => ({
     const session = get().session;
     const { baseUrl } = useCloudStore.getState().status;
     if (!session || !baseUrl) return;
+    const { browserClientId } = useCloudStore.getState().status;
     try {
-      await pushProfile(baseUrl, session, keys);
+      await pushProfile(
+        baseUrl, session, keys, browserClientId ?? undefined,
+        renewed => set({ session: renewed }),
+      );
     } catch (err) {
-      set({ error: (err as Error).message });
+      if (err instanceof PersonSignedOut) set({ session: null, error: err.message });
+      else set({ error: (err as Error).message });
     }
   },
 }));

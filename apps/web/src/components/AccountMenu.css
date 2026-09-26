@@ -142,3 +142,34 @@
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+.am-quiet { opacity: 0.75; margin-bottom: 8px; }
+
+/* The shared-machine choice. Its own line, with the consequence spelled out —
+   somebody ticking this on a venue PC should know what they are choosing. */
+.am-remember {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-on-surface);
+  cursor: pointer;
+}
+
+.am-remember input {
+  margin-top: 1px;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--color-primary);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.am-remember em {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--color-on-surface-variant);
+}
