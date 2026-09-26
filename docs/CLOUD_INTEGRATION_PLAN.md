@@ -464,7 +464,7 @@ a service rather than getting a bespoke backend
 
 | RFDeck feature | Meros service | Shape |
 |---|---|---|
-| **Show files** — push/pull, version history | **Document sync** (§8.2) — account-scoped, named, versioned JSON | `/v1/docs/rfdeck/shows/{key}` — PUT a new version carrying `base_version` (**409** if the head moved; never a silent overwrite), GET the head or `?version=`, GET `/versions`. Server-visible now. Small JSON only |
+| **Show files** — push/pull, version history *(capped by tier: 1 on free, 100 FIFO on paid)* | **Document sync** (§8.2) — account-scoped, named, versioned JSON | `/v1/docs/rfdeck/shows/{key}` — PUT a new version carrying `base_version` (**409** if the head moved; never a silent overwrite), GET the head or `?version=`, GET `/versions`. Server-visible now. Small JSON only |
 | **Profiles** — layout, meters, shortcuts, solo groups | **Profile sync** (§8.1) — person-scoped, last-write-wins per key | `/v1/profiles/rfdeck` — GET/PUT. Follows the person between venues |
 | **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement. Regional data is **entitled**, **sharded on a 2° grid** (an index plus the venue's cell and its eight neighbours), and carries station contours rather than answers: RFDeck runs the point-in-polygon locally |
 | **Events**, and the alerts configured over them | **Events ingest + cloud alert rules** | `POST /v1/events` on the instance link with `events:write` — one envelope or a batch of 500 at most, `202 { accepted, duplicates, rejected, errors }`, deduped on `(source.instance, id)`. Free-tier. Alerts are rules the user configures in the cloud *over* the stream, so there is nothing to post and nothing to gate. A local **Imperio** speaks the same binding, so it is one emitter with a list of collectors |
@@ -835,6 +835,34 @@ services wait for their shapes.
 **Stage D is complete.** What remains is not RFDeck's: Meros has to publish the
 device-profile pack (D.7 reads it the moment it exists) and, when it wants to,
 turn gating on — which is one constant on each side.
+
+### What the finalized tiers added (2026-09-26)
+
+Three paid features arrived with the tier breakdown that RFDeck has not built, and
+they are product scope rather than plumbing:
+
+| Phase | What | Note |
+|---|---|---|
+| D.8 | **RF environment history** — keeping the RF picture over time rather than only now | Needs scoping: what is retained, for how long, and whether it is stored locally, in the cloud, or both |
+| D.9 | **Post-show RF report generation** | RFDeck already has a printable show report. Whether this is that report extended, or something the cloud renders from the event stream, is the first question to settle |
+| D.10 | **Online inventory listing** | Presumably the inventory surfaced in the Meros portal, which would make it a matter of what RFDeck sends rather than anything it displays |
+
+And three more that belong to **RFDeck Pro** and are deferred with it: one-click
+remote restore and provisioning, remote UI and control, and attributed change
+history. A desktop install cannot have these — there is no always-on server to
+reach — so they are the separation plan's business, not this one's.
+
+### The backup cap, which changes an assumption
+
+Show file backup is **free at one file, most recent only**, and **paid at 100 files
+FIFO**. This plan and `docs/EDITIONS.md` both used to imply that pushing a show kept
+history as a matter of course, and on a free account it does not keep any.
+
+Nothing in the code assumes otherwise — the listing shows whatever the cloud
+reports, `versions()` returns however many there are, and a missing version is a
+`DocumentNotFound` with a plain message. But **UI copy must not promise a library**,
+and the open question below has to be answered before anything is built on top of
+version history.
 
 Two things are deliberately *not* built, and both are decisions rather than gaps.
 **Imperio** is parked; the emitter takes a list of collectors, so adding one is

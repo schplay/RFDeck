@@ -83,8 +83,11 @@ export class Entitlements {
     }
 
     try {
+      // Scoped to this product: an account may pay for several Meros products
+      // independently, and asking for all of them then filtering would make
+      // RFDeck's own entitlements depend on how much unrelated data came back.
       const res = await this.client.json<EntitlementsResponse>(
-        'GET', `${this.client.baseUrl}/v1/entitlements`, { token },
+        'GET', `${this.client.baseUrl}/v1/entitlements?product=rfdeck`, { token },
       );
       const mine = (res.entitlements ?? []).filter(e => e.product === 'rfdeck');
       const features = [...new Set(mine.flatMap(e => e.features ?? []))].sort();

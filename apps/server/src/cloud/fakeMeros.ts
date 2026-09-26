@@ -208,6 +208,13 @@ export class FakeMeros {
 
     if (path === '/v1/entitlements') {
       if (!this.authorized(req)) return send(401, { error: 'invalid_token' });
+      // Honoured rather than ignored: an account may hold entitlements for several
+      // products, and a client that asked for one should not receive the others.
+      const wanted = new URL(req.url ?? '', 'http://x').searchParams.get('product');
+      if (wanted && wanted !== 'rfdeck') {
+        return send(200, { account_id: this.options.accountId ?? 'acct-fake-1',
+                           issued_at: new Date().toISOString(), entitlements: [] });
+      }
       return send(200, {
         account_id: this.options.accountId ?? 'acct-fake-1',
         issued_at: new Date().toISOString(),

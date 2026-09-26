@@ -46,15 +46,17 @@ The whole monitoring product. Discovery, telemetry, alerting, the mic check,
 shows and performers, the Micboard and Backstage displays, rolling capture and
 detections, the audio patch, frequency coordination.
 
-### Paid — desktop and headless server
+### Paid — RFDeck Pro, the self-hosted server
 
-A single **lifetime licence**, including one year of updates and priority
-support. Further year-long update and support contracts can be bought
-afterwards at a discount.
+A perpetual licence at **$499**, including twelve months of updates and support;
+further year-long contracts afterwards at a discount. Not a subscription — see
+"Paid application" below, and `docs/REPO_SEPARATION_PLAN.md`.
 
-The paid application is aimed at organisations and venues. Named user accounts,
-user and permission management, and the things that follow from more than one
-person using the same rig.
+Aimed at organisations and venues: named user accounts, user and permission
+management, and the things that follow from more than one person using the same
+rig. Pro is also what unlocks three of the cloud's paid features — remote
+restore, remote control and attributed audit — which a desktop install cannot
+have because there is no always-on server to reach.
 
 ### Appliances
 
@@ -63,41 +65,48 @@ to buy a working thing rather than build one.
 
 ### The cloud is Meros Cloud
 
-RFDeck does not run a cloud of its own. meros.co is the identity provider and
-the host of the shared services RFDeck's cloud features are built on; RFDeck is
-a relying party. A Meros **account** — a person or an organisation — is what
-owns entitlements and synced state. See `docs/CLOUD_INTEGRATION_PLAN.md`.
+RFDeck does not run a cloud of its own. meros.co is the identity provider and the
+host of the shared services RFDeck's cloud features are built on; RFDeck is a
+relying party. A Meros **account** — a person or an organisation — is what owns
+entitlements and synced state. See `docs/CLOUD_INTEGRATION_PLAN.md`.
+
+Billing is **à la carte per product**: an account pays for RFDeck's cloud
+independently of any other Meros product.
 
 ### Cloud — free tier
 
-User profiles and show files: the things an operator wants to follow them
-between machines and between venues.
+Needs only a free Meros account.
 
-> **How to write about this (Meros, 2026-09-24).** Both services are **ungated
-> as built** — document sync, which show files ride on, works for any account,
-> and profile sync is a free loss-leader by design. So this section matches what
-> is live. But the formal free-versus-paid line is a pricing decision the owner
-> has deliberately deferred, which constrains the *copy* rather than the code:
-> **"included today, pricing to be decided" is the honest framing, and "free
-> forever" is not.** Say the former anywhere this is published, and do not
-> hard-code a paywall against either service.
+- **App config and settings backup.**
+- **Show file backup — one file, always the most recent.** No history.
+- **Basic alerts** — email and webhook, configured in the cloud over RFDeck's
+  event stream.
 
-### Cloud — paid tier
+### Cloud — Individual, $15/month or $150/year
 
-Services with a genuine recurring cost behind them:
+- **Backup history — 100 files, FIFO.** The oldest is dropped beyond that.
+- **SMS alerts.** The paid delivery channel; email and webhook stay free.
+- **Spectrum data** — the FCC-derived TV-occupancy packs that let coordination
+  keep out of licensed channels.
+- **RF environment history**, **post-show RF report generation**, and **online
+  inventory listing**. 📋 *Not built — see the cloud plan's later phases.*
+- **Only on RFDeck Pro** (the self-hosted server or an appliance): one-click
+  remote restore and provisioning, remote UI and control, and attributed change
+  history. Not available on desktop RFDeck. 📋 *Deferred with Pro.*
 
-- **Regional data** — device profiles and TV/DTV occupancy, which are perishable,
-  regional, and need maintaining as hardware and regulation change.
-- **SMS notifications**, which cost money per message.
+### Cloud — Team add-on, $20/month or $200/year
 
-> **Narrowed 2026-09-25.** This used to say "email and SMS". Meros has since
-> settled that **basic alert channels are free-tier and SMS is the paid one**,
-> which is a better line than the one this document had: email costs
-> approximately nothing per message and SMS genuinely does. Alerts themselves are
-> configured in the cloud over RFDeck's event stream rather than sent by RFDeck,
-> so what is being paid for here is a per-message cost, not a capability.
+An **account-level** add-on rather than an RFDeck price: it layers multi-user
+features across whatever products the account pays for. Shared fleet views,
+shared alert routing, member management. With RFDeck Pro it can also move
+RFDeck's local per-user permissions and auditing into the cloud — 📋 deferred
+until Pro exists.
 
----
+> **A correction worth noting.** This document used to describe the free cloud
+> tier as "user profiles and show files", which was too generous on one count and
+> silent on another: show file *backup* is free but its *history* is not, and the
+> cap is one file rather than unlimited. Anything that reaches an operator should
+> say "one file, the most recent" rather than imply a library.
 
 ## Two decisions worth recording, because they were nearly made the other way
 
@@ -142,6 +151,11 @@ because the honest version is defensible and the evasive version is not. It is
 also the same shape as the device profiles: the data is knowable, the
 maintenance is the product.
 
+The finalized tiers confirm it: **spectrum data is paid**, and an earlier draft of
+Meros's own breakdown briefly said otherwise before correcting itself. So this
+argument is load-bearing rather than decorative — it is the answer RFDeck will
+actually have to give.
+
 And it stays on the right side of the rule above — **diagnosis is never behind
 the paywall.** The coordinator is free and works against the shipped band tables
 and the operator's own scans. Without the feed RFDeck does not tell you that you
@@ -168,6 +182,9 @@ Two refinements since, both from Meros and both narrowing what is paid:
   here for no better reason than sitting next to SMS in the same sentence, which
   is exactly the kind of drift the principle at the top of this document exists
   to catch.
+
+Confirmed by the finalized tiers (2026-09-26): email and webhook alerts are free,
+SMS is the Individual lever.
 
 ---
 

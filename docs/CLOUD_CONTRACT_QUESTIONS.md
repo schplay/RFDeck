@@ -294,3 +294,51 @@ bare document — and prefers the wrapper when a `body` key is present.
 - **What would settle it:** the response shape, with field names.
 
 </details>
+
+---
+
+## Round 4 — the finalized tiers, raised 2026-09-26
+
+The tier breakdown settled prices and what is paid. Four things it left open, and
+the first materially changes behaviour rather than only copy.
+
+### I. Is the backup cap per *document* or per *version*?
+
+"Showfile backup — 1 file, always the most recent (no history)" and "FIFO-capped by
+tier (free 1 / paid 100)" can be read two ways, and they mean very different things
+to a venue:
+
+- **Per version:** a free account can back up every show it has, keeping only the
+  latest version of each. 100 versions each when paid.
+- **Per document:** a free account can back up **one show, total** — so pushing
+  *Hamlet* silently discards the backup of *Wicked*. 100 shows when paid.
+
+A repertory theatre with five productions on a free account would find the second
+behaviour astonishing, and RFDeck would be the thing that appeared to lose their
+work. If it is per document, RFDeck should say so plainly *before* the second push
+rather than after — which is a real feature, and one worth not guessing at.
+
+### J. What are the `rfdeck.*` flag names for the new paid features?
+
+Entitlements are consumed by feature flag, and the tier breakdown names features in
+prose. `rfdeck.regional-data` is documented (§4) and spectrum data still maps to it.
+The rest have no flag named: backup history, RF environment history, post-show RF
+reports, online inventory listing, and the three Pro-only remote features. RFDeck
+will not invent names for these — a guessed flag silently never matches, which
+presents as a paid feature that is simply missing.
+
+### K. Which tier is profile sync in?
+
+It is not named in either list. The free tier says "app config / settings backup",
+which *might* be the person-scoped profile sync built in D.3, or might be something
+else entirely — RFDeck has both a person profile and server settings, and they are
+different things with different scopes. Phase 8 previously called profile sync a free
+loss-leader, so free is the likely answer; confirmation would settle whether the
+account menu should say anything about tiers at all.
+
+### L. Does gating switch on now?
+
+`GATING_ENFORCED` is still `false` on both sides, per the earlier deferral, so every
+feature is granted. With tiers and prices finalized, is that still right? RFDeck will
+not flip it unprompted: doing so would start withholding features from testers, and
+turning it on is one constant on each side whenever the answer is yes.

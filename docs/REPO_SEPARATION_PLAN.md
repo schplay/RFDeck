@@ -149,6 +149,21 @@ file beside the database for headless installs). The rule that implements
   `updatesUntil`, and says so with the date and where to renew. Renewal
   issues a new document with a later date; nothing else changes.
 
+**Priced 2026-09-26: $499 perpetual, including twelve months of updates and
+support** — a licence, not a subscription. The cloud subscription is separate and
+à la carte (`docs/EDITIONS.md`).
+
+Pro also gates three *cloud* features, which is new and worth recording here
+because it makes Pro a prerequisite rather than merely an upgrade: one-click remote
+restore and provisioning, remote UI and control, and attributed change history.
+None of them can exist on a desktop install, because there is no always-on server
+for the cloud to reach — so they are not being withheld from desktop so much as
+undefined there. All three are deferred until Pro exists.
+
+A Team cloud subscription can additionally move Pro's local per-user permissions and
+auditing into the cloud, as a migration with a keep-local option. Also deferred, and
+it only makes sense once R.4's named users exist.
+
 No phone-home is required. A cloud-linked rig *may* refresh its licence
 automatically, as a convenience, never as a requirement. Note that this
 licence — the paid *application* licence, verified against a key in the paid
