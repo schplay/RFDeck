@@ -54,15 +54,20 @@ describe('the instance link', () => {
     expect(discoveries).toHaveLength(1);
   });
 
-  it('requests exactly the instance scopes, including alerts:send', async () => {
+  it('requests only the scopes it actually uses', async () => {
     const { link, fake } = await harness();
     await link.start();
     const started = fake.requests.find(r => r.path === '/oauth/device/code')!;
     const scope = new URLSearchParams(started.body).get('scope')!.split(' ');
     expect(scope).toContain('offline_access');
     expect(scope).toContain('entitlements:read');
-    expect(scope).toContain('alerts:send');
-    // Not the roll-up scope, which is a different subsystem.
+    expect(scope).toContain('backups:read');
+    expect(scope).toContain('backups:write');
+    // No events or alerts scope until Meros publishes the reworked contract.
+    // Asking for one an endpoint will not honour puts a meaningless line on the
+    // operator's approval screen, and `alerts:send` in particular belonged to a
+    // relay that has been retracted.
+    expect(scope).not.toContain('alerts:send');
     expect(scope).not.toContain('events:write');
     link.cancel();
   });

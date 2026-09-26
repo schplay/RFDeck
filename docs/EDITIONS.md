@@ -88,8 +88,14 @@ Services with a genuine recurring cost behind them:
 
 - **Regional data** — device profiles and TV/DTV occupancy, which are perishable,
   regional, and need maintaining as hardware and regulation change.
-- **Advanced notifications** — email and SMS, which need a third-party service
-  and cost per message.
+- **SMS notifications**, which cost money per message.
+
+> **Narrowed 2026-09-25.** This used to say "email and SMS". Meros has since
+> settled that **basic alert channels are free-tier and SMS is the paid one**,
+> which is a better line than the one this document had: email costs
+> approximately nothing per message and SMS genuinely does. Alerts themselves are
+> configured in the cloud over RFDeck's event stream rather than sent by RFDeck,
+> so what is being paid for here is a per-message cost, not a capability.
 
 ---
 
@@ -145,14 +151,23 @@ no opinion about broadcast licensing, and
 say so plainly rather than implying it knows what is legal where you are
 standing. The feed adds a regulatory layer; it does not unlock a withheld answer.
 
-### Email and SMS alerting is a cloud feature, not an application feature
+### Alerting is a cloud feature, not an application feature
 
 Stage C.2 originally justified its tiering by what each delivery method costs to
 run. That was a second principle competing with the first, and the outcome is
 better reached through the same one: browser push and webhooks are
-self-contained and free, while email and SMS are a hosted service RFDeck
-operates on the customer's behalf. They belong in the paid cloud tier alongside
-regional data.
+self-contained and free, while anything RFDeck would have to operate on the
+customer's behalf belongs in the cloud tier.
+
+Two refinements since, both from Meros and both narrowing what is paid:
+
+- **Alerts are not something RFDeck sends.** They are rules the user configures
+  in the cloud *over RFDeck's event stream*. So the question is not "which
+  delivery methods do we charge for" but "which channels cost Meros money".
+- **Only SMS does.** Basic channels are free-tier. Email was on the paid list
+  here for no better reason than sitting next to SMS in the same sentence, which
+  is exactly the kind of drift the principle at the top of this document exists
+  to catch.
 
 ---
 

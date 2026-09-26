@@ -86,35 +86,11 @@ export interface CloudStatus {
   baseUrl: string | null;
 }
 
-// ── The alert relay (§8.5) ──────────────────────────────────────────────────
-
-/** Meros's severity vocabulary, which is wider than RFDeck's own three levels. */
-export type MerosSeverity = 'debug' | 'info' | 'notice' | 'warning' | 'error' | 'critical';
-
-export interface RelayAlert {
-  product: 'rfdeck';
-  type: string;
-  severity: MerosSeverity;
-  /** The human sentence that reaches an email or a text. Must read alone. */
-  message: string;
-  instance?: string;
-  subject?: { kind: string; id: string; name?: string };
-  /** Free-form passthrough, forwarded to webhook targets. */
-  context?: Record<string, unknown>;
-  occurred_at?: string;
-  dedupe_key?: string;
-}
-
-export interface RelayAlertResponse {
-  accepted: boolean;
-  account_id: string;
-  dedupe_key: string;
-  /**
-   * How many of the account's rules will notify.
-   *
-   * Zero is normal and not an error: it means the account has configured no
-   * matching rule. Treating it as a failure would put a warning in front of an
-   * operator about something they may deliberately not want.
-   */
-  matched_rules: number;
-}
+// ── Events and alerts ───────────────────────────────────────────────────────
+//
+// Nothing here yet, on purpose. The `RelayAlert` shapes that used to live here
+// were written against `POST /v1/alerts`, which Meros retracted on 2026-09-25:
+// alerts are configured in the cloud over the *event* stream rather than posted
+// to a relay endpoint, and the events-ingest contract is being reworked (moving
+// off site tokens onto the instance link). Dead types invite use, so they are
+// deleted rather than commented out. See docs/CLOUD_INTEGRATION_PLAN.md.

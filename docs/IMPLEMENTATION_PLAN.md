@@ -1298,17 +1298,22 @@ Two plans sit alongside this one:
   year" rule (R.3); named users and roles as the first paid feature (R.4);
   appliances (R.5).
 
-Neither begins until the decisions each lists are made. Stage D's are now
-largely settled: **Meros answered every open question on 2026-09-24** — two
-public clients from a seeder, the scope vocabulary, a browser-side device grant
-in place of a redirect the venue LAN could never register, rotating refresh
-tokens with family revocation, one Ed25519 key (`rfdeck-2026a`) verifying both
-entitlements and data packs, and the notification relay posting on the instance
-link's own token rather than a credential of its own. What remains is Meros's to
-build: frozen request bodies for document sync, the data-pack feed and the
-relay's alert post. The staging `client_id`s and the staging base URL are both in
-hand as of 2026-09-25, so **D.0 and D.1 are clear to start**; D.2 waits only on
-which client the browser should use.
+Stage R has not begun. **Stage D has**: D.0 and D.1 are built and tested —
+internal types, a deliberately hostile fake Meros, the instance link with its
+refresh-token rotation discipline, entitlements, the single `entitled()` gate, and
+Settings → Cloud. Three public clients are registered and the staging credentials
+and signing key are in hand.
+
+What remains of Stage D is mostly ours, with one real blocker: **the reworked
+events and alerts contract**. Meros retracted the alert-relay endpoint RFDeck had
+briefly built against — events are the whole stream of what RFDeck does, going to
+a local Imperio or direct to the cloud at the user's choice, with alerts
+configured in the cloud *over* them rather than posted to it. That also retired
+the cloud plan's "telemetry never leaves the venue" line, which was RFDeck's
+invention rather than Meros's rule; what survives is the narrower and correct
+one, that **no audio, clips or media ever leave**. D.5 is blocked on that contract
+and on a description of what Imperio is, since being Imperio-aware is stated as
+required and nothing yet says what it is.
 
 The TV occupancy source is settled too — FCC public-domain data, curated by Meros
 and shipped as signed packs, sharded on a 2° grid so a rig fetches a small index

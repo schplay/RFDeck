@@ -49,7 +49,12 @@ export const INSTANCE_SCOPES = [
   'entitlements:read',
   'backups:read',
   'backups:write',
-  'alerts:send',
+  // No events or alerts scope yet, deliberately. `alerts:send` was requested
+  // here until 2026-09-25, for a `POST /v1/alerts` relay that Meros has since
+  // retracted — alerts are configured in the cloud *over events* rather than
+  // posted to a relay, and the events-ingest contract is being reworked. A scope
+  // for an endpoint that will not exist buys nothing and puts a meaningless line
+  // on the operator's approval screen, so it is gone until the real one lands.
 ] as const;
 
 /**

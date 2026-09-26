@@ -69,11 +69,25 @@ part worth noting: the instincts were right, the cloud just already existed.
 6. **The contract is the boundary.** Application and cloud live in different
    repositories and talk through a versioned API. Either side can be rewritten
    behind it.
-7. **What leaves the venue is listed, and short.** Show files and their
-   metadata; alert events when relaying notifications; the instance's identity;
-   nothing else. **Never audio, never clips, never rolling-buffer capture,
-   never telemetry, never device passwords.** Meros Cloud stores state, not
-   recordings — a hard rule on both sides.
+7. **No mass media, ever — and device passwords never.** No audio, no clips, no
+   rolling-buffer capture, no bulk media of any kind leaves the venue. That is a
+   hard constraint on both sides: Meros Cloud offers no mass-media storage, and
+   RFDeck has nothing to gain from sending any. Device passwords never leave
+   either; they unlock somebody's hardware.
+
+   **This principle used to say "never telemetry", and that was wrong.** It was
+   RFDeck's invention rather than Meros's rule, and the owner has corrected it:
+   *events are the full stream of what the product does*, not a short allow-list,
+   and where they go is the user's choice. "Offline-first" means RFDeck **works**
+   with no cloud — not that data never leaves it. Remote capability is the point
+   of having a cloud account, and it needs the events.
+
+   What survives is the narrower and more defensible rule: **media never travels,
+   and what does travel is worth naming.** For RFDeck that naming has real
+   content, because our event stream is not anonymous — channel names are
+   routinely *performers' names*, taken straight off the cast list. See the open
+   question about privacy tiers; it is a decision to make deliberately rather
+   than discover.
 
 ## Identity
 
@@ -433,7 +447,7 @@ a service rather than getting a bespoke backend
 | **Show files** — push/pull, version history | **Document sync** (§8.2) — account-scoped, named, versioned JSON | `/v1/docs/rfdeck/shows/{key}` — PUT a new version carrying `base_version` (**409** if the head moved; never a silent overwrite), GET the head or `?version=`, GET `/versions`. Server-visible now. Small JSON only |
 | **Profiles** — layout, meters, shortcuts, solo groups | **Profile sync** (§8.1) — person-scoped, last-write-wins per key | `/v1/profiles/rfdeck` — GET/PUT. Follows the person between venues |
 | **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement. Regional data is **entitled**, **sharded on a 2° grid** (an index plus the venue's cell and its eight neighbours), and carries station contours rather than answers: RFDeck runs the point-in-polygon locally |
-| **Notification relay** (email/SMS) | **Alerting + relay** (§8.5, extending the Phase 6 alerting engine) | Post an alert event **on the instance link's own token** — no separate credential. Meros applies the account's recipient rules and sends. SMTP/SMS credentials never touch a venue machine. Browser push and webhooks stay local and free. Not the Phase 4 *remote-access* relay, which is a different thing RFDeck does not use |
+| **Events**, and the alerts configured over them | **Events ingest + cloud alert rules** | ⚠️ **Contract being reworked — build nothing yet.** Events are the whole stream, not an alert allow-list; they go to a local **Imperio**, direct to the cloud, or nowhere, at the user's choice. Alerts are rules the user configures in the cloud *over* those events — there is no "post an alert" endpoint. Ingest is moving onto the instance link, not a site token. Browser push and webhooks stay local and free |
 | Multi-instance dashboard, account-wide show libraries | **Roll-up** + document sync | Already the direction; largely free once the above exist |
 
 **Do not write clients against §8.2, §8.3 or §8.5 yet.** Those bodies are
@@ -520,57 +534,46 @@ The contract, now settled — one namespace, `rfdeck`:
 
 ## The paid tier
 
-### Notification relay
+### Events and alerts — reworked at Meros, and on hold here
 
-The C.2 dispatcher fans alerts out to webhooks and browser push. A third target,
-`dispatchToCloud`, posts the same `OutboundAlert` to Meros; the account applies
-its own rules (who gets email, who gets SMS, quiet hours, escalation) and Meros
-sends. SMTP and SMS credentials therefore never exist on a venue machine, and an
-account configures recipients once for every instance it owns. Gated by
-`entitled('rfdeck.notify-relay')`; without it the target is simply not attached.
+**Retracted 2026-09-25.** This section previously described posting an
+`OutboundAlert` to `POST /v1/alerts`, which Meros has withdrawn. It did not match
+their model, and the corrected one is a bigger and better idea than a relay
+endpoint:
 
-**Auth is settled: the instance-link OAuth access token.** No separate relay
-credential, nothing extra for an operator to configure — the instance posts alert
-events on the link it already has, and the cloud applies the account's rules.
+- **Events are the whole stream of what RFDeck does**, not a curated set of
+  alert-worthy moments. Alerts are then configured *in the cloud, over those
+  events*: the user picks which events they care about and how they want to hear
+  about it, and Meros notifies them when a matching one arrives. There is no
+  "post an alert" call, because an alert is a rule over a stream rather than a
+  message RFDeck decides to send.
+- **Three destinations, and the user chooses.** A local **Imperio** on the venue
+  network, which takes events with no internet and no cloud account and relays
+  them onward if one is configured; **direct to the cloud** when the instance is
+  linked; or **neither**, in which case events surface only through the local
+  paths RFDeck already has. Being Imperio-aware is *required* for events, alerts
+  and remote capability — which makes it a first-class part of this work rather
+  than an integration to bolt on later.
+- **Sites are not involved.** Any earlier mention of a site-scoped ingest token
+  was wrong; ingest is moving onto the instance link.
+- **Basic alert channels are free-tier; SMS is the paid channel.** That narrows
+  what `docs/EDITIONS.md` had listed as paid, and for a better reason — SMS costs
+  money per message, email does not.
 
-There are **two different relays at Meros**, and conflating them cost a round
-trip. This is the **notification relay** (Phase 8 §8.5, on the Phase 6 alerting
-engine), and it is the one RFDeck wants. The **remote-access relay** (Phase 4) is
-a separate, unbuilt subsystem whose auth is still undecided, and RFDeck has no
-use for it. Worth naming both here so the next reader does not have to ask.
+**Nothing is built against this yet, deliberately.** The events-ingest and
+alert-configuration contract is being reworked, so the code that existed for the
+old model has been removed rather than left to rot: the `RelayAlert` types, the
+`/v1/alerts` handler in the fake cloud, and `alerts:send` from the instance
+scopes. That last one matters — requesting a scope for an endpoint that will not
+exist buys nothing and puts a meaningless line on the operator's approval screen.
 
-**Built at Meros as of 2026-09-25**, so this is a real target rather than a guess:
+What survives untouched is the local dispatcher. C.2 already fans alerts out to
+webhooks and browser push, both self-contained and free, and that keeps working
+regardless of what the cloud does with events.
 
-- `POST /v1/alerts` on the instance link. *Not* `/v1/events`, which is roll-up
-  ingest — that stores a timeline, the relay stores nothing.
-- **Scope `alerts:send`.** Not `alerts:write` (that manages rules) and not
-  `events:write` (roll-up). It is in Meros's scope vocabulary already, so it just
-  joins the instance link's scope set — no per-client registration.
-- Body: `{ product: "rfdeck", type, severity, message, instance, subject, context,
-  occurred_at, dedupe_key }`. `product` is required and drives rule matching.
-  `severity` is `debug|info|notice|warning|error|critical`, which is wider than
-  our internal INFO / WARNING / CRITICAL, so there is a mapping to write.
-  **`message` is the human sentence that reaches an email or a text**, so it has
-  to read as one on its own — no "see dashboard for details".
-  `subject` is structured context (`{ kind, id, name }` — the channel) and
-  `context` is a free-form passthrough forwarded to webhooks, so the device
-  survives alongside the channel.
-- Response `202 { accepted, account_id, dedupe_key, matched_rules }`.
-  **`matched_rules: 0` is normal, not an error** — it means the account has no
-  rule matching yet. Worth being careful about: the obvious reading of "0 rules
-  matched" is failure, and treating it as one would put a warning in front of an
-  operator about something they have not configured and may not want.
-- **`dedupe_key` is ours to choose**, and a repeat inside a rule's throttle window
-  is absorbed. That is the detail that matters operationally: a venue's link
-  flapping must not turn one dropout into five texts to a stage manager. Omitting
-  it makes Meros derive one from `type|instance|subject.id`, but ours can be
-  better — a dropout should dedupe on the channel, not on the message text.
-- **Not entitlement-gated yet** (deferred monetisation). So do *not* build in a
-  hard `403 not_entitled` expectation; `alerts:send` is all it needs today, and
-  gating will be announced when it lands. The gate on our side is still
-  `entitled('rfdeck.notify-relay')` for whether to attach the target at all —
-  which, with gating deferred, means it is granted.
-- Quiet hours and escalation are not in v1: a rule is match → throttle → send.
+Two things RFDeck needs before this can be built, both in the open questions:
+the reworked contract, and **what Imperio actually is** — nothing yet describes
+how it is found on a network or what it speaks.
 
 ### Regional data
 
@@ -748,7 +751,7 @@ services wait for their shapes.
 | D.2 | Person link (browser-side device grant on the *RFDeck Browser* client), link by `sub`, account menu | S | The **RFDeck Browser `client_id`** — re-run the seeder |
 | D.3 | Profile sync | M | D.2. Contract settled and built |
 | D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1. Contract settled and built |
-| D.5 | Notification relay target, against the fake cloud only | S here; the sending is Meros's | Nothing to start. Meros must build §8.5 and register `alerts:write` before it points anywhere real |
+| D.5 | **Events**: emit RFDeck's event stream, to a local Imperio or to the cloud, with the user choosing | **L**, not the S a relay target would have been — Imperio-awareness and discovery are part of it | ⚠️ Blocked. The reworked ingest contract, *and* a description of what Imperio is |
 | D.6 | Regional TV occupancy: index and cell fetch per domain, cell arithmetic, point-in-polygon, channel→MHz, coordinator exclusions, venue location | **L** — the geography is ours, not the cloud's | D.1 **and a live entitlement** (the packs are gated). Contract fully specified |
 | D.7 | Device-profile feed | S | Meros to publish the pack. No link needed — it is public |
 
@@ -815,9 +818,15 @@ and tested** on Meros's side. What is left is short:
   D.2, and it is one command.
 - **The device-profile pack** — not published yet. D.7 is written to read it as a
   public pack.
+- **The reworked events and alerts contract** (§0). Ingest moving onto the
+  instance link, the scope it needs, the request shape, and how alert rules are
+  configured. This is the one real blocker left, and it blocks D.5 entirely.
+- **What Imperio is.** Being Imperio-aware is stated as *required* for events,
+  alerts and remote capability, and nothing so far describes it: how RFDeck finds
+  one on a venue network (mDNS? a configured address?), what protocol it speaks,
+  whether the event shape differs from the cloud's, and how RFDeck should behave
+  when one appears or disappears mid-show. Cannot be guessed at.
 - Whether the **rotation grace window** lands. Changes nothing we build.
-- The account's recipient rules and SMS delivery config for the relay — a Meros
-  build and a Meros UI, behind the boundary rather than in our way.
 
 Nothing further on regional data: source settled, sharding answers the sizing
 question, the index-and-cells contract is fully specified, and the signature
@@ -827,4 +836,25 @@ D.1 lands and an account carries the entitlement.
 ### Still ours
 
 - Whether the free tier has quotas (show files per account, storage).
-- SMS provider, if that ever becomes RFDeck's question rather than Meros's.
+
+### Ours to raise, because nobody else will
+
+**Which privacy tier should RFDeck's events carry, and does the operator get a
+say?**
+
+The event envelope has privacy tiers — `full`, `operational`, `anonymous` — and
+RFDeck's stream is an awkward case for the most permissive one. Channel names in
+this application are routinely *people's names*: the mic check is built from a
+cast list, and a dropout event on "Elphaba" or "Fiyero" names a performer at a
+venue at a time. That is not telemetry in the sense the word usually implies.
+
+None of this is a reason not to send events — the owner has decided they flow,
+remote capability depends on them, and it is their product. It is a reason to
+decide *deliberately* which tier they go out at, and probably to let the operator
+choose: a touring A2 may be relaxed about it and a West End production may not.
+The mechanism appears to exist already, so this is a choice to make rather than a
+thing to build.
+
+Worth settling before D.5 rather than after, because retrofitting a tier onto an
+event stream people are already receiving is a migration, and retrofitting an
+operator-facing switch onto it is a conversation about what was already sent.

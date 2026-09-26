@@ -212,19 +212,6 @@ export class FakeMeros {
       });
     }
 
-    if (path === '/v1/alerts') {
-      if (!this.authorized(req)) return send(401, { error: 'invalid_token' });
-      const alert = body ? JSON.parse(body) : {};
-      return send(202, {
-        accepted: true,
-        account_id: this.options.accountId ?? 'acct-fake-1',
-        dedupe_key: alert.dedupe_key ?? `${alert.type}|${alert.instance}|${alert.subject?.id}`,
-        // Zero is the normal answer for an account with no rules configured, and
-        // the client must not read it as a failure.
-        matched_rules: 0,
-      });
-    }
-
     return send(404, { error: 'not_found', path });
   }
 
@@ -244,7 +231,7 @@ export class FakeMeros {
       token_type: 'Bearer',
       expires_in: 3600,
       refresh_token: refresh,
-      scope: 'openid offline_access entitlements:read backups:read backups:write alerts:send',
+      scope: 'openid offline_access entitlements:read backups:read backups:write',
     };
   }
 
