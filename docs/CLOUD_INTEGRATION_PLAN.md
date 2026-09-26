@@ -801,21 +801,25 @@ without guessing, and it is the reason building now is safe.
 Reordered: what Meros has confirmed as stable comes first, and the Phase 8
 services wait for their shapes.
 
-| Phase | What | Size | Needs |
-|---|---|---|---|
-| D.0 | Internal types + the fake Meros harness: well-known document, device grant, entitlements, signed statements, rotating refresh tokens | S | nothing — this is ours |
-| D.1 | Instance link (device grant), Cloud settings page, status UI, entitlement cache, `entitled()` / `useEntitled`; **nothing gated** | M | **nothing — clear to start** |
-| D.2 | Person link (browser-side device grant on the *RFDeck Browser* client), link by `sub`, account menu | S | The **RFDeck Browser `client_id`** — re-run the seeder |
-| D.3 | Profile sync | M | D.2. Contract settled and built |
-| D.4 | Show files: build/apply, push/pull UI, version history, 409 handling | M | D.1. Contract settled and built |
-| D.5 | **Events**: the envelope, a `source.instance` id, the event catalogue, batching and retry, and a collector list | **L** — the emitter is small; the catalogue and getting "never load-bearing" right are the work | Cloud half **clear to start**. The Imperio half needs discovery and its auth (below) |
-| D.6 | Regional TV occupancy: index and cell fetch per domain, cell arithmetic, point-in-polygon, channel→MHz, coordinator exclusions, venue location | **L** — the geography is ours, not the cloud's | D.1 **and a live entitlement** (the packs are gated). Contract fully specified |
-| D.7 | Device-profile feed | S | Meros to publish the pack. No link needed — it is public |
+| Phase | What | Status |
+|---|---|---|
+| D.0 | Internal types, and a fake Meros that rotates refresh tokens and family-revokes a replay | ✅ **Built** |
+| D.1 | Instance link (device grant), Cloud settings, status, entitlement cache, the single `entitled()` gate | ✅ **Built** |
+| D.2 | Person link — the device grant run browser-side on the *RFDeck Browser* client, joined on `sub` | ✅ **Built** |
+| D.3 | Profile sync, last-write-wins per key | ✅ **Built** |
+| D.4 | Show files: build, apply, push, pull, version history, conflict resolution | ✅ **Built** |
+| D.5 | Events: the envelope, a persisted instance id and sequence, batching, a bounded queue, a collector list | ✅ **Built** |
+| D.6 | Regional TV occupancy: signed packs, per-cell cache, cell arithmetic, point-in-polygon, coordinator exclusions, the RF panel | ✅ **Built** |
+| D.7 | Device-profile feed, as a public pack with validated overrides | ✅ **Built** — waiting only on Meros publishing the pack |
 
-The fake Meros in D.0 should **rotate refresh tokens and revoke a replayed
-family**, because that behaviour is the one most likely to break a real venue and
-the only place it can be exercised safely is a test harness that is deliberately
-hostile about it.
+**Stage D is complete.** What remains is not RFDeck's: Meros has to publish the
+device-profile pack (D.7 reads it the moment it exists) and, when it wants to,
+turn gating on — which is one constant on each side.
+
+Two things are deliberately *not* built, and both are decisions rather than gaps.
+**Imperio** is parked; the emitter takes a list of collectors, so adding one is
+configuration rather than a rewrite. And **gating is deferred**, so `entitled()`
+returns true for everything while `holds()` reports the truth beside it.
 
 D.0–D.4 and the *app side* of D.5–D.7 are open-repository work: the free tier is
 free, and the paid tier's gate is a signature check on data Meros issues.

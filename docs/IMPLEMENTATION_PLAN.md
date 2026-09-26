@@ -1298,7 +1298,14 @@ Two plans sit alongside this one:
   year" rule (R.3); named users and roles as the first paid feature (R.4);
   appliances (R.5).
 
-Stage R has not begun. **Stage D has**: D.0 and D.1 are built and tested —
+Stage R has not begun. **Stage D is complete** — D.0 through D.7 are built and
+tested: the fake Meros harness, the instance link with its rotation discipline,
+entitlements and the single gate, the browser-side person link, profile sync, show
+files, the event stream, regional TV occupancy feeding the coordinator, and the
+device-profile feed. What remains is Meros's: publishing the device-profile pack,
+and turning gating on when it chooses.
+
+The original phrasing, for the record: D.0 and D.1 are built and tested —
 internal types, a deliberately hostile fake Meros, the instance link with its
 refresh-token rotation discipline, entitlements, the single `entitled()` gate, and
 Settings → Cloud. Three public clients are registered and the staging credentials
