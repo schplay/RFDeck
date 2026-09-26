@@ -1,0 +1,144 @@
+/* The account menu. A small affordance in a busy header: signing in changes
+   nothing about the rig, so it should not look like it might. */
+
+.am { position: relative; }
+
+.am-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  color: var(--color-on-surface-variant);
+}
+
+.am-trigger:hover {
+  background: var(--color-surface-container-highest);
+  color: var(--color-on-surface);
+}
+
+.am-trigger.is-signed-in { color: var(--color-primary); }
+
+.am-initials {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.am-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 70;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid var(--color-surface-container-highest);
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface-container-low);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.am-who { margin-bottom: 8px; }
+
+.am-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-on-surface);
+}
+
+.am-email {
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+}
+
+.am-note {
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-on-surface-variant);
+}
+
+.am-synced {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--color-success, #46b26b);
+}
+
+.am-error {
+  margin: 0 0 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-error, #d05353);
+}
+
+.am-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.am-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-surface-container-highest);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-on-surface);
+}
+
+.am-action:hover:not(:disabled) { background: var(--color-surface-container-highest); }
+.am-action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.am-primary {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  color: var(--color-primary);
+}
+
+.am-verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-primary);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+/* Read off a screen and typed into a phone, so it is the biggest thing here. */
+.am-code {
+  margin: 10px 0;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary);
+  user-select: all;
+}
+
+.am-spin { animation: am-spin 1s linear infinite; }
+
+@keyframes am-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

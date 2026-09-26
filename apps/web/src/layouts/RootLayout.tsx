@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Menu, X, Keyboard, Lock, Unlock } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
@@ -7,7 +7,10 @@ import { AlertFeed } from '../components/alerts/AlertFeed';
 import { LiveIndicator } from '../components/live/LiveIndicator';
 import { useShortcutRegistry, useShortcuts, plainKey } from '../lib/shortcuts';
 import { useUiStore } from '../stores/uiStore';
+import { useCloudStore } from '../stores/cloudStore';
+import { watchProfileChanges, flushProfileChanges } from '../lib/profileWatcher';
 import { StatusBar } from '../components/StatusBar';
+import { AccountMenu } from '../components/AccountMenu';
 // Bundled import so the path survives base './' and the Electron file:// build.
 import logoMark from '../assets/logo-mark.png';
 import './RootLayout.css';
@@ -17,6 +20,19 @@ export default function RootLayout() {
   // Mobile only: the sidebar becomes an off-canvas drawer behind a hamburger.
   // Desktop ignores this state entirely — the sidebar is always visible there.
   const [navOpen, setNavOpen] = useState(false);
+
+  // The account menu needs the browser client id, which comes with cloud status.
+  const fetchCloudStatus = useCloudStore(s => s.fetchStatus);
+  useEffect(() => { void fetchCloudStatus(); }, [fetchCloudStatus]);
+
+  // Stamp and push preference changes. Idempotent, and a no-op when nobody is
+  // signed in beyond recording when each change happened.
+  useEffect(() => {
+    watchProfileChanges();
+    const onLeave = () => flushProfileChanges();
+    window.addEventListener('pagehide', onLeave);
+    return () => window.removeEventListener('pagehide', onLeave);
+  }, []);
 
   const surfaceLocked = useUiStore(s => s.surfaceLocked);
   const setSurfaceLocked = useUiStore(s => s.setSurfaceLocked);
@@ -141,6 +157,9 @@ export default function RootLayout() {
           {/* An entry point, because "?" only helps somebody who already knows
               to press it — which was the whole problem with the shortcuts that
               existed before. */}
+          {/* Preferences that follow a person, and nothing else. Hidden when the
+              server has no browser client configured. */}
+          <AccountMenu />
           <button
             className="topbar-keys"
             onClick={() => useShortcutRegistry.getState().setHelpOpen(true)}
