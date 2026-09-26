@@ -14,12 +14,14 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | 4 — Show-day hardening | ✅ Complete — 4.3 show report landed as JSON, CSV, and a printable page |
 | A — Audio monitoring *(added)* | ✅ Server-side capture, any-interface patching, AES67 subscriptions from RFDeck |
 | A2 — Capture off Linux *(added)* | ✅ Per-platform capture backend; the desktop build had no audio at all before this |
-| 5 — Client reach | 5.1 responsive ✅; PWA, push and QR not started |
+| 5 — Client reach | 5.1 responsive ✅; 5.3 web push ✅; 5.2 PWA and 5.4 QR outstanding |
 | 6 — Feature completion | ✅ 6.1 rolling capture and detection; ✅ 6.2 notebook and photos; ✅ 6.3 maintenance log; 6.4 outstanding |
 | B — Micboard & Go Live *(added)* | ✅ Read-only wall display; one action to put RFDeck on the rig |
-| 7 — Breadth & operations | In progress — ✅ 7.1 (245 unit + 44 end-to-end) and 7.5 CI; 🚧 7.3 Shure (unverified on hardware); 7.2, 7.4 outstanding |
+| 7 — Breadth & operations | In progress — ✅ 7.1 and 7.5 CI; 🚧 7.3 Shure (unverified on hardware); 7.2, 7.4 outstanding |
+| C — Competitive parity *(added)* | ✅ C.1, C.2, C.4–C.6, C.8–C.13; C.3 staged (step 1 done, 2–4 need hardware); C.7 still a question |
+| D — Meros Cloud *(added)* | ✅ Complete, D.0–D.9. Waiting only on Meros publishing the device-profile pack and issuing the `rfdeck.*` flags |
 
-*Last reconciled 2026-08-23 against commit `c78aa86`. See "Work since the plan" below for
+*Last reconciled 2026-09-27 against commit `da1c9f2`. See "Work since the plan" below for
 what landed outside the original stages.*
 
 **Answered since first draft:** scale is 2–128 channels and 1–10 concurrent
@@ -596,13 +598,22 @@ the responsive work rather than being retrofitted last.
 
 ### 5.2 Progressive Web App — **M**
 
-Manifest, service worker, install path, and an offline shell that degrades honestly when the
-server is unreachable. Depends on 5.1.
+Manifest, install path, and an offline shell that degrades honestly when the server is
+unreachable. Depends on 5.1.
 
-### 5.3 Web push notifications — **M**
+A service worker already exists for push (5.3), and deliberately caches nothing so it
+can never serve a stale build. The offline shell is the part still missing, and it is
+the part that needs a decision rather than code: a rig-monitoring tool that shows a
+cached dashboard while the server is unreachable is lying about the rig. Worth
+designing what it should honestly show before building it.
 
-Subscription storage and delivery for critical alerts. Depends on 3.1 for identity and 5.2 for
-the service worker. Route by role — a `MONITOR` should not be paged for a gain change.
+### 5.3 Web push notifications — **M** — ✅ *complete*
+
+Subscription storage and delivery for critical alerts, routed by severity. Landed with
+C.2 rather than waiting on 5.2: the service worker it needs turns a push into a
+notification and caches nothing, which is a much smaller thing than the offline shell
+5.2 describes. Severity rather than role, because there are no per-user roles — access
+is an optional shared PIN, as recorded at the top of this document.
 
 ### 5.4 QR / barcode scanning — **S**
 
@@ -667,12 +678,11 @@ with a playable clip within seconds, on every connected client, and survives a
 server restart; and a flagged detection is still there after the pruning that
 removes unflagged ones.
 
-### 6.2 Performer notebook and photos — **M** — *roster done; notebook and photos outstanding*
+### 6.2 Performer notebook and photos — **M** — ✅ *complete*
 
-> The roster half exists: `Performer` is a global model, shows cast from it by
-> reference, and it has its own page with notes. What remains is the
-> per-performer notebook proper (rich notes, quick-change log) and headshot
-> upload, which should hang off `Performer` rather than the per-show casting.
+> Landed in full: `Performer` is a global model with notes, fit notes and a
+> `photoPath` headshot served through the same auth layer as everything else, and
+> `QuickChange` hangs off the per-show `Player` where the cue timings belong.
 
 Extends the `Player` model from 1.1: rich notes, headshot upload, quick-change log. Store images
 on disk with a path reference, not as database blobs — and serve them through the same auth
