@@ -77,8 +77,10 @@ export const PRODUCT = 'rfdeck';
  * That degrades safely rather than dangerously. The hash is only used to spot a
  * 409 that is not really a conflict; if it never matches, every 409 is simply
  * treated as a real conflict and the operator is asked. So a mismatch costs a
- * needless question, never a lost show — but it is worth confirming against
- * staging rather than assuming.
+ * needless question, never a lost show.
+ *
+ * Raised with Meros as question G in docs/CLOUD_CONTRACT_QUESTIONS.md — this
+ * comment records the assumption, it is not where the question lives.
  */
 export function contentHash(body: unknown): string {
   return crypto.createHash('sha256').update(JSON.stringify(body), 'utf8').digest('hex');
@@ -109,6 +111,8 @@ export class Documents {
    * not spell out, so this accepts either a wrapper carrying `body` or a bare
    * document, rather than assuming. Being liberal here costs nothing; guessing
    * wrong would cost a pull that silently produced an empty show.
+   *
+   * Raised with Meros as question H in docs/CLOUD_CONTRACT_QUESTIONS.md.
    */
   async get<T = unknown>(collection: string, key: string, version?: number): Promise<FetchedDocument<T>> {
     const token = await this.link.token();

@@ -191,3 +191,45 @@ So these do not get re-answered:
   missing.
 - That document and profile sync are ungated today, and pricing is deferred —
   §9.6.
+
+---
+
+## Round 3 — two confirmations, raised 2026-09-26 during the D.4 build
+
+Neither blocks anything: both have a safe default that is already implemented. But
+both are assumptions about Meros's behaviour rather than facts, so they are here
+rather than left as comments in the source.
+
+### G. Does `content_hash` cover the bytes Meros received, or a re-serialisation?
+
+RFDeck computes the same sha256 locally (`contentHash()` in
+`apps/server/src/cloud/documents.ts`) so that a **409 can be recognised as a
+non-conflict**: when the head's `content_hash` equals the hash of the document we
+were trying to push, two machines are holding the same show and there is nothing
+for an operator to arbitrate. That case reports "already saved" and asks nothing.
+
+The assumption is that the digest is over the bytes as sent. If Meros parses and
+re-serialises before hashing — different unicode escaping, different key order,
+different float formatting — the digests will never agree for the same document.
+
+- **Degrades safely:** a mismatch just means every 409 is treated as a real
+  conflict, so the operator gets a question they did not strictly need. It cannot
+  lose a show.
+- **What would settle it:** either a yes/no, or the `content_hash` Meros computes
+  for one known body so we can compare. If it is a re-serialisation, naming the
+  canonicalisation would let us match it.
+
+### H. What does `GET /v1/docs/{product}/{collection}/{key}` actually return?
+
+§11.C specified the list response, the version-history response and the 409 body,
+but not the single-document one. RFDeck currently accepts **either** shape — a
+wrapper carrying `body` alongside `version` / `content_hash` / `updated_at`, or a
+bare document — and prefers the wrapper when a `body` key is present.
+
+- **Degrades safely:** being liberal costs nothing, and the wrapper is the more
+  likely shape given the other responses.
+- **The risk if we guessed wrong in a subtler way:** a bare document that happens
+  to contain a top-level `body` key would be mis-read. A show file cannot (its keys
+  are `showFile`, `exportedAt`, `show`, `players`, `micCheck`), so this is safe for
+  RFDeck today — but it would not be safe for a product whose documents can.
+- **What would settle it:** the response shape, with field names.
