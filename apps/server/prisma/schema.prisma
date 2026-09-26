@@ -222,6 +222,19 @@ model Settings {
   // sent anywhere: the point-in-polygon test runs locally against cached cells,
   // so the venue's position stays in the venue.
   venueLocation      String?
+  // This install's stable identity in the event stream.
+  //
+  // Generated locally on first run and never changed. Explicitly not a MAC
+  // address — the envelope spec says so, and a hardware address would make an
+  // install's identity move when a NIC did. Collectors dedupe on
+  // (source.instance, id), so a change here would orphan everything already sent.
+  eventInstanceId    String?
+  // The last sequence number emitted, so a restart continues the series rather
+  // than reusing numbers a collector has already seen and would read as a gap.
+  eventSeq           Int      @default(0)
+  // Where events go. Empty means nowhere, which is the default and must stay
+  // indistinguishable from the application not having the feature at all.
+  eventToCloud       Boolean  @default(false)
 
   // ── Browser push ──
   // VAPID keys identify this server to push services. Generated once on first

@@ -10,6 +10,10 @@ import { Documents } from './documents';
 import { ShowFiles } from './showFiles';
 import { Feeds } from './feeds';
 import { RegionalData, parseVenueLocation, OccupancyResult } from './regionalData';
+import { Events, EmitInput } from './events';
+import { DeviceProfiles } from './deviceProfiles';
+import { COORDINATION_FAMILIES } from '../hardware/coordination/profiles';
+import crypto from 'crypto';
 import { CloudStatus } from './types';
 
 /**
@@ -29,6 +33,10 @@ export class CloudService {
   readonly showFiles: ShowFiles | null;
   /** Regional TV occupancy. Null when the cloud is not configured. */
   readonly regional: RegionalData | null;
+  /** The event stream. Always present, so callers never branch on the cloud. */
+  readonly events: Events | null = null;
+  /** Device-profile overrides from the public pack. */
+  readonly deviceProfiles: DeviceProfiles | null = null;
   private refreshTimer: NodeJS.Timeout | null = null;
   private regionalTimer: NodeJS.Timeout | null = null;
 
@@ -48,7 +56,16 @@ export class CloudService {
     this.link = new CloudLink(config, this.client, new PrismaLinkStore(), announce);
     this.entitlements = new Entitlements(this.client, this.link, new PrismaEntitlementCache(), announce);
     this.showFiles = new ShowFiles(new Documents(this.client, this.link));
-    this.regional = new RegionalData(new Feeds(config, this.client, this.link));
+    const feeds = new Feeds(config, this.client, this.link);
+    this.regional = new RegionalData(feeds);
+    this.deviceProfiles = new DeviceProfiles(feeds, COORDINATION_FAMILIES);
+    this.events = new Events(
+      this.client, this.link,
+      // Replaced with the persisted id in start(); a placeholder until then so
+      // nothing can emit under an id that is not the install's.
+      'pending', process.env.RFDECK_VERSION ?? '0.0.0',
+      process.env.RFDECK_EDITION === 'desktop' ? 'desktop' : 'server',
+    );
     this.config = config;
     log.info(`[Cloud] Configured for ${config.baseUrl} as client ${config.clientId}`);
   }
@@ -68,15 +85,19 @@ export class CloudService {
       log.debug('[Cloud] Configured but not linked');
       return;
     }
+    await this.configureEvents();
     await this.entitlements.refresh();
     this.refreshTimer = setInterval(() => void this.entitlements!.refresh(), 60 * 60_000);
     void this.refreshRegional();
+    // Public pack, so this does not wait on the link or an entitlement.
+    void this.deviceProfiles?.refresh();
     // Meros republishes weekly, so daily is generous and costs one conditional
     // request per cell when nothing has changed.
     this.regionalTimer = setInterval(() => void this.refreshRegional(), 24 * 60 * 60_000);
   }
 
   stop() {
+    this.events?.stop();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.regionalTimer) clearInterval(this.regionalTimer);
     this.link?.cancel();
@@ -130,6 +151,74 @@ export class CloudService {
   /** What the account actually holds, regardless of whether gating is on. */
   async holds(feature: string): Promise<boolean> {
     return this.entitlements ? this.entitlements.holds(feature) : false;
+  }
+
+  // ── Events ────────────────────────────────────────────────────────────────
+
+  /**
+   * Give the emitter its identity and its collectors.
+   *
+   * The instance id is generated once and kept: collectors dedupe on
+   * `(source.instance, id)`, so changing it would orphan everything already sent
+   * and make one install look like two.
+   */
+  private async configureEvents(): Promise<void> {
+    if (!this.events || !this.config) return;
+    const settings = await prisma.settings.findFirst() ?? await prisma.settings.create({ data: {} });
+
+    let instanceId = settings.eventInstanceId;
+    if (!instanceId) {
+      instanceId = crypto.randomUUID();
+      await prisma.settings.update({
+        where: { id: settings.id }, data: { eventInstanceId: instanceId },
+      });
+      log.info(`[Cloud] This install's event instance id is ${instanceId}`);
+    }
+    (this.events as any).instanceId = instanceId;
+    // Continue the series rather than restarting it: a collector reads a repeated
+    // or reversed sequence number as a gap.
+    (this.events as any).seq = settings.eventSeq ?? 0;
+
+    this.events.setCollectors(
+      settings.eventToCloud && settings.cloudRefreshToken
+        // `token: undefined` means "use the instance link's access token".
+        ? [{ name: 'Meros Cloud', url: this.config.baseUrl }]
+        : [],
+    );
+    if (this.eventSeqTimer) clearInterval(this.eventSeqTimer);
+    // Persisted periodically rather than on every event: a lost handful of
+    // numbers after a hard kill is harmless, and a write per event would not be.
+    this.eventSeqTimer = setInterval(() => void this.persistSeq(), 60_000);
+  }
+
+  private eventSeqTimer: NodeJS.Timeout | null = null;
+
+  private async persistSeq(): Promise<void> {
+    try {
+      const seq = (this.events as any)?.seq ?? 0;
+      const settings = await prisma.settings.findFirst();
+      if (settings && seq > (settings.eventSeq ?? 0)) {
+        await prisma.settings.update({ where: { id: settings.id }, data: { eventSeq: seq } });
+      }
+    } catch { /* bookkeeping; never worth surfacing */ }
+  }
+
+  /** Turn the cloud collector on or off. */
+  async setEventsToCloud(enabled: boolean): Promise<void> {
+    const settings = await prisma.settings.findFirst() ?? await prisma.settings.create({ data: {} });
+    await prisma.settings.update({ where: { id: settings.id }, data: { eventToCloud: enabled } });
+    await this.configureEvents();
+    await this.announcePublic();
+  }
+
+  /**
+   * Record that something happened.
+   *
+   * Safe to call from anywhere, including when the cloud is not configured — it
+   * costs an object and a push, and with no collectors it does not even do that.
+   */
+  emit(input: EmitInput): void {
+    this.events?.emit(input);
   }
 
   // ── Regional data ─────────────────────────────────────────────────────────
@@ -193,6 +282,7 @@ export class CloudService {
         configured: false, linked: false, accountId: null, linkedAt: null,
         lastRefreshAt: null, features: [], expiresAt: null, offline: false,
         needsRelink: null, browserClientId: null, baseUrl: null,
+        eventsToCloud: false, eventsQueued: 0,
       };
     }
     const settings = await prisma.settings.findFirst();
@@ -211,7 +301,14 @@ export class CloudService {
       needsRelink: this.link.needsRelink,
       browserClientId: this.config.browserClientId,
       baseUrl: this.config.baseUrl,
+      eventsToCloud: settings?.eventToCloud ?? false,
+      eventsQueued: this.events?.queued ?? 0,
     };
+  }
+
+  /** Public wrapper, for callers outside this class. */
+  async announcePublic() {
+    await this.announce();
   }
 
   /** Tell every open client, so a link or an expiry lands everywhere at once. */

@@ -8,6 +8,7 @@ import { AES67Manager } from '../audio/AES67Manager';
 import { CaptureManager } from '../audio/CaptureManager';
 import { RecordingManager } from '../recording/RecordingManager';
 import { CloudService } from '../cloud/service';
+import { attachEventEmitter } from '../cloud/alertEvents';
 import { attachAlertDispatcher } from '../notify/dispatcher';
 import { listAudioInputDevices } from '../audio/deviceList';
 import { prisma } from '../db';
@@ -58,6 +59,9 @@ export default fp(async (fastify, opts) => {
   // Alerts that leave the browser: webhooks and push, fed by the same alerts
   // the dashboard shows.
   attachAlertDispatcher(deviceManager);
+  // The same alerts as events, on the same terms: attached rather than called, so
+  // nothing about emitting can reach back into the telemetry path.
+  attachEventEmitter(deviceManager, cloud);
 
   // Detections keep the audio that proves them.
   deviceManager.on('rf:detection', (input: any) => {

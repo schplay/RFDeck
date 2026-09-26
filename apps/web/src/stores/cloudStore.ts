@@ -25,6 +25,10 @@ export interface CloudStatus {
   /** The RFDeck Browser client, for the person link's own device flow. */
   browserClientId: string | null;
   baseUrl: string | null;
+  /** Whether the event stream is being sent to the cloud. Off by default. */
+  eventsToCloud: boolean;
+  /** Events waiting to be sent — an offline backlog, visible rather than silent. */
+  eventsQueued: number;
 }
 
 /** A device-flow attempt the server is polling on our behalf. */
@@ -42,6 +46,7 @@ const EMPTY: CloudStatus = {
   configured: false, linked: false, accountId: null, linkedAt: null,
   lastRefreshAt: null, features: [], expiresAt: null, offline: false,
   needsRelink: null, browserClientId: null, baseUrl: null,
+  eventsToCloud: false, eventsQueued: 0,
 };
 
 interface CloudState {
@@ -57,6 +62,7 @@ interface CloudState {
   pollLink: () => Promise<void>;
   cancelLink: () => Promise<void>;
   unlink: () => Promise<void>;
+  setEventsToCloud: (enabled: boolean) => Promise<void>;
 }
 
 export const useCloudStore = create<CloudState>()((set, get) => ({
@@ -109,6 +115,18 @@ export const useCloudStore = create<CloudState>()((set, get) => ({
   cancelLink: async () => {
     try { await apiFetch('/cloud/link', { method: 'DELETE' }); } catch { /* ignore */ }
     set({ pending: null });
+  },
+
+  setEventsToCloud: async (enabled) => {
+    // Optimistic: the switch should feel immediate, and a failure reverts it when
+    // status is re-read.
+    set(state => ({ status: { ...state.status, eventsToCloud: enabled } }));
+    try {
+      await apiFetch('/cloud/events', { method: 'PUT', body: JSON.stringify({ enabled }) });
+    } catch (err) {
+      set({ error: (err as Error).message });
+    }
+    await get().fetchStatus();
   },
 
   unlink: async () => {

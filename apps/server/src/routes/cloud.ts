@@ -18,6 +18,7 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
         configured: false, linked: false, accountId: null, linkedAt: null,
         lastRefreshAt: null, features: [], expiresAt: null, offline: false,
         needsRelink: null, browserClientId: null, baseUrl: null,
+        eventsToCloud: false, eventsQueued: 0,
       };
     }
     return cloud.status();
@@ -158,6 +159,20 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (err: any) {
       return reply.code(502).send({ error: 'pull_failed', message: err?.message });
     }
+  });
+
+  /**
+   * Send events to the cloud, or stop.
+   *
+   * Off by default. With it off there are no collectors at all, which is what
+   * makes an unconfigured install indistinguishable from one without the feature.
+   */
+  fastify.put('/cloud/events', async (request, reply) => {
+    const { enabled } = request.body as { enabled: boolean };
+    const cloud = service();
+    if (!cloud?.configured) return reply.code(409).send({ error: 'not_configured' });
+    await cloud.setEventsToCloud(!!enabled);
+    return { enabled: !!enabled, collectors: cloud.events?.collectorCount ?? 0 };
   });
 
   /**

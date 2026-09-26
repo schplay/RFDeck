@@ -50,6 +50,22 @@ interface FamilyRules {
   assumed: Array<'step' | 'spacing'>;
 }
 
+/**
+ * Every family this build can coordinate for.
+ *
+ * Exported so the device-profile feed can refuse an override for a family whose
+ * rules are not here — a newer pack than the build, which is not an error in the
+ * pack but cannot be applied either.
+ */
+export function familyRuleKeys(): string[] {
+  return Object.keys(FAMILY_RULES);
+}
+
+export const COORDINATION_FAMILIES: ReadonlySet<string> = new Set([
+  'shure-ad', 'shure-ulxd', 'shure-qlxd', 'shure-slxd',
+  'senn-ewdx', 'senn-d6000', 'senn-g3g4',
+]);
+
 const FAMILY_RULES: Record<CoordinationFamily, FamilyRules> = {
   // AD4 user guide: 25 kHz step; 350 kHz standard, 125 kHz High Density.
   'shure-ad':   { stepKHz: 25, spacingKHz: { standard: 350, dense: 125 }, assumed: [] },

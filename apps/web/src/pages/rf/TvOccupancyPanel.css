@@ -1,0 +1,142 @@
+/* Licensed TV channels at this venue. Dense: it is a reference list read at a
+   glance while coordinating, not something to be browsed. */
+
+.tvo-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.tvo-count {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.tvo-count-label {
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+}
+
+.tvo-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.tvo-row {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  grid-template-areas: "ch mhz" "ch who";
+  gap: 0 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--color-surface-container-high);
+}
+
+.tvo-row:last-child { border-bottom: none; }
+
+.tvo-ch {
+  grid-area: ch;
+  align-self: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-on-surface);
+}
+
+.tvo-mhz {
+  grid-area: mhz;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+}
+
+/* The station is the answer to "why can I not use that frequency?", so it is
+   present rather than hidden behind a tooltip. */
+.tvo-who {
+  grid-area: who;
+  font-size: 10px;
+  color: var(--color-on-surface-variant);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tvo-reason {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-on-surface-variant);
+}
+
+.tvo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* A channel that could not be mapped is a gap in protection, so it is the one
+   thing in this panel allowed to be loud. */
+.tvo-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--color-warning, #d08a2c);
+  background: color-mix(in srgb, var(--color-warning, #d08a2c) 12%, transparent);
+}
+
+.tvo-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-surface-container-high);
+  font-size: 10px;
+  color: var(--color-on-surface-variant);
+}
+
+.tvo-stale { color: var(--color-warning, #d08a2c); }
+
+.tvo-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+  color: var(--color-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.tvo-refresh:hover:not(:disabled) {
+  background: var(--color-surface-container-highest);
+  color: var(--color-on-surface);
+}
+
+.tvo-spin { animation: tvo-spin 1s linear infinite; }
+
+@keyframes tvo-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

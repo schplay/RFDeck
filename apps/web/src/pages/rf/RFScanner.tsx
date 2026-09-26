@@ -3,6 +3,7 @@ import { Radio, Download, Wifi, AlertTriangle, CheckCircle, Trash2 } from 'lucid
 import { useDeviceStore } from '../../stores/deviceStore';
 import { IntermodPanel } from './IntermodPanel';
 import { CoordinationPanel } from './CoordinationPanel';
+import { TvOccupancyPanel } from './TvOccupancyPanel';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
 import { apiFetch } from '../../lib/api';
 import { useRfEventStore } from '../../stores/rfEventStore';
@@ -201,6 +202,9 @@ export default function RFScanner() {
               </div>
             </div>
           </div>
+
+          {/* What the coordinator is keeping out of, and how fresh that is. */}
+          <TvOccupancyPanel />
 
           <div className="rf-card sidebar-card">
             <div className="sidebar-section-title">Frequency Range</div>

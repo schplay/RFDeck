@@ -84,6 +84,10 @@ export interface CloudStatus {
   /** The browser's own client id, for the person link's device flow. */
   browserClientId: string | null;
   baseUrl: string | null;
+  /** Whether the event stream is being sent to the cloud. Off by default. */
+  eventsToCloud: boolean;
+  /** Events waiting to be sent, so an offline backlog is visible rather than silent. */
+  eventsQueued: number;
 }
 
 // ── Events and alerts ───────────────────────────────────────────────────────

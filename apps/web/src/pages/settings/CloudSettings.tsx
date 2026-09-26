@@ -21,7 +21,8 @@ function when(iso: string | null | undefined): string {
 
 export function CloudSettings() {
   const { status, loaded, pending, busy, error,
-          fetchStatus, startLink, pollLink, cancelLink, unlink } = useCloudStore();
+          fetchStatus, startLink, pollLink, cancelLink, unlink,
+          setEventsToCloud } = useCloudStore();
   const [venueLocation, setVenueLocation] = useState('');
   const [venueSaved, setVenueSaved] = useState(false);
 
@@ -184,6 +185,39 @@ export function CloudSettings() {
           </div>
         )}
       </div>
+
+      {/* ── Events ───────────────────────────────────────────────────────────
+          Off by default, and the copy is explicit about what turning it on means.
+          Nobody should discover after the fact that their rig started reporting. */}
+      {status.linked && (
+        <div className="settings-card mt-4">
+          <h3>Send events to the cloud</h3>
+          <p className="settings-desc">
+            RFDeck's own record of what happened — dropouts, battery warnings,
+            devices going offline. Sending it to your Meros account is what lets you
+            configure alerts there: choose which events matter and get an email or a
+            text when one arrives. Recording and monitoring work exactly the same
+            either way; this only decides whether the record leaves the building.
+            <strong> No audio ever does.</strong>
+          </p>
+          <div className="settings-form">
+            <label className="cloud-switch">
+              <input
+                type="checkbox"
+                checked={status.eventsToCloud}
+                onChange={e => void setEventsToCloud(e.target.checked)}
+              />
+              <span>{status.eventsToCloud ? 'Sending events' : 'Not sending events'}</span>
+            </label>
+            {status.eventsToCloud && status.eventsQueued > 0 && (
+              <p className="cloud-sub">
+                {status.eventsQueued} event{status.eventsQueued === 1 ? '' : 's'} waiting
+                to be sent — they will go when the connection is back.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Venue location ───────────────────────────────────────────────────
           Only meaningful with regional data, but harmless to set beforehand. */}

@@ -129,3 +129,20 @@
   .cloud-label { flex-basis: auto; }
   .cloud-code { font-size: 24px; letter-spacing: 0.12em; }
 }
+
+/* A plain switch. The copy above it does the explaining, so this stays quiet. */
+.cloud-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--color-on-surface);
+  cursor: pointer;
+}
+
+.cloud-switch input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
