@@ -654,8 +654,8 @@ rather than two integrations.
 - **Neither** — and this is the part that matches Principle 1 exactly: *"a product
   configured with zero collectors behaves exactly as it does today: no network
   attempts, no degradation."* Observability is opt-in and never load-bearing. The
-  local paths RFDeck already has — browser push, webhooks, the alert feed — carry
-  on untouched either way.
+  local paths RFDeck already has — browser push, the alert feed — carry on
+  untouched either way.
 
 Emitting must never throw into the application's hot path. A collector being down
 is not an RFDeck fault, and a dropout that goes unreported is much better than a
@@ -919,18 +919,18 @@ Both halves are now built: `configFile.ts` (the format), `configBackup.ts` (buil
 push, preview, restore), routes under `/api/cloud/config-backup`, and a card in
 Settings → Cloud. Four things about the restore are deliberate:
 
-- **It brings the credentials back.** Device passwords, webhook signing secrets and
-  the PIN hash are all in the snapshot, so a restored rig connects and notifies
-  without anything being re-typed. An earlier draft carried only a boolean saying a
-  password had existed; the owner corrected that on 2026-09-26, and rightly — devices
-  falling out of a rig that looked restored is the failure a backup exists to prevent.
+- **It brings the credentials back.** Device passwords and the PIN hash are in the
+  snapshot, so a restored rig connects without anything being re-typed. An earlier
+  draft carried only a boolean saying a password had existed; the owner corrected that
+  on 2026-09-26, and rightly — devices falling out of a rig that looked restored is
+  the failure a backup exists to prevent.
 - **They travel unsealed, and that is the point.** At rest a password is AES-256-GCM
   sealed with the key in `.rfdeck-key`, which sits beside the database precisely so
   that copying the database does not carry the secrets. Backing up the sealed form
   would restore a value the new machine cannot open — worse than omitting it, because
   the device would look configured and still fail to connect. So the backup unseals
   on the way out and re-seals with the new machine's key on the way in.
-- **It upserts and never deletes.** Devices, performers and webhooks are matched by
+- **It upserts and never deletes.** Devices and performers are matched by
   id; anything added since the backup is left alone. An operator who wanted a device
   gone can remove it, whereas one whose device vanished has no way to know what it
   was.

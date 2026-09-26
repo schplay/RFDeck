@@ -1815,7 +1815,7 @@ export class DeviceManagerService extends EventEmitter {
       this.alerts.length = this.ALERT_LOG_MAX;
     }
     this.io.emit('alert:new', alert);
-    // For anything that wants alerts out of the browser — webhooks, push.
+    // For anything that wants alerts out of the browser — push, the cloud event tap.
     // Emitted on this object rather than dispatched from here, so a delivery
     // failure can never reach back into the telemetry path.
     this.emit('alert', alert);

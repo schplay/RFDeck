@@ -1002,32 +1002,31 @@ Lands as a per-channel action (C.11) with a visible stop control. Written to the
 same store as detection clips and flagged, so the FIFO prune treats a deliberate
 capture as deliberately kept.
 
-### C.2 Alerts that leave the browser — **M** — ✅ *free half complete: webhooks and browser push; email and SMS are cloud-tier and not started*
+### C.2 Alerts that leave the browser — **S** — ✅ *complete: browser push. Every other channel is the cloud's.*
 
 RFDeck's alerts exist only in an open tab. A dropout during a show nobody is
 watching, or overnight on a resident install, tells nobody. Extends 5.3, which
 covers the browser half.
 
-Two tiers — see `docs/EDITIONS.md` for the line and why it sits there:
+**Browser push is the whole of it, and the only alert channel the application owns.**
+A service worker and a signed message through the browser's own push service: no
+account, no bill, nothing RFDeck operates on anyone's behalf.
 
-- **Free — browser push and webhooks.** Both are self-contained: a service
-  worker, and an HTTP POST to a URL the operator supplies. A webhook reaches
-  Slack, Teams, a home automation box or anything else without RFDeck taking on
-  an account or a bill, and it is the honest primitive to build the rest on.
-- **Paid cloud — email and SMS.** A hosted service RFDeck runs on the customer's
-  behalf, not a feature switched off in the application. It belongs beside
-  regional data in the cloud tier.
+Everything else — webhooks, email, SMS — is delivered by Meros from rules
+configured there over RFDeck's event stream. Two earlier drafts of this item got the
+line wrong in the same way, by asking which delivery methods cost money to run rather
+than which ones RFDeck should be in the business of running at all:
 
-An earlier draft of this item justified the split by what each delivery method
-costs to run. That was a second principle competing with the real one, and it
-reaches the same answer less honestly: what makes email and SMS paid is that
-RFDeck operates them for you, not that Twilio invoices per message.
+- The first made the split about per-message cost. That was a second principle
+  competing with the real one.
+- The second kept webhooks local because they are "self-contained" — true in
+  isolation, and it stopped being the point once the cloud delivered webhooks from the
+  same events. Two implementations of one feature, disagreeing about what had been
+  sent, configured in two places. **Removed from the application on 2026-09-27**:
+  model, routes, signer, tests and UI.
 
-Routed by severity and role, per 5.3. A webhook that fires on every channel mute
-is one an operator switches off within a night.
-
-Build only the free half until licensing exists. Nothing here should assume an
-enforcement mechanism that has not been designed.
+Routed by severity, per 5.3. The default is critical-only, because a phone that
+buzzed on every channel mute is one an operator switches off within a night.
 
 ### C.3 Spectrum scanning integration — **XL** → staged S/M/M/S — *explored; see `docs/SCANNING.md`*
 

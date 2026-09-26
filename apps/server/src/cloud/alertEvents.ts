@@ -1,13 +1,13 @@
 import type { EventEmitter } from 'events';
-import type { OutboundAlert } from '../notify/webhooks';
+import type { OutboundAlert } from '../notify/alert';
 import type { CloudService } from './service';
 import type { Severity } from './events';
 
 /**
  * RFDeck's alerts, as events.
  *
- * Attached to the device manager alongside the webhook and push dispatchers, and
- * for the same reason: alerting stays independent of whether anything is
+ * Attached to the device manager alongside the push dispatcher, and for the same
+ * reason: alerting stays independent of whether anything is
  * listening. The manager raises an alert the same way whether zero or twenty
  * targets exist, and nothing a target does can reach back into the telemetry path.
  *

@@ -12,7 +12,7 @@ describe('passesThreshold', () => {
   });
 
   it('holds back anything below it', () => {
-    // The default. A mute is a WARNING; a webhook that fired on every mute
+    // The default. A mute is a WARNING; a phone that buzzed on every mute
     // would be switched off within a night.
     expect(passesThreshold('WARNING', 'CRITICAL')).toBe(false);
     expect(passesThreshold('INFO', 'WARNING')).toBe(false);

@@ -3,13 +3,14 @@ import { prisma } from '../db';
 import { log } from '../logger';
 import { encryptSecret, decryptSecret } from '../auth/secretBox';
 import { passesThreshold } from './severity';
-import type { OutboundAlert } from './webhooks';
+import type { OutboundAlert } from './alert';
 
 // Browser push: an alert on a phone through the browser's own push service.
 //
-// Free-tier, like webhooks: no account, no bill, no third party RFDeck
-// operates on anyone's behalf. The browser hands RFDeck a subscription; RFDeck
-// signs messages to it with a key pair that identifies this server.
+// The one alert channel the application itself owns, and free-tier: no account, no
+// bill, no third party RFDeck operates on anyone's behalf. The browser hands RFDeck a
+// subscription; RFDeck signs messages to it with a key pair that identifies this
+// server.
 //
 // The key pair is generated once and kept. Every subscription is bound to the
 // public key, so regenerating it would silently orphan every phone that had

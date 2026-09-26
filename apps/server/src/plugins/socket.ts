@@ -56,8 +56,8 @@ export default fp(async (fastify, opts) => {
   fastify.decorate('cloud', cloud);
   void cloud.start();
 
-  // Alerts that leave the browser: webhooks and push, fed by the same alerts
-  // the dashboard shows.
+  // Alerts that leave the browser: browser push, fed by the same alerts the
+  // dashboard shows.
   attachAlertDispatcher(deviceManager);
   // The same alerts as events, on the same terms: attached rather than called, so
   // nothing about emitting can reach back into the telemetry path.
