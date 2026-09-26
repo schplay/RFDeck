@@ -7,6 +7,7 @@ import { useDeviceStore } from '../../stores/deviceStore';
 import { useChannelsByRole } from '../../hooks/useActiveChannels';
 import { usePerformerStore } from '../../stores/performerStore';
 import { channelKey } from '../../lib/channelKey';
+import { CloudShowActions } from './CloudShowActions';
 import { useChannelLabeller } from '../../lib/channelLabel';
 import { API_BASE, getToken } from '../../lib/api';
 import {
@@ -796,6 +797,8 @@ function ShowDetail({ show }: { show: Show }) {
               </>
             );
           })()}
+          {/* Only appears on a linked rig — see the component. */}
+          <CloudShowActions showId={show.id} showName={show.name} />
           {/* Archiving is reversible and keeps the record; deleting is not. */}
           <button
             className="btn-ghost"

@@ -1,0 +1,58 @@
+/* Save to cloud / Open from cloud, on the show header.
+   Quiet by default; the conflict is the only thing that takes space, because it
+   is the only thing that needs an answer. */
+
+.csa-note,
+.csa-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  align-self: center;
+}
+
+.csa-note { color: var(--color-success, #46b26b); }
+.csa-error { color: var(--color-error, #d05353); }
+
+/* ── The conflict ──────────────────────────────────────────────────────────
+   Takes the full width of the actions row rather than squeezing in beside the
+   buttons: it is a question, and a question that has to be read. */
+.csa-conflict {
+  flex: 1 1 100%;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid color-mix(in srgb, var(--color-warning, #d08a2c) 40%, transparent);
+  background: color-mix(in srgb, var(--color-warning, #d08a2c) 10%, transparent);
+}
+
+.csa-conflict-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-warning, #d08a2c);
+  font-size: 13px;
+}
+
+.csa-conflict-body {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-on-surface);
+}
+
+.csa-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Deliberately not styled as a primary action. RFDeck does not know which copy
+   the operator wants, so neither button should look like the answer. */
+.csa-conflict-foot {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-on-surface-variant);
+}
