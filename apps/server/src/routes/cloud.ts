@@ -161,6 +161,31 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /**
+   * What TV occupancy RFDeck can work out here, and from how stale a pack.
+   *
+   * Answered from cache only, so it is safe to call at show time and it tells the
+   * truth about being offline rather than hiding it.
+   */
+  fastify.get('/cloud/tv-occupancy', async () => {
+    const cloud = service();
+    if (!cloud) {
+      return {
+        exclusions: null, unmapped: [], source: 'none', oldestFetchedAt: null,
+        cellsUsed: [], reason: 'Meros Cloud is not configured on this server.',
+      };
+    }
+    return cloud.occupancy();
+  });
+
+  /** Fetch the venue's cells now, rather than waiting for the daily refresh. */
+  fastify.post('/cloud/tv-occupancy/refresh', async (request, reply) => {
+    const cloud = service();
+    if (!cloud?.regional) return reply.code(409).send({ error: 'not_configured' });
+    await cloud.refreshRegional();
+    return cloud.occupancy();
+  });
+
+  /**
    * The venue's location, for the regional TV-occupancy exclusion source.
    *
    * Stored locally and never sent: the point-in-polygon test runs here against
@@ -175,6 +200,9 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
       where: { id: settings.id },
       data: { venueLocation: venueLocation?.trim() || null },
     });
+    // A new location means different cells. Fetch them now rather than leaving
+    // the operator with a location set and no data until tomorrow.
+    void (fastify as any).cloud?.refreshRegional?.();
     return { venueLocation: updated.venueLocation };
   });
 };

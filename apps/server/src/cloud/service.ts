@@ -8,6 +8,8 @@ import { PrismaLinkStore, PrismaEntitlementCache } from './linkStore';
 import { Entitlements } from './entitlements';
 import { Documents } from './documents';
 import { ShowFiles } from './showFiles';
+import { Feeds } from './feeds';
+import { RegionalData, parseVenueLocation, OccupancyResult } from './regionalData';
 import { CloudStatus } from './types';
 
 /**
@@ -25,7 +27,10 @@ export class CloudService {
   private readonly entitlements: Entitlements | null;
   /** Show files. Null when the cloud is not configured. */
   readonly showFiles: ShowFiles | null;
+  /** Regional TV occupancy. Null when the cloud is not configured. */
+  readonly regional: RegionalData | null;
   private refreshTimer: NodeJS.Timeout | null = null;
+  private regionalTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly io: Server, config: CloudConfig | null = readCloudConfig()) {
     this.configured = !!config;
@@ -34,6 +39,7 @@ export class CloudService {
       this.link = null;
       this.entitlements = null;
       this.showFiles = null;
+      this.regional = null;
       log.debug('[Cloud] Not configured (no MEROS_BASE_URL / MEROS_CLIENT_ID) — cloud features are off');
       return;
     }
@@ -42,6 +48,7 @@ export class CloudService {
     this.link = new CloudLink(config, this.client, new PrismaLinkStore(), announce);
     this.entitlements = new Entitlements(this.client, this.link, new PrismaEntitlementCache(), announce);
     this.showFiles = new ShowFiles(new Documents(this.client, this.link));
+    this.regional = new RegionalData(new Feeds(config, this.client, this.link));
     this.config = config;
     log.info(`[Cloud] Configured for ${config.baseUrl} as client ${config.clientId}`);
   }
@@ -63,10 +70,15 @@ export class CloudService {
     }
     await this.entitlements.refresh();
     this.refreshTimer = setInterval(() => void this.entitlements!.refresh(), 60 * 60_000);
+    void this.refreshRegional();
+    // Meros republishes weekly, so daily is generous and costs one conditional
+    // request per cell when nothing has changed.
+    this.regionalTimer = setInterval(() => void this.refreshRegional(), 24 * 60 * 60_000);
   }
 
   stop() {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
+    if (this.regionalTimer) clearInterval(this.regionalTimer);
     this.link?.cancel();
   }
 
@@ -118,6 +130,59 @@ export class CloudService {
   /** What the account actually holds, regardless of whether gating is on. */
   async holds(feature: string): Promise<boolean> {
     return this.entitlements ? this.entitlements.holds(feature) : false;
+  }
+
+  // ── Regional data ─────────────────────────────────────────────────────────
+
+  /** The venue location as coordinates, or null when unset or unparseable. */
+  private async venue() {
+    const settings = await prisma.settings.findFirst();
+    return parseVenueLocation(settings?.venueLocation ?? null);
+  }
+
+  /** Bring the venue's cells up to date. Soft-fails: an offline rig keeps its cache. */
+  async refreshRegional(): Promise<void> {
+    if (!this.regional) return;
+    // Gated, so an account without the subscription does not poll a feed it
+    // cannot read. With gating deferred this is granted, which is the point of
+    // there being one gate.
+    if (!(await this.entitled('rfdeck.regional-data'))) return;
+    try {
+      await this.regional.refresh(await this.venue());
+    } catch (err) {
+      log.debug(`[Cloud] Regional refresh failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * TV occupancy at the venue, from cache alone.
+   *
+   * Never touches the network: this is asked while an operator is standing at a
+   * rack about to tune a rig, and a show-time action must not wait on a venue's
+   * uplink.
+   */
+  async occupancy(): Promise<OccupancyResult> {
+    if (!this.regional) {
+      return {
+        exclusions: null, unmapped: [], source: 'none', oldestFetchedAt: null,
+        cellsUsed: [], reason: 'Meros Cloud is not configured on this server.',
+      };
+    }
+    if (!(await this.entitled('rfdeck.regional-data'))) {
+      return {
+        exclusions: null, unmapped: [], source: 'none', oldestFetchedAt: null,
+        cellsUsed: [],
+        reason: 'Regional data is part of the paid cloud tier.',
+      };
+    }
+    return this.regional.occupancyAt(await this.venue());
+  }
+
+  /** The TV exclusions for the coordinator, in kHz pairs. Empty when unavailable. */
+  async tvExclusionRanges(): Promise<Array<[number, number]>> {
+    const result = await this.occupancy();
+    if (!result.exclusions) return [];
+    return result.exclusions.map(e => e.rangeKHz);
   }
 
   // ── Status ────────────────────────────────────────────────────────────────

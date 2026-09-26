@@ -60,6 +60,8 @@ export class FakeMeros {
   familyRevocations = 0;
   /** Soft-deleted document paths — history is kept, the key leaves the listing. */
   readonly deletedDocuments = new Set<string>();
+  /** Packs this fake publishes, by name. */
+  readonly packs = new Map<string, { payload: unknown; version: number; entitled: boolean }>();
 
   constructor(private readonly options: FakeMerosOptions = {}) {
     const pair = crypto.generateKeyPairSync('ed25519');
@@ -217,6 +219,25 @@ export class FakeMeros {
           expires_at: this.options.expiresAt ?? new Date(Date.now() + 30 * 86400_000).toISOString(),
         }],
       });
+    }
+
+    // ── Signed data packs ──────────────────────────────────────────────────
+    const feed = /^\/v1\/feeds\/rfdeck\/([A-Za-z0-9._-]+)$/.exec(path);
+    if (feed) {
+      const name = feed[1];
+      const published = this.packs.get(name);
+      if (!published) return send(404, { error: 'not_found', pack: name });
+      if (published.entitled && !this.authorized(req)) {
+        return send(403, { error: 'not_entitled' });
+      }
+      const etag = `"${name}-v${published.version}"`;
+      // A weekly poll for something that has not changed should be one cheap
+      // request, which is the whole point of the ETag.
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304, { ETag: etag });
+        return res.end();
+      }
+      return send(200, this.signPack(name, published.payload, published.version), { ETag: etag });
     }
 
     // ── Document sync ──────────────────────────────────────────────────────
@@ -377,6 +398,16 @@ export class FakeMeros {
       refresh_token: refresh,
       scope: 'openid offline_access entitlements:read backups:read backups:write events:write',
     };
+  }
+
+  /** Publish a pack, or replace it with a new version. */
+  publishPack(name: string, payload: unknown, options: { entitled?: boolean } = {}) {
+    const existing = this.packs.get(name);
+    this.packs.set(name, {
+      payload,
+      version: (existing?.version ?? 0) + 1,
+      entitled: options.entitled ?? existing?.entitled ?? false,
+    });
   }
 
   /** Force the next refresh to fail as a revoked family, as a Meros-side unlink would. */

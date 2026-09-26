@@ -154,6 +154,51 @@ export class CloudClient {
     return parsed as T;
   }
 
+  /**
+   * Like `json`, but surfacing the status and headers.
+   *
+   * Needed for conditional requests: `json()` treats any non-2xx as a refusal and
+   * throws, which is right everywhere except here — a **304 is a success**, and the
+   * most common one for a weekly pack poll. `ETag` has to come back out too.
+   */
+  async jsonWithHeaders<T>(
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+    url: string,
+    init: { token?: string; headers?: Record<string, string> } = {},
+  ): Promise<{ status: number; body: T | null; headers: { etag: string | null } }> {
+    const headers: Record<string, string> = { Accept: 'application/json', ...init.headers };
+    if (init.token) headers.Authorization = `Bearer ${init.token}`;
+
+    let response: Response;
+    try {
+      response = await fetch(url, { method, headers, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    } catch (err: any) {
+      throw new CloudOffline(err?.cause?.code ?? err?.name ?? err?.message ?? 'unknown');
+    }
+
+    const etag = response.headers.get('etag');
+    if (response.status === 304) return { status: 304, body: null, headers: { etag } };
+
+    const text = await response.text().catch(() => '');
+    let parsed: any = null;
+    if (text) {
+      try { parsed = JSON.parse(text); } catch { /* not JSON */ }
+    }
+
+    if (!response.ok) {
+      const retryAfter = Number(response.headers.get('retry-after'));
+      throw new CloudRefused(
+        response.status,
+        typeof parsed?.error === 'string' ? parsed.error : null,
+        parsed?.error_description ?? parsed?.message ?? parsed?.error ?? text.slice(0, 200) ??
+          `HTTP ${response.status}`,
+        Number.isFinite(retryAfter) ? retryAfter : null,
+        parsed,
+      );
+    }
+    return { status: response.status, body: parsed as T, headers: { etag } };
+  }
+
   /** Whether an error means "wait for the network", not "tell the operator". */
   static isOffline(err: unknown): err is CloudOffline {
     return err instanceof CloudOffline;

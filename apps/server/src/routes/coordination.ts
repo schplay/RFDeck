@@ -68,6 +68,29 @@ export const coordinationRoutes: FastifyPluginAsync = async (fastify) => {
       exclusionsKHz.push(...spans);
     }
 
+    // Keep out of TV channels licensed at this venue — the regulator's own
+    // protection statement, mirrored. Opt-out rather than opt-in: a plan that
+    // avoids licensed spectrum is the one an operator wants by default, and this
+    // is the difference between a plan that is clean and one that is lawful.
+    //
+    // Never fetched here: the answer comes from cached signed packs, because this
+    // runs while somebody is at a rack about to tune a rig.
+    let tvExclusions = 0;
+    let tvUnmapped: number[] = [];
+    let tvReason: string | null = null;
+    if (d.excludeLicensedTv !== false) {
+      const occupancy = await (fastify as any).cloud?.occupancy?.();
+      if (occupancy?.exclusions) {
+        for (const exclusion of occupancy.exclusions) exclusionsKHz.push(exclusion.rangeKHz);
+        tvExclusions = occupancy.exclusions.length;
+        tvUnmapped = occupancy.unmapped ?? [];
+      }
+      // Reported rather than swallowed: "no TV data" and "no TV stations here"
+      // are completely different claims, and the UI must not show the second
+      // when it means the first.
+      tvReason = occupancy?.reason ?? null;
+    }
+
     const input: CoordinationInput = {
       transmitters: rig.transmitters.map(t => lockedIds.has(t.id) ? { ...t, locked: true } : t),
       exclusionsKHz,
@@ -82,7 +105,10 @@ export const coordinationRoutes: FastifyPluginAsync = async (fastify) => {
       `${Date.now() - started} ms: ${plan.moves} move(s), 2TX margin ${plan.worstMarginKHz ?? '—'} kHz, ` +
       `3TX ${plan.threeTxCleared ? 'cleared' : 'not cleared'}`,
     );
-    return { plan, devices: rig.devices, skipped: rig.skipped, scanExclusions };
+    return {
+      plan, devices: rig.devices, skipped: rig.skipped, scanExclusions,
+      tv: { exclusions: tvExclusions, unmapped: tvUnmapped, reason: tvReason },
+    };
   });
 
   /**
