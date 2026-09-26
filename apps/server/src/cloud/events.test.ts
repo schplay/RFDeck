@@ -32,7 +32,7 @@ async function harness() {
 }
 
 const dropout = () => ({
-  type: 'rfdeck.channel.dropped_out' as const,
+  type: 'rfdeck.rf.dropout' as const,
   severity: 'warning' as const,
   subject: { kind: 'channel', id: 'dev-1:1', name: 'Handheld 4' },
   attrs: { rfLevelA: 12, rfLevelB: 9 },
@@ -52,7 +52,7 @@ describe('the envelope', () => {
     expect(stored.source).toMatchObject({
       product: 'rfdeck', version: '1.2.3', instance: 'instance-abc', edition: 'server',
     });
-    expect(stored.type).toBe('rfdeck.channel.dropped_out');
+    expect(stored.type).toBe('rfdeck.rf.dropout');
     expect(stored.severity).toBe('warning');
     expect(stored.subject).toEqual({ kind: 'channel', id: 'dev-1:1', name: 'Handheld 4' });
   });

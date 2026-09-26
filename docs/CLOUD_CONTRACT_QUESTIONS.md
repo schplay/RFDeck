@@ -302,25 +302,31 @@ bare document — and prefers the wrapper when a `body` key is present.
 The tier breakdown settled prices and what is paid. Four things it left open, and
 the first materially changes behaviour rather than only copy.
 
-### I. Is the backup cap per *document* or per *version*? — ⚠️ CONFIRMED A PROBLEM
+### I. Is the backup cap per *document* or per *version*? — ✅ ANSWERED: per document
 
-**The owner has confirmed this is a real collision** (2026-09-27): as built, the config
-backup and the show file are both documents of the same kind to the cloud, so on a free
-account **only one of them gets kept**. Pushing the install snapshot would discard the
-show file, or the reverse.
+**Per document, where a document is keyed by `(account, product, collection, key)`**
+(cloud agent, 2026-09-27). Pruning only ever touches that document's own version
+history, so two documents at distinct paths never compete.
 
-That is exactly the astonishing behaviour this question was raised about, and it is not
-something RFDeck can fix on its own: both halves are correct locally and the quota is
-applied cloud-side. **Meros needs two categories it understands separately** — a config
-backup and a show-file backup counting against different allowances — rather than one
-undifferentiated document quota.
+**No change needed in RFDeck, and no collision.** The two paths were already distinct:
 
-The owner is asking the cloud agent to specify this. Until it lands, RFDeck's two
-push paths are built and working but the free tier cannot hold both, so **nothing
-should promise an operator that it can**. Revisit `describeRestore()` copy and the
-Settings → Cloud cards once the categories are defined; the collections
-(`config/instance`, `shows/{id}`) are already distinct, so the client change is likely
-to be small or none.
+| What | Path | Free tier |
+|---|---|---|
+| Install snapshot | `config/instance` | keep latest (1) |
+| Show file | `shows/{showId}` | keep latest (1) each |
+
+So a free account holds one config backup **and** one show file at the same time, and
+on `rfdeck.backup.history` each independently keeps up to 100 FIFO versions.
+
+The cloud agent's example wrote the config path as `config/app` where RFDeck uses
+`config/instance`. That is only a key name and the quota is keyed on it either way, so
+nothing breaks — **worth one confirmation that Meros has no presentation or rollup that
+expects the literal key `app`**, since a mismatch there would be invisible rather than
+an error.
+
+The trap they named — putting both under the same collection and key, making them one
+document sharing a single version slot so each push prunes the other — is the thing
+RFDeck avoided by giving the install snapshot its own collection.
 
 **Original question, kept for the record:**
 
@@ -522,3 +528,72 @@ identifying fields from a shareable variant; that was answering a question nobod
 asked. **There is no public or client-facing view** — everything in a Meros account
 is private by its nature, so the listing is account-private and there is no second,
 redacted shape to design.
+
+### O. The RF event prefix and attrs keys — ⚠️ WAS BROKEN, NOW FIXED
+
+The cloud agent asked (2026-09-27) for the exact event-type prefix RFDeck's RF events
+use, since Meros selects them by namespace prefix —
+`identity.rollup.rf_event_prefix`, default `rfdeck.rf` — and said *"the features work
+today against `rfdeck.rf.*`"*.
+
+**They did not.** RFDeck emitted no event with that prefix at all. The RF events were
+spread across four namespaces:
+
+| Was | Now |
+|---|---|
+| `rfdeck.channel.dropped_out` | `rfdeck.rf.dropout` |
+| `rfdeck.channel.recovered` | `rfdeck.rf.recovery` |
+| `rfdeck.frequency.changed` | `rfdeck.rf.frequency_changed` |
+| `rfdeck.intermod.detected` | `rfdeck.rf.intermod_detected` |
+| `rfdeck.intermod.cleared` | `rfdeck.rf.intermod_cleared` |
+| `rfdeck.audio.fault_detected` | `rfdeck.rf.audio_fault` |
+
+No single prefix covered that spread, so **RF environment history and post-show RF
+reports were matching nothing** while appearing wired up on both sides. Renamed rather
+than asking Meros to widen the selector, because a prefix that has to enumerate four
+namespaces is not a prefix. Nothing has launched, so there are no existing alert rules
+to break.
+
+`alertEvents.test.ts` now pins the contract in both directions, since each failure is
+silent: every RF signal must land under `rfdeck.rf.`, and battery, mutes, connectivity,
+show lifecycle and inventory must stay out of it — the prefix is a filter, and sweeping
+those in would make an RF report a log of everything.
+
+#### The attrs keys, per type
+
+All types also carry `attrs.message`, a human sentence that reads on its own because it
+is what reaches an email or a text.
+
+| Type | Severity | `subject` | Other `attrs` |
+|---|---|---|---|
+| `rfdeck.rf.dropout` | `warning` | `channel` | `rfLevelA`, `rfLevelB` (int, dBm-ish as the receiver reports), `deviceId` |
+| `rfdeck.rf.recovery` | `info` | `channel` | `rfLevelA`, `rfLevelB`, `deviceId` |
+| `rfdeck.rf.frequency_changed` | `notice` | `channel` | `fromKHz`, `toKHz` (int, kHz), `deviceId` |
+| `rfdeck.rf.intermod_detected` | `warning` | *none* | `hits` (int), `sourceCount` (int), `worst` (object: `formula`, `victimName`) |
+| `rfdeck.rf.intermod_cleared` | `info` | *none* | `hits` (0), `sourceCount` |
+| `rfdeck.rf.audio_fault` | from the detection | `channel` | `trigger`, `rfLevelA`, `rfLevelB`, `deviceId` |
+
+`subject` is `{ kind: 'channel', id, name }` where `id` is the stable channel key
+(`<device uuid>:<slot>`) — deliberately the channel rather than the device, because a
+rule is most likely to be scoped to one performer's mic. The device rides in `attrs`.
+
+**Two honest caveats about what actually fires today:**
+
+1. **`rfdeck.rf.audio_fault` never fires yet.** Its signal is `rf:detection`, whose only
+   trigger is `RF_DROPOUT`, and the handler skips that one because `rf:event` already
+   reported it — mapping both would emit every dropout twice, and since each emit mints
+   its own ULID a collector's dedupe could not catch it. Audio-signature triggers are
+   future work (`schema.prisma`: *"RF_DROPOUT for now; audio-signature triggers
+   later"*). The event is wired and named correctly so it starts flowing the day that
+   detection lands; **do not build a presentation that assumes it is populated.**
+2. **`rfdeck.rf.intermod_*` carries no `subject`.** Intermodulation is a property of the
+   whole plan rather than one channel. `attrs.worst.victimName` names the affected
+   channel when there is one, but there is no subject id to group on.
+
+#### Still outside the prefix, deliberately
+
+`rfdeck.battery.low`, `rfdeck.battery.critical`, `rfdeck.channel.muted`,
+`rfdeck.device.went_offline`, `rfdeck.device.came_online`, `rfdeck.device.auth_failed`,
+`rfdeck.device.firmware_changed`, `rfdeck.device.connection_unstable`,
+`rfdeck.show.went_live`, `rfdeck.show.stood_down`, `rfdeck.inventory.{added,changed,removed}`,
+and `rfdeck.alert.<lowercased type>` as the fallback for an unmapped alert.

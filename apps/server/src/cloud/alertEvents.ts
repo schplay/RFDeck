@@ -37,6 +37,23 @@ const SEVERITY: Record<string, Severity> = {
  * vocabulary that a user's alert rules match on. A rule that stopped firing
  * because an internal enum was renamed would be a bad surprise, so the mapping is
  * a place someone has to come and change on purpose.
+ *
+ * ── Why `rfdeck.rf.*` is its own namespace ──────────────────────────────────
+ *
+ * Meros builds RF environment history and post-show RF reports by selecting events
+ * on a **type prefix**, configured as `identity.rollup.rf_event_prefix` and
+ * defaulting to `rfdeck.rf`. So the prefix is a contract, not a naming preference:
+ * anything RF has to sit under it or those features see nothing at all.
+ *
+ * That is exactly what had happened. RFDeck's RF events were spread across
+ * `rfdeck.channel.*`, `rfdeck.frequency.*`, `rfdeck.intermod.*` and
+ * `rfdeck.audio.*`, no single prefix covered them, and the two features matched
+ * nothing while appearing to be wired up. Renamed on 2026-09-27.
+ *
+ * What is deliberately *not* under it matters just as much, since the prefix is a
+ * filter: battery, mutes, device connectivity, show lifecycle and inventory are not
+ * the RF environment, and sweeping them in would make an RF report a log of
+ * everything.
  */
 const TYPES: Record<string, string> = {
   // DROPOUT and RECOVERY are deliberately absent: they come from the RF event
@@ -49,7 +66,7 @@ const TYPES: Record<string, string> = {
   DEVICE_OFFLINE: 'rfdeck.device.went_offline',
   DEVICE_ONLINE: 'rfdeck.device.came_online',
   AUTH_FAILED: 'rfdeck.device.auth_failed',
-  AUDIO_FAULT: 'rfdeck.audio.fault_detected',
+  AUDIO_FAULT: 'rfdeck.rf.audio_fault',
   FIRMWARE_CHANGED: 'rfdeck.device.firmware_changed',
   UNSTABLE: 'rfdeck.device.connection_unstable',
 };
@@ -77,7 +94,7 @@ export function attachEventEmitter(source: EventEmitter, cloud: CloudService): v
   // ── RF transitions, complete ────────────────────────────────────────────────
   source.on('rf:event', (event: any) => {
     cloud.emit({
-      type: event.type === 'RECOVERY' ? 'rfdeck.channel.recovered' : 'rfdeck.channel.dropped_out',
+      type: event.type === 'RECOVERY' ? 'rfdeck.rf.recovery' : 'rfdeck.rf.dropout',
       severity: event.type === 'RECOVERY' ? 'info' : 'warning',
       occurredAt: event.timestamp ? new Date(event.timestamp) : undefined,
       subject: { kind: 'channel', id: event.channelId, name: event.channelName ?? undefined },
@@ -95,7 +112,7 @@ export function attachEventEmitter(source: EventEmitter, cloud: CloudService): v
   // ── A carrier moved ────────────────────────────────────────────────────────
   source.on('channel:frequency', (change: any) => {
     cloud.emit({
-      type: 'rfdeck.frequency.changed',
+      type: 'rfdeck.rf.frequency_changed',
       severity: 'notice',
       subject: { kind: 'channel', id: change.channelId, name: change.channelName ?? undefined },
       attrs: {
@@ -117,7 +134,7 @@ export function attachEventEmitter(source: EventEmitter, cloud: CloudService): v
     // RF-triggered ones are skipped rather than counted twice.
     if (detection.trigger === 'RF_DROPOUT') return;
     cloud.emit({
-      type: 'rfdeck.audio.fault_detected',
+      type: 'rfdeck.rf.audio_fault',
       severity: severityFor(detection.severity),
       subject: { kind: 'channel', id: detection.channelKey, name: detection.channelName ?? undefined },
       attrs: {
@@ -133,7 +150,7 @@ export function attachEventEmitter(source: EventEmitter, cloud: CloudService): v
   // ── Intermodulation, when the picture changes ───────────────────────────────
   source.on('intermod:changed', (report: any) => {
     cloud.emit({
-      type: report.hits > 0 ? 'rfdeck.intermod.detected' : 'rfdeck.intermod.cleared',
+      type: report.hits > 0 ? 'rfdeck.rf.intermod_detected' : 'rfdeck.rf.intermod_cleared',
       severity: report.hits > 0 ? 'warning' : 'info',
       attrs: {
         message: report.hits > 0

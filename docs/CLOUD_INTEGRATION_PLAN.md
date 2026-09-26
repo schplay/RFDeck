@@ -620,23 +620,50 @@ RFDeck implements the envelope itself and validates against the published JSON
 Schema (`event-envelope-1.json`, draft 2020-12) in its own suite, which is what the
 doc asks every product to do anyway.
 
-#### A proposed catalogue
+#### The catalogue, as built
 
-Ours to define, since we own the namespace. Drawn from what the application
-already detects, so this is naming existing knowledge rather than new work:
+Ours to define, since we own the namespace. This is what `alertEvents.ts` and the
+route emitters actually send — corrected on 2026-09-27, when an earlier *proposed*
+version of this table had drifted from the code in three ways worth naming, since each
+one would have been discovered by someone building against it.
+
+**The `rfdeck.rf.*` prefix is a contract.** Meros selects RF events by prefix
+(`identity.rollup.rf_event_prefix`, default `rfdeck.rf`) to build RF environment
+history and post-show reports. Anything RF outside the prefix is invisible to both
+features; anything non-RF inside it pollutes them. Both failures are silent, so
+`alertEvents.test.ts` pins it in both directions.
 
 | Type | Severity | Subject |
 |---|---|---|
-| `rfdeck.channel.dropped_out` / `.recovered` | `warning` / `info` | channel |
-| `rfdeck.channel.muted` / `.unmuted` | `info` | channel |
+| `rfdeck.rf.dropout` / `rfdeck.rf.recovery` | `warning` / `info` | channel |
+| `rfdeck.rf.frequency_changed` | `notice` | channel |
+| `rfdeck.rf.intermod_detected` / `_cleared` | `warning` / `info` | **none** — intermod is a property of the plan, not one channel |
+| `rfdeck.rf.audio_fault` | from the detection | channel — trigger in `attrs`. **Wired but dormant**: see below |
 | `rfdeck.battery.low` / `.critical` | `warning` / `critical` | channel |
-| `rfdeck.audio.fault_detected` | `warning` | channel — with the kind (dropout, noise, click) in `attrs` |
+| `rfdeck.channel.muted` | `info` | channel |
 | `rfdeck.device.went_offline` / `.came_online` | `error` / `info` | device |
 | `rfdeck.device.auth_failed` | `error` | device |
-| `rfdeck.frequency.changed` | `notice` | channel |
-| `rfdeck.intermod.detected` | `warning` | channel |
+| `rfdeck.device.firmware_changed` / `.connection_unstable` | per alert | device |
 | `rfdeck.show.went_live` / `.stood_down` | `notice` | show |
-| `rfdeck.miccheck.completed` | `info` | show |
+| `rfdeck.inventory.added` / `.changed` / `.removed` | `info` | device |
+| `rfdeck.alert.<type>` | per alert | whatever the alert had — the fallback, so an unmapped alert still travels |
+
+What the earlier proposal got wrong:
+
+- **The RF prefix.** Types were spread across `rfdeck.channel.*`, `rfdeck.frequency.*`,
+  `rfdeck.intermod.*` and `rfdeck.audio.*`, so no prefix covered them and the two cloud
+  features matched nothing.
+- **`rfdeck.channel.unmuted` and `rfdeck.miccheck.completed` do not exist.** Listed as
+  proposals and never built. Removed rather than left looking available.
+- **Intermod has no subject.** The proposal said "channel"; `attrs.worst.victimName`
+  names the affected channel when there is one, but there is no id to group on.
+
+**`rfdeck.rf.audio_fault` does not fire yet.** Its signal is `rf:detection`, whose only
+trigger is `RF_DROPOUT`, and that one is skipped because `rf:event` already reports it —
+emitting both would double-count every dropout, and since each emit mints its own ULID
+a collector's dedupe could not catch it. Audio-signature triggers are future work. The
+event is named and wired so it flows the day that detection lands; nothing should assume
+it is populated before then.
 
 The doc's own example is `rfdeck.link.dropout`, which is not past tense; the stated
 rule is, so the catalogue follows the rule.
@@ -862,9 +889,9 @@ alerts, and alerts are a throttled, human-facing subset. The gap and the fix:
 | Was missing | Consequence | Now |
 |---|---|---|
 | **RECOVERY** | Dropouts were emitted, recoveries were not — an RF history showing a rig that dropped out and never came back | Emitted from the RF event signal, which is complete rather than rate-limited. `DROPOUT` moved there too, and off the alert mapping, so it is not counted twice |
-| **Frequency changes** | Nothing server-side noticed a carrier move; it was tracked in a browser store, so it was per-client and lost on reload | `rfdeck.frequency.changed`, with the from and to |
-| **Audio faults** | Fuzz, noise and clicks — RFDeck's whole differentiator — reached the recorder and nothing else | `rfdeck.audio.fault_detected`, with the trigger and the RF levels at the time |
-| **Intermodulation** | Never left the rig | `rfdeck.intermod.detected` / `.cleared`, only when the picture changes — a report recomputed on every carrier move would bury a real finding |
+| **Frequency changes** | Nothing server-side noticed a carrier move; it was tracked in a browser store, so it was per-client and lost on reload | `rfdeck.rf.frequency_changed`, with the from and to |
+| **Audio faults** | Fuzz, noise and clicks — RFDeck's whole differentiator — reached the recorder and nothing else | `rfdeck.rf.audio_fault`, with the trigger and the RF levels at the time |
+| **Intermodulation** | Never left the rig | `rfdeck.rf.intermod_detected` / `_cleared`, only when the picture changes — a report recomputed on every carrier move would bury a real finding |
 | **Show boundaries** | The cloud had a continuous stream and no idea which parts were a show, so a post-show report was not derivable at all | `rfdeck.show.went_live` / `.stood_down`, the second carrying the show, when it started and how long it ran |
 | **Inventory changes** | Nothing | `rfdeck.inventory.added` / `.changed` / `.removed`, with make, model, location, serial, firmware and band — and **never a password, not even a boolean saying one exists** |
 
