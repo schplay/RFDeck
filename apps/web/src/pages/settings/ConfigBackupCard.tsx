@@ -82,7 +82,7 @@ export function ConfigBackupCard() {
       `Rebuild this install from the backup taken ${when(cloud.exportedAt)}?\n\n` +
       `This brings back:\n${cloud.brings.map(b => `  • ${b}`).join('\n')}\n\n` +
       (cloud.needsAttention.length
-        ? `You will still need to:\n${cloud.needsAttention.map(b => `  • ${b}`).join('\n')}\n\n`
+        ? `What it does not bring:\n${cloud.needsAttention.map(b => `  • ${b}`).join('\n')}\n\n`
         : '') +
       `Existing settings on this machine will be overwritten. Nothing is deleted — ` +
       `devices and performers added since the backup are left alone.`,
@@ -91,13 +91,16 @@ export function ConfigBackupCard() {
 
     setNote(null); setError(null); setBusy('restore');
     try {
-      const result = await apiFetch<{ devices: number; performers: number; patches: number }>(
+      const result = await apiFetch<{
+        devices: number; performers: number; patches: number; webhooks: number;
+      }>(
         '/cloud/config-backup/restore', { method: 'POST', body: JSON.stringify({ confirm: true }) },
       );
       setNote(
         `Restored ${result.devices} device${result.devices === 1 ? '' : 's'}, ` +
-        `${result.performers} performer${result.performers === 1 ? '' : 's'} and ` +
-        `${result.patches} audio assignment${result.patches === 1 ? '' : 's'}.`,
+        `${result.performers} performer${result.performers === 1 ? '' : 's'}, ` +
+        `${result.patches} audio assignment${result.patches === 1 ? '' : 's'} and ` +
+        `${result.webhooks} webhook${result.webhooks === 1 ? '' : 's'}.`,
       );
     } catch (err) {
       setError((err as Error).message);
@@ -111,11 +114,15 @@ export function ConfigBackupCard() {
       <h3><HardDriveDownload size={16} /> Configuration backup</h3>
       <p className="settings-desc">
         A snapshot of this whole install — the inventory, the roster, audio
-        routing, alert thresholds and network settings — so a replacement machine
-        can be made into this one. Separate from show files, which travel between
-        venues and deliberately leave the local rig alone.
-        {' '}<strong>Device passwords are never backed up</strong>, and neither are
-        performer photos, recordings or the remote-access PIN.
+        routing, webhooks, alert thresholds and network settings — so a replacement
+        machine can be made into this one. Separate from show files, which travel
+        between venues and deliberately leave the local rig alone.
+      </p>
+      <p className="settings-desc">
+        <strong>It includes your device passwords and webhook secrets</strong>, so a
+        restored rig connects and notifies without anything being re-entered. They
+        are re-encrypted with the new machine's own key on the way in. Recordings,
+        captured audio and performer photos are never included.
       </p>
 
       {!allowed ? (
@@ -148,6 +155,8 @@ export function ConfigBackupCard() {
               <AlertTriangle size={15} />
               <div>
                 <strong>A restore would not bring back:</strong>
+                {/* Short list by design — everything a rig needs to run does come
+                    back, and these are the few things that are per-machine. */}
                 <ul className="config-backup-caveats">
                   {preview.cloud.needsAttention.map(item => <li key={item}>{item}</li>)}
                 </ul>

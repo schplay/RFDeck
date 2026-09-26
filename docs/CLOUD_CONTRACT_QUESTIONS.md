@@ -457,19 +457,20 @@ what `InventoryDevice` actually holds, as of 2026-09-26:
 | `active` | bool | Whether RFDeck polls it. |
 | `disabledSlots` | string | Comma-separated slot numbers switched off on a multi-channel unit. |
 | `addedAt` | timestamp | When it entered this install's inventory. |
-| `ip` / `port` | string / int | **Venue-local addressing.** See below. |
+| `ip` / `port` | string / int | Venue-local addressing. |
 
 There is no condition/status field and no asset id — RFDeck tracks hardware it can
 talk to, not an asset register. If the listing wants either, they are new fields and
 RFDeck would need to add them to the inventory UI first.
 
-**`password` exists on the row and must never travel.** It is not in this list, it is
-not in the config backup, and it is not in the event stream — a device password
-unlocks somebody's rack, and a cloud listing carrying one would turn a single
-compromised account into physical access.
+**`password` exists on the row and is not in this list.** Not on secrecy grounds —
+a listing simply has no use for it, and neither does the event stream. It *is* in the
+configuration backup, where dropping it would restore a rig whose devices silently
+fall out. See the note on principle 7 in the integration plan.
 
-**Recommendation: account-private by default.** A shareable or client-facing variant
-should omit `ip`, `port`, `mac` and `serial`. Addressing is useless off the venue LAN
-and tells an attacker the shape of the network; serials are what a stolen unit gets
-traced by and what a warranty claim turns on. Make/model/band/count is what a client
-or a rental partner actually wants to see, and that survives the omissions intact.
+**Every other field can be sent, including `serial`, `mac`, `ip` and `port`**
+(owner, 2026-09-26). An earlier draft of this section recommended omitting the
+identifying fields from a shareable variant; that was answering a question nobody
+asked. **There is no public or client-facing view** — everything in a Meros account
+is private by its nature, so the listing is account-private and there is no second,
+redacted shape to design.

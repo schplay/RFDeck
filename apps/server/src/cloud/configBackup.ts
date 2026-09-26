@@ -1,5 +1,6 @@
 import { prisma } from '../db';
 import { log } from '../logger';
+import { encryptSecret, decryptSecret } from '../auth/secretBox';
 import {
   buildConfigFile, parseConfigFile, describeRestore,
   ConfigFile, CONFIG_COLLECTION, CONFIG_KEY,
@@ -34,17 +35,29 @@ export class ConfigBackup {
     await prisma.cloudDocument.upsert({ where: { path }, create: data, update: data });
   }
 
-  /** Snapshot this install. */
+  /**
+   * Snapshot this install.
+   *
+   * Device passwords and webhook secrets are unsealed here. At rest they are
+   * AES-256-GCM sealed with a key in `.rfdeck-key`, which deliberately does not
+   * travel with the database — so the sealed form would restore onto replacement
+   * hardware as something the new machine cannot open, and the device would look
+   * configured while failing to connect. Carrying the real value is what makes the
+   * restore a restore.
+   */
   async build(): Promise<ConfigFile> {
-    const [settings, devices, performers, audioPatch] = await Promise.all([
+    const [settings, devices, performers, audioPatch, webhooks] = await Promise.all([
       prisma.settings.findFirst(),
       prisma.inventoryDevice.findMany(),
       prisma.performer.findMany(),
       prisma.channelAudioMap.findMany(),
+      prisma.webhook.findMany(),
     ]);
     return buildConfigFile({
       settings: settings ?? {},
-      devices, performers, audioPatch,
+      performers, audioPatch,
+      devices: devices.map(d => ({ ...d, password: decryptSecret(d.password) })),
+      webhooks: webhooks.map(w => ({ ...w, secret: decryptSecret(w.secret) })),
       version: process.env.RFDECK_VERSION ?? null,
       edition: process.env.RFDECK_EDITION ?? 'server',
     });
@@ -79,10 +92,10 @@ export class ConfigBackup {
   /**
    * What is in the cloud, and what taking it would do — without taking it.
    *
-   * A restore replaces the inventory, which on the wrong machine is destructive in a
+   * A restore rewrites the inventory, which on the wrong machine is destructive in a
    * way a confirmation dialog does not convey. So the UI can show the actual
-   * consequences first: how many devices, which passwords will need re-entering,
-   * which photos will be missing.
+   * consequences first: how many devices come back, whether their passwords come
+   * with them, what will still be missing afterwards.
    */
   async preview(): Promise<{
     available: boolean;
@@ -127,8 +140,13 @@ export class ConfigBackup {
    * anything added since the backup — and an operator who wanted a device gone can
    * remove it themselves, whereas one whose device vanished has no way to know what
    * it was.
+   *
+   * Credentials are re-sealed with *this* machine's key on the way in, which is the
+   * other half of unsealing them on the way out.
    */
-  async restore(): Promise<{ devices: number; performers: number; patches: number }> {
+  async restore(): Promise<{
+    devices: number; performers: number; patches: number; webhooks: number;
+  }> {
     const fetched = await this.documents.get(CONFIG_COLLECTION, CONFIG_KEY);
     const file = parseConfigFile(fetched.body);
 
@@ -137,8 +155,10 @@ export class ConfigBackup {
       await tx.settings.update({
         where: { id: settings.id },
         // Only the fields the snapshot owns. Nothing here touches the cloud link,
-        // the PIN hash, the VAPID keys or the event identity — a restore must not
-        // make this install pretend to be the one that was backed up.
+        // the VAPID keys or the event identity: those are not withheld for secrecy
+        // but because copying them onto a second install breaks the first — a
+        // replayed refresh token unlinks both, and a shared event instance id makes
+        // two rigs look like one.
         data: {
           aes67MulticastIp: file.settings.aes67MulticastIp,
           aes67Port: file.settings.aes67Port,
@@ -154,17 +174,23 @@ export class ConfigBackup {
           recordingPostSec: file.settings.recordingPostSec,
           authReauthHours: file.settings.authReauthHours,
           venueLocation: file.settings.venueLocation,
+          // The same PIN keeps working on the restored machine. Restoring the
+          // enabled flag without the hash would lock the operator out of their own
+          // rig with no PIN that opens it.
+          authPinEnabled: file.settings.authPinEnabled,
+          authPinHash: file.settings.authPinHash,
         },
       });
 
       for (const device of file.devices) {
-        const { hadPassword, ...row } = device;
+        const { password, ...rest } = device;
+        // Re-sealed with this machine's key. A null password is left as null rather
+        // than skipped: the snapshot is what the rig should look like, and a device
+        // that had no password should not inherit one from whatever was here before.
+        const row = { ...rest, password: encryptSecret(password) };
         await tx.inventoryDevice.upsert({
           where: { id: device.id },
           create: row,
-          // Never `password`: it is not in the snapshot, and an update that set it
-          // to null would silently break a working device on a restore that was
-          // only meant to bring settings back.
           update: row,
         });
       }
@@ -185,6 +211,19 @@ export class ConfigBackup {
           update: { deviceId: patch.deviceId, inputChannel: patch.inputChannel },
         });
       }
+
+      for (const hook of file.webhooks) {
+        const { secret, ...rest } = hook;
+        // Secret re-sealed like a device password. Without it the webhook would post
+        // unsigned bodies and a receiver checking the signature would reject them —
+        // a restored rig that looks like it is notifying and is not.
+        const row = { ...rest, secret: encryptSecret(secret) };
+        await tx.webhook.upsert({
+          where: { id: hook.id },
+          create: row,
+          update: row,
+        });
+      }
     });
 
     await this.remember(fetched.version, fetched.contentHash, true);
@@ -196,6 +235,7 @@ export class ConfigBackup {
       devices: file.devices.length,
       performers: file.performers.length,
       patches: file.audioPatch.length,
+      webhooks: file.webhooks.length,
     };
   }
 }

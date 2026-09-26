@@ -69,11 +69,19 @@ part worth noting: the instincts were right, the cloud just already existed.
 6. **The contract is the boundary.** Application and cloud live in different
    repositories and talk through a versioned API. Either side can be rewritten
    behind it.
-7. **No mass media, ever — and device passwords never.** No audio, no clips, no
-   rolling-buffer capture, no bulk media of any kind leaves the venue. That is a
-   hard constraint on both sides: Meros Cloud offers no mass-media storage, and
-   RFDeck has nothing to gain from sending any. Device passwords never leave
-   either; they unlock somebody's hardware.
+7. **No mass media, ever.** No audio, no clips, no rolling-buffer capture, no bulk
+   media of any kind leaves the venue. That is a hard constraint on both sides:
+   Meros Cloud offers no mass-media storage, and RFDeck has nothing to gain from
+   sending any.
+
+   **Device passwords are a narrower rule than this once said** (owner,
+   2026-09-26). They are **not** in the event stream and **not** in the online
+   inventory listing — an event log and a browsable listing have no use for them.
+   They **are** in the configuration backup, because a backup that dropped them
+   would restore a rig whose devices silently fall out, which is the failure a
+   backup exists to prevent. Everything in a Meros account is private by nature;
+   there is no public or shareable view of it, so a backup is held to the same
+   confidence as the database it came from.
 
    **This principle used to say "never telemetry", and that was wrong.** It was
    RFDeck's invention rather than Meros's rule, and the owner has corrected it:
@@ -907,18 +915,28 @@ confirm the split was anticipated on that side too.
 
 Both halves are now built: `configFile.ts` (the format), `configBackup.ts` (build,
 push, preview, restore), routes under `/api/cloud/config-backup`, and a card in
-Settings → Cloud. Three things about the restore are deliberate:
+Settings → Cloud. Four things about the restore are deliberate:
 
-- **It describes itself first.** `describeRestore()` produces the list an operator
-  reads before confirming — how many devices and performers, which passwords will
-  need re-entering, whether a PIN was set. "Are you sure?" does not convey that this
-  rewrites a rig.
-- **It upserts and never deletes.** Devices and performers are matched by id;
-  anything added since the backup is left alone. An operator who wanted a device gone
-  can remove it, whereas one whose device vanished has no way to know what it was.
-- **It touches nothing that identifies this install.** Not the cloud link, the PIN
-  hash, the VAPID keys or the event instance id — a restore must not make one install
-  start reporting as another.
+- **It brings the credentials back.** Device passwords, webhook signing secrets and
+  the PIN hash are all in the snapshot, so a restored rig connects and notifies
+  without anything being re-typed. An earlier draft carried only a boolean saying a
+  password had existed; the owner corrected that on 2026-09-26, and rightly — devices
+  falling out of a rig that looked restored is the failure a backup exists to prevent.
+- **They travel unsealed, and that is the point.** At rest a password is AES-256-GCM
+  sealed with the key in `.rfdeck-key`, which sits beside the database precisely so
+  that copying the database does not carry the secrets. Backing up the sealed form
+  would restore a value the new machine cannot open — worse than omitting it, because
+  the device would look configured and still fail to connect. So the backup unseals
+  on the way out and re-seals with the new machine's key on the way in.
+- **It upserts and never deletes.** Devices, performers and webhooks are matched by
+  id; anything added since the backup is left alone. An operator who wanted a device
+  gone can remove it, whereas one whose device vanished has no way to know what it
+  was.
+- **It leaves per-install identity alone** — the cloud refresh token, the VAPID keys,
+  the event instance id and sequence. Not for secrecy: each one would break the
+  install it came from. A replayed refresh token revokes the whole family and unlinks
+  *both* rigs; shared VAPID keys give two servers a claim on the same phones; a shared
+  event instance id makes two installs look like one to a collector.
 
 ### The backup cap, which changes an assumption
 
