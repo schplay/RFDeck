@@ -302,7 +302,28 @@ bare document — and prefers the wrapper when a `body` key is present.
 The tier breakdown settled prices and what is paid. Four things it left open, and
 the first materially changes behaviour rather than only copy.
 
-### I. Is the backup cap per *document* or per *version*?
+### I. Is the backup cap per *document* or per *version*? — ⚠️ CONFIRMED A PROBLEM
+
+**The owner has confirmed this is a real collision** (2026-09-27): as built, the config
+backup and the show file are both documents of the same kind to the cloud, so on a free
+account **only one of them gets kept**. Pushing the install snapshot would discard the
+show file, or the reverse.
+
+That is exactly the astonishing behaviour this question was raised about, and it is not
+something RFDeck can fix on its own: both halves are correct locally and the quota is
+applied cloud-side. **Meros needs two categories it understands separately** — a config
+backup and a show-file backup counting against different allowances — rather than one
+undifferentiated document quota.
+
+The owner is asking the cloud agent to specify this. Until it lands, RFDeck's two
+push paths are built and working but the free tier cannot hold both, so **nothing
+should promise an operator that it can**. Revisit `describeRestore()` copy and the
+Settings → Cloud cards once the categories are defined; the collections
+(`config/instance`, `shows/{id}`) are already distinct, so the client change is likely
+to be small or none.
+
+**Original question, kept for the record:**
+
 
 "Showfile backup — 1 file, always the most recent (no history)" and "FIFO-capped by
 tier (free 1 / paid 100)" can be read two ways, and they mean very different things

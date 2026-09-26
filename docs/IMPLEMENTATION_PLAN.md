@@ -18,7 +18,7 @@ Stages 1–3 are complete. Items are marked ✅ as they land.
 | 6 — Feature completion | ✅ 6.1 rolling capture and detection; ✅ 6.2 notebook and photos; ✅ 6.3 maintenance log; 6.4 outstanding |
 | B — Micboard & Go Live *(added)* | ✅ Read-only wall display; one action to put RFDeck on the rig |
 | 7 — Breadth & operations | In progress — ✅ 7.1 and 7.5 CI; 🚧 7.3 Shure (unverified on hardware); 7.2, 7.4 outstanding |
-| C — Competitive parity *(added)* | ✅ C.1, C.2, C.4–C.6, C.8–C.13; C.3 staged (step 1 done, 2–4 need hardware); C.7 still a question |
+| C — Competitive parity *(added)* | ✅ C.1, C.2, C.4–C.6, C.8–C.13; C.3 staged (step 1 done, 2–4 need hardware). C.7 (baseline drift) removed — see below |
 | D — Meros Cloud *(added)* | ✅ Complete, D.0–D.9. Waiting only on Meros publishing the device-profile pack and issuing the `rfdeck.*` flags |
 
 *Last reconciled 2026-09-27 against commit `da1c9f2`. See "Work since the plan" below for
@@ -596,16 +596,23 @@ The dashboard, inventory, and mic check are built for desktop widths. Mic check 
 the highest-value mobile flow — a tech walking the stage ticking channels — so it should drive
 the responsive work rather than being retrofitted last.
 
-### 5.2 Progressive Web App — **M**
+### 5.2 Progressive Web App — **M** — *scope corrected*
 
-Manifest, install path, and an offline shell that degrades honestly when the server is
-unreachable. Depends on 5.1.
+From README "Mobile": *"Progressive Web App — installable on iOS and Android from the
+browser."* **This is about the phone or tablet, not the desktop application.** A tech
+walking a venue opens RFDeck in their phone's browser over the show LAN; a PWA lets
+them add it to the home screen so it opens full-screen without browser chrome, rather
+than being a bookmark. The desktop build is an Electron app and has never needed any
+of this.
 
-A service worker already exists for push (5.3), and deliberately caches nothing so it
-can never serve a stale build. The offline shell is the part still missing, and it is
-the part that needs a decision rather than code: a rig-monitoring tool that shows a
-cached dashboard while the server is unreachable is lying about the rig. Worth
-designing what it should honestly show before building it.
+What that leaves is small: a web manifest and the icons (which already exist, for
+push). **The offline shell is dropped** — an earlier draft included one, and it is the
+wrong idea for this product: a rig-monitoring tool that shows a cached dashboard while
+the server is unreachable is lying about the rig. The honest behaviour when the server
+cannot be reached is the connection banner the app already shows.
+
+A service worker already exists for push (5.3) and deliberately caches nothing, so it
+can never serve a stale build. That property should survive this item.
 
 ### 5.3 Web push notifications — **M** — ✅ *complete*
 
@@ -615,9 +622,18 @@ notification and caches nothing, which is a much smaller thing than the offline 
 5.2 describes. Severity rather than role, because there are no per-user roles — access
 is an optional shared PIN, as recorded at the top of this document.
 
-### 5.4 QR / barcode scanning — **S**
+### 5.4 QR / barcode scanning — **S** — *from the README; no driver yet*
 
-Camera-based device lookup in inventory. Small, and genuinely useful for a tech at a rack.
+From README "Mobile": *"Inventory with QR/barcode scanning (camera via browser)."*
+The idea is that a tech at a rack points a phone at a receiver and RFDeck opens that
+device, rather than scrolling an inventory list to find it.
+
+**Worth confirming it is wanted before building.** The receivers in the rack carry
+manufacturer serial barcodes, not RFDeck codes, so this only works if the serial is
+already recorded against the device — which it is, when the device reported one. But
+nobody has asked for it, and a phone camera is slower than typing three characters
+into a filter box. Listed because the README specifies it, not because a real workflow
+demanded it.
 
 ---
 
@@ -726,12 +742,22 @@ reconciliation logic in `DeviceManagerService`, control-vs-Dante discrimination,
 debounce. That logic is subtle, hardware-dependent, expensive to verify by hand, and has already
 regressed once. Playwright coverage for mic check and inventory follows.
 
-### 7.2 PostgreSQL support — **M**
+### 7.2 PostgreSQL support — **M** — *from the README; no driver yet*
 
-SQLite is adequate for a single headless instance serving a venue. Postgres matters for a hosted
-multi-venue deployment and for concurrent write volume beyond one show's worth of traffic.
-Prisma makes the provider swap mechanical; the work is migration strategy and verifying no
-SQLite-specific behaviour leaked into queries.
+From the README's stack table: *"Database (Web) — PostgreSQL 📋"*, with the
+architecture diagram showing a web server on Postgres beside the Electron build on
+SQLite.
+
+SQLite is adequate for a single instance serving one venue, which is every deployment
+that exists or is planned. Postgres would matter for a **hosted multi-venue service** —
+RFDeck as something customers log into rather than something they run — and that is
+not the product: the Pro tier is an appliance in a rack, and the multi-venue story is
+Meros Cloud's, over the event stream and document sync that already exist.
+
+**So this may be a feature the README outgrew.** Prisma makes the provider swap
+mechanical; the work would be migration strategy and proving no SQLite-specific
+behaviour leaked into queries. Worth deciding whether the hosted deployment is real
+before paying for either.
 
 ### 7.3 Additional manufacturers — **XL each** — 🚧 Shure landed, unverified
 
@@ -814,7 +840,17 @@ Sources, formats and the full list of assumptions: `docs/SHURE_PROTOCOL.md`.
 
 ### 7.4 Packaging and updates — **M**
 
-Docker image for the headless target, auto-update for the desktop build.
+Auto-update for the desktop build.
+
+**Not Docker** (owner, 2026-09-27). The headless target ships as a **system image**,
+not a container: it is sold as an appliance that boots into RFDeck, which a container
+cannot be. That also removes the container-orchestration assumptions an earlier draft
+of this item carried.
+
+The headless build is the **Pro** tier and lives in a **separate private repository**
+along with the Pro feature set — named users, permissions, audit. See
+`docs/REPO_SEPARATION_PLAN.md`; none of that is built here, and the image is built
+there rather than being a packaging mode of this repo.
 
 ---
 
@@ -1118,16 +1154,11 @@ Shown on the RF page and as a channel-level warning, naming the pair that
 produces each hit — a warning that does not say what is beating against what is
 not actionable.
 
-### C.7 Known-good baseline and drift — **?** — *needs discussion*
-
-The idea, from their Network Watch: record a baseline, then alert on deviation.
-For a theatre run that reads as "the rig is not how it was last night" — a
-frequency moved, a gain changed, a receiver missing.
-
-Held as a question rather than a plan. It is not yet clear what an operator would
-*do* with it that the event log and show report do not already tell them, or how
-to stop it firing on every legitimate change between two performances. Decide
-what the actual complaint is before designing for it.
+> **C.7 (known-good baseline and drift) was removed on 2026-09-27.** It proposed
+> recording a baseline and alerting on deviation from it. It never had an answer to
+> what an operator would *do* with that which the event log and show report do not
+> already tell them, or how to stop it firing on every legitimate change between two
+> performances. Dropped rather than left as an open question nobody wanted answered.
 
 ### C.8 Dense all-channels grid — **M** — ✅ *complete*
 
