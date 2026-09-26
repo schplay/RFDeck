@@ -98,14 +98,26 @@ export class ShowFiles {
    * would produce a list nobody wrote. `force` is the answer to a conflict the
    * operator resolved in the cloud's favour.
    */
-  async pull(showId: string, version?: number): Promise<{ name: string; version: number }> {
+  async pull(showId: string, version?: number): Promise<{
+    name: string; version: number; isOlderThanHead: boolean; headVersion: number;
+  }> {
     const key = showFileKey(showId);
     const fetched = await this.documents.get(COLLECTION, key, version);
     const file = parseShowFile(fetched.body);
     await this.apply(showId, file);
-    await this.remember(key, fetched.version, fetched.content_hash, true);
+    await this.remember(key, fetched.version, fetched.contentHash, true);
     log.info(`[Cloud] Pulled show "${file.show.name}" at version ${fetched.version}`);
-    return { name: file.show.name, version: fetched.version };
+    return {
+      name: file.show.name,
+      version: fetched.version,
+      // Set when an older version was fetched on purpose. The bookmark records
+      // what was actually pulled, so a later push conflicts rather than silently
+      // overwriting the newer head — which is correct: promoting an old version
+      // over the head is a deliberate restore, not a side effect of looking at it.
+      // When a version-history UI arrives it should push against `headVersion`.
+      isOlderThanHead: fetched.version < fetched.headVersion,
+      headVersion: fetched.headVersion,
+    };
   }
 
   /**

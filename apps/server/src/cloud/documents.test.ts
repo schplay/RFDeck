@@ -3,7 +3,7 @@ import { FakeMeros } from './fakeMeros';
 import { CloudClient } from './client';
 import { CloudLink } from './link';
 import { MemoryLinkStore } from './linkStore';
-import { Documents, DocumentConflict, contentHash, canonicalJson } from './documents';
+import { Documents, DocumentConflict, DocumentNotFound, contentHash, canonicalJson } from './documents';
 import { CloudConfig } from './config';
 import { buildShowFile } from './showFile';
 
@@ -72,15 +72,45 @@ describe('pushing and pulling a show', () => {
     expect(listing.documents[0].head_version).toBe(1);
   });
 
-  it('fetches an older version when asked', async () => {
+  it('fetches an older version when asked, and says it is not the head', async () => {
     const { docs } = await harness();
     await docs.put('shows', 'show-1', show('First'));
     await docs.put('shows', 'show-1', show('Second'), 1);
 
     const old = await docs.get<any>('shows', 'show-1', 1);
     expect(old.body.show.name).toBe('First');
+    // The only way to know what is in hand is not current.
+    expect(old.version).toBe(1);
+    expect(old.headVersion).toBe(2);
+
     const head = await docs.get<any>('shows', 'show-1');
     expect(head.body.show.name).toBe('Second');
+    expect(head.version).toBe(head.headVersion);
+  });
+
+  it('reads the whole envelope, not just the body', async () => {
+    const { docs } = await harness();
+    const sent = show();
+    await docs.put('shows', 'show-1', sent);
+    const got = await docs.get<any>('shows', 'show-1');
+    expect(got.key).toBe('show-1');
+    expect(got.contentHash).toBe(contentHash(sent));
+    expect(got.createdAt).toBeTruthy();
+    expect(got.sizeBytes).toBeGreaterThan(0);
+  });
+
+  it('reports a document that was never pushed as not found, not as a fault', async () => {
+    // An ordinary answer: the UI has to tell "not saved yet" apart from "the
+    // cloud is broken", and they are different things to say to an operator.
+    const { docs } = await harness();
+    await expect(docs.get('shows', 'never-pushed')).rejects.toBeInstanceOf(DocumentNotFound);
+    await expect(docs.get('shows', 'never-pushed')).rejects.toThrowError(/has not been saved/);
+  });
+
+  it('reports a missing version distinctly from a missing document', async () => {
+    const { docs } = await harness();
+    await docs.put('shows', 'show-1', show());
+    await expect(docs.get('shows', 'show-1', 99)).rejects.toThrowError(/Version 99/);
   });
 
   it('reports the version history', async () => {

@@ -39,10 +39,29 @@ export interface DocumentVersionInfo {
 
 export interface FetchedDocument<T = unknown> {
   key: string;
+  /** The version actually returned — the head, or the one asked for. */
   version: number;
+  /**
+   * The current head.
+   *
+   * Differs from `version` when an older version was fetched deliberately, which
+   * is the only way to know that what is in hand is not current.
+   */
+  headVersion: number;
   body: T;
-  content_hash: string | null;
-  updated_at: string | null;
+  contentHash: string | null;
+  createdAt: string | null;
+  sizeBytes: number | null;
+}
+
+/** The document, or the version, is not in the cloud. A normal answer, not a fault. */
+export class DocumentNotFound extends Error {
+  constructor(readonly key: string, readonly version?: number) {
+    super(version
+      ? `Version ${version} of "${key}" is not in the cloud.`
+      : `"${key}" has not been saved to the cloud.`);
+    this.name = 'DocumentNotFound';
+  }
 }
 
 /** A push refused because the head moved. Carries what is needed to offer a choice. */
@@ -141,29 +160,46 @@ export class Documents {
   /**
    * Fetch the head, or a specific version.
    *
-   * The single-document response shape is the one part of the contract Meros did
-   * not spell out, so this accepts either a wrapper carrying `body` or a bare
-   * document, rather than assuming. Being liberal here costs nothing; guessing
-   * wrong would cost a pull that silently produced an empty show.
+   * The response is a stable envelope — `{ key, version, head_version,
+   * content_hash, size_bytes, created_at, body }` — so the document is read from
+   * `body` and the siblings are Meros's metadata about it.
    *
-   * Raised with Meros as question H in docs/CLOUD_CONTRACT_QUESTIONS.md.
+   * Deliberately keyed off the envelope rather than sniffed for. An earlier
+   * version of this accepted either a wrapper or a bare document, because the
+   * shape had not been specified; Meros has since guaranteed the envelope and
+   * pointed out that sniffing for our own top-level keys would be the wrong test
+   * anyway. It would be: a document that legitimately contained a `body` key
+   * would be misread, and the check would pass for years before meeting one.
    */
   async get<T = unknown>(collection: string, key: string, version?: number): Promise<FetchedDocument<T>> {
     const token = await this.link.token();
     const url = `${this.base(collection)}/${encodeURIComponent(key)}`
       + (version ? `?version=${version}` : '');
-    const raw = await this.client.json<any>('GET', url, { token });
 
-    const body = raw && typeof raw === 'object' && 'body' in raw ? raw.body : raw;
-    if (!body || typeof body !== 'object') {
-      throw new Error(`The cloud returned no usable document for "${key}".`);
+    let raw: any;
+    try {
+      raw = await this.client.json<any>('GET', url, { token });
+    } catch (err) {
+      // "Not in the cloud" is an ordinary answer — a show that has never been
+      // pushed — and the UI needs to tell it apart from the cloud being broken.
+      if (err instanceof CloudRefused && err.status === 404) {
+        throw new DocumentNotFound(key, version);
+      }
+      throw err;
     }
+
+    if (!raw || typeof raw !== 'object' || !raw.body || typeof raw.body !== 'object') {
+      throw new Error(`The cloud returned no document body for "${key}".`);
+    }
+    const returned = Number(raw.version ?? version ?? 0);
     return {
-      key,
-      version: Number(raw?.version ?? raw?.head_version ?? version ?? 0),
-      body: body as T,
-      content_hash: typeof raw?.content_hash === 'string' ? raw.content_hash : null,
-      updated_at: typeof raw?.updated_at === 'string' ? raw.updated_at : null,
+      key: typeof raw.key === 'string' ? raw.key : key,
+      version: returned,
+      headVersion: Number(raw.head_version ?? returned),
+      body: raw.body as T,
+      contentHash: typeof raw.content_hash === 'string' ? raw.content_hash : null,
+      createdAt: typeof raw.created_at === 'string' ? raw.created_at : null,
+      sizeBytes: Number.isFinite(Number(raw.size_bytes)) ? Number(raw.size_bytes) : null,
     };
   }
 
@@ -201,6 +237,7 @@ export class Documents {
 
     const token = await this.link.token();
     try {
+      // 201, and the same envelope as a GET minus `body`.
       const raw = await this.client.json<any>(
         'PUT', `${this.base(collection)}/${encodeURIComponent(key)}`,
         { token, body: baseVersion === undefined ? { body } : { body, base_version: baseVersion } },

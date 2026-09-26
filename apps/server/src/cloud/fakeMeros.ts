@@ -263,9 +263,17 @@ export class FakeMeros {
           ? versions.find(v => v.version === Number(wanted))
           : versions[versions.length - 1];
         if (!found) return send(404, { error: 'not_found' });
+        // The guaranteed envelope: the document in `body`, Meros's metadata
+        // alongside it. `head_version` is how a client knows it fetched an older
+        // version on purpose.
         return send(200, {
-          key, version: found.version, body: found.body,
-          content_hash: found.hash, updated_at: found.updated_at,
+          key,
+          version: found.version,
+          head_version: versions[versions.length - 1].version,
+          content_hash: found.hash,
+          size_bytes: JSON.stringify(found.body).length,
+          created_at: found.updated_at,
+          body: found.body,
         });
       }
 
@@ -304,7 +312,15 @@ export class FakeMeros {
           updated_at: new Date().toISOString(), hash,
         };
         if (versions) versions.push(next); else this.documents.set(full, [next]);
-        return send(200, { key, version: next.version, content_hash: hash, updated_at: next.updated_at });
+        // 201, and the same envelope as a GET without `body`.
+        return send(201, {
+          key,
+          version: next.version,
+          head_version: next.version,
+          content_hash: hash,
+          size_bytes: encoded.length,
+          created_at: next.updated_at,
+        });
       }
 
       if (req.method === 'DELETE') {

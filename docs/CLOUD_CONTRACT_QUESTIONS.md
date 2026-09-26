@@ -247,7 +247,38 @@ different float formatting — the digests will never agree for the same documen
 
 </details>
 
-### H. What does `GET /v1/docs/{product}/{collection}/{key}` actually return?
+### H. What does `GET /v1/docs/{product}/{collection}/{key}` actually return? — ✅ ANSWERED
+
+**A stable envelope, and keying off it is now guaranteed rather than inferred:**
+
+```json
+{ "key": "show-123", "version": 7, "head_version": 7,
+  "content_hash": "…", "size_bytes": 4096, "created_at": "2026-09-26T…",
+  "body": { … the show file … } }
+```
+
+The document is read from `body`; the siblings are Meros's metadata. `PUT` returns
+the same envelope without `body`, at **201**. A missing document or version is
+**404 `not_found`**.
+
+Three things changed as a result:
+
+- The liberal wrapper-or-bare fallback is gone. Meros also made the point that
+  sniffing for our own top-level keys was the wrong test regardless — a document
+  that legitimately contained a `body` key would be misread, and the check would
+  pass for years before meeting one.
+- `head_version` is now captured. It is the only way to know that an older version
+  was fetched on purpose, which matters for a future version-history UI: pulling an
+  old version records *that* version, so a later push conflicts rather than
+  silently promoting it over a newer head. Promoting one is a deliberate restore
+  and should push against `head_version`.
+- **404 is an ordinary answer, not a fault.** `DocumentNotFound` is its own type,
+  because "this show has never been saved to the cloud" and "the cloud is broken"
+  are different things to tell an operator.
+
+<details><summary>The original question, for the record</summary>
+
+
 
 §11.C specified the list response, the version-history response and the 409 body,
 but not the single-document one. RFDeck currently accepts **either** shape — a
@@ -261,3 +292,5 @@ bare document — and prefers the wrapper when a `body` key is present.
   are `showFile`, `exportedAt`, `show`, `players`, `micCheck`), so this is safe for
   RFDeck today — but it would not be safe for a product whose documents can.
 - **What would settle it:** the response shape, with field names.
+
+</details>
