@@ -73,6 +73,11 @@ export class ShowFiles {
       return { status: 'pushed', version: result.version };
     } catch (err) {
       if (err instanceof DocumentConflict) {
+        // The conflict itself was decided by Meros on the integer version: the
+        // head advanced past our base_version. `sameContent` only decides whether
+        // it is worth asking the operator about — it never suppresses a conflict,
+        // because a hash we computed ourselves could be wrong in a way a version
+        // comparison cannot.
         if (err.sameContent) {
           // Two machines, one show, nothing to resolve. Catch up our bookmark so
           // the next real edit pushes cleanly instead of conflicting again.

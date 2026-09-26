@@ -186,3 +186,30 @@ describe('showFileKey', () => {
     }
   });
 });
+
+describe('the float tripwire', () => {
+  it('contains no floating-point numbers anywhere', () => {
+    // Not arbitrary fussiness. Meros hashes a canonical JSON form and RFDeck
+    // reproduces it to spot a benign push conflict — but PHP and JavaScript do
+    // not always render the same float identically (1.0 versus 1), so one float
+    // in a show file could make the two hashes disagree for a document that is
+    // in fact identical.
+    //
+    // Show files are strings, integers, booleans and nulls today. If a future
+    // field introduces a float, this fails and sends whoever added it to
+    // `contentHash` in documents.ts to decide what to do about it — which is
+    // better than the hash quietly stopping working.
+    const floats: string[] = [];
+    const walk = (value: unknown, path: string) => {
+      if (typeof value === 'number') {
+        if (!Number.isInteger(value)) floats.push(`${path} = ${value}`);
+      } else if (Array.isArray(value)) {
+        value.forEach((v, i) => walk(v, `${path}[${i}]`));
+      } else if (value && typeof value === 'object') {
+        for (const [k, v] of Object.entries(value)) walk(v, `${path}.${k}`);
+      }
+    };
+    walk(buildShowFile(row()), 'showFile');
+    expect(floats).toEqual([]);
+  });
+});

@@ -66,24 +66,58 @@ export class DocumentConflict extends Error {
 export const PRODUCT = 'rfdeck';
 
 /**
- * Meros's hash, so a local body can be compared against a head without fetching it.
+ * Meros's canonical JSON form, which its `content_hash` is computed over.
  *
- * Caveat worth knowing: this assumes Meros hashes the bytes it received, and that
- * our `JSON.stringify` produced them. Against the fake cloud that holds by
- * construction; against the real one, a server that re-serialises before hashing
- * (different unicode escaping, different key order) would produce a different
- * digest for the same document.
+ * Recursively sort object keys; leave array order alone; no whitespace. Slashes
+ * and non-ASCII stay unescaped, which is what `JSON.stringify` already does — so
+ * the only work is the key sort.
  *
- * That degrades safely rather than dangerously. The hash is only used to spot a
- * 409 that is not really a conflict; if it never matches, every 409 is simply
- * treated as a real conflict and the operator is asked. So a mismatch costs a
- * needless question, never a lost show.
+ * Sorting is what makes the hash reproducible at all. Meros originally hashed its
+ * own re-encoding of whatever we sent, which meant our digest could never match
+ * and every 409 looked like a real conflict; it now hashes this canonical form
+ * instead, so both sides can arrive at the same answer independently.
+ */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonicalise(value));
+}
+
+function canonicalise(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    // Array order is meaningful and is left exactly as it is.
+    return value.map(canonicalise);
+  }
+  if (value && typeof value === 'object') {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      sorted[key] = canonicalise((value as Record<string, unknown>)[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+/**
+ * Meros's `content_hash`, computed locally.
  *
- * Raised with Meros as question G in docs/CLOUD_CONTRACT_QUESTIONS.md — this
- * comment records the assumption, it is not where the question lives.
+ * Used for exactly one thing: telling a **benign** conflict from a real one. When
+ * the head's hash equals ours, two machines are holding an identical document and
+ * there is nothing for an operator to arbitrate.
+ *
+ * It is deliberately *not* how a conflict is detected. That is the integer
+ * version, decided by Meros — a 409 means the head advanced past our
+ * `base_version`, full stop. A version comparison cannot false-positive; a hash
+ * computed from our own serialisation could, which is why it only ever downgrades
+ * a prompt and never suppresses a conflict.
+ *
+ * One known limit, deliberately left as a failing test rather than a comment
+ * nobody reads: floating-point numbers. PHP and JavaScript do not always render
+ * the same float identically (`1.0` versus `1`), so a document containing one
+ * could hash differently on each side. Show files contain no floats, and
+ * `showFile.test.ts` asserts that, so if a future field introduces one the test
+ * fails and points here.
  */
 export function contentHash(body: unknown): string {
-  return crypto.createHash('sha256').update(JSON.stringify(body), 'utf8').digest('hex');
+  return crypto.createHash('sha256').update(canonicalJson(body), 'utf8').digest('hex');
 }
 
 /** Meros's cap on a document body. */

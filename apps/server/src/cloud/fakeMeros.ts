@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import http from 'http';
 import { AddressInfo } from 'net';
+import { canonicalJson } from './documents';
 
 /**
  * A fake Meros Cloud, in process.
@@ -292,7 +293,12 @@ export class FakeMeros {
           });
         }
         this.deletedDocuments.delete(full);
-        const hash = crypto.createHash('sha256').update(encoded, 'utf8').digest('hex');
+        // The canonical hash, exactly as Meros computes it: keys sorted
+        // recursively, array order kept, no whitespace. Hashing `encoded` here
+        // instead would make the fake agree with our client for the wrong
+        // reason, and hide the very mismatch this is meant to catch.
+        const hash = crypto.createHash('sha256')
+          .update(canonicalJson(payload.body), 'utf8').digest('hex');
         const next = {
           version: headVersion + 1, body: payload.body,
           updated_at: new Date().toISOString(), hash,

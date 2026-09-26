@@ -3,7 +3,7 @@ import { FakeMeros } from './fakeMeros';
 import { CloudClient } from './client';
 import { CloudLink } from './link';
 import { MemoryLinkStore } from './linkStore';
-import { Documents, DocumentConflict, contentHash } from './documents';
+import { Documents, DocumentConflict, contentHash, canonicalJson } from './documents';
 import { CloudConfig } from './config';
 import { buildShowFile } from './showFile';
 
@@ -175,13 +175,58 @@ describe('guards', () => {
   });
 });
 
-describe('contentHash', () => {
+describe('the canonical hash', () => {
   it('matches what the server computed for the same body', async () => {
-    // If these ever disagree, the same-content check silently stops working and
-    // operators start being asked to resolve conflicts that are not conflicts.
+    // If these ever disagree the benign-conflict check silently stops working and
+    // operators get asked to resolve conflicts that are not conflicts.
     const { docs } = await harness();
     const body = show();
     const put = await docs.put('shows', 'show-1', body);
     expect(put.content_hash).toBe(contentHash(body));
+  });
+
+  it('sorts object keys recursively, so key order cannot change the hash', () => {
+    // The whole point of canonicalising. Meros used to hash its own re-encoding
+    // of whatever arrived, which no client could reproduce.
+    const a = { b: 1, a: { d: 2, c: [1, 2] } };
+    const z = { a: { c: [1, 2], d: 2 }, b: 1 };
+    expect(canonicalJson(a)).toBe(canonicalJson(z));
+    expect(contentHash(a)).toBe(contentHash(z));
+    expect(canonicalJson(a)).toBe('{"a":{"c":[1,2],"d":2},"b":1}');
+  });
+
+  it('leaves array order alone, because array order is meaningful', () => {
+    expect(contentHash({ xs: [1, 2, 3] })).not.toBe(contentHash({ xs: [3, 2, 1] }));
+    expect(canonicalJson({ xs: [{ b: 1, a: 2 }] })).toBe('{"xs":[{"a":2,"b":1}]}');
+  });
+
+  it('emits no whitespace, unescaped slashes and unescaped unicode', () => {
+    // Matching PHP's JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE.
+    expect(canonicalJson({ url: 'https://meros.co/link', who: 'Renée Fleming' }))
+      .toBe('{"url":"https://meros.co/link","who":"Renée Fleming"}');
+  });
+
+  it('is stable across nesting depth and null', () => {
+    const deep = { z: { y: { x: [{ b: null, a: 1 }] } } };
+    expect(canonicalJson(deep)).toBe('{"z":{"y":{"x":[{"a":1,"b":null}]}}}');
+  });
+});
+
+describe('the conflict decision stays on the version', () => {
+  it('reports a real conflict even when we cannot compute a matching hash', async () => {
+    // A hash we computed ourselves could be wrong; the integer version cannot.
+    // So a 409 is a conflict regardless of what the hashes say, and `sameContent`
+    // only ever downgrades the prompt.
+    const { docs } = await harness();
+    await docs.put('shows', 'show-1', show('Ours'));
+    await docs.put('shows', 'show-1', show('Theirs'), 1);
+    try {
+      await docs.put('shows', 'show-1', show('Ours, edited'), 1);
+      expect.unreachable('should have conflicted');
+    } catch (err) {
+      const conflict = err as DocumentConflict;
+      expect(conflict.headVersion).toBe(2);
+      expect(conflict.sameContent).toBe(false);
+    }
   });
 });

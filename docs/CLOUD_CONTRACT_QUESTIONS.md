@@ -200,7 +200,33 @@ Neither blocks anything: both have a safe default that is already implemented. B
 both are assumptions about Meros's behaviour rather than facts, so they are here
 rather than left as comments in the source.
 
-### G. Does `content_hash` cover the bytes Meros received, or a re-serialisation?
+### G. Does `content_hash` cover the bytes Meros received, or a re-serialisation? — ✅ ANSWERED
+
+**It was a re-serialisation, and the assumption was wrong.** Meros decoded and
+re-encoded the JSON before hashing, so our byte-hash could never have matched and
+every 409 would have looked like a real conflict. Two things came back:
+
+1. **The integer version is the authoritative conflict signal, not the hash.** A
+   409 means the head advanced past our `base_version`, full stop. RFDeck already
+   works this way — the 409 *is* the conflict — and `sameContent` only ever
+   downgrades the prompt, never suppresses a conflict. That is now stated
+   explicitly at the decision point rather than left implicit.
+2. **`content_hash` is now canonical and reproducible** (Meros changed it):
+   recursively sort object keys, leave array order alone, encode with unescaped
+   slashes and unescaped unicode and no whitespace, then SHA-256.
+   `canonicalJson()` in `documents.ts` implements exactly that, and the fake cloud
+   hashes the same way so the tests mirror reality rather than agreeing with the
+   client for the wrong reason.
+
+One residual limit, handled as a failing test rather than a comment: PHP and
+JavaScript do not always render the same float identically (`1.0` versus `1`), so
+a document containing a float could hash differently on each side. Show files
+contain none, and `showFile.test.ts` now asserts that — so if a future field
+introduces one, the test fails and points at `contentHash`.
+
+<details><summary>The original question, for the record</summary>
+
+
 
 RFDeck computes the same sha256 locally (`contentHash()` in
 `apps/server/src/cloud/documents.ts`) so that a **409 can be recognised as a
@@ -218,6 +244,8 @@ different float formatting — the digests will never agree for the same documen
 - **What would settle it:** either a yes/no, or the `content_hash` Meros computes
   for one known body so we can compare. If it is a re-serialisation, naming the
   canonicalisation would let us match it.
+
+</details>
 
 ### H. What does `GET /v1/docs/{product}/{collection}/{key}` actually return?
 
