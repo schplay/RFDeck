@@ -9,10 +9,10 @@ import { useCloudStore } from '../stores/cloudStore';
  * the feature exists and why it is not available, rather than wondering where it
  * went.
  *
- * **Gating is deferred by owner decision**, so `allowed` is currently true for
- * everything. The server says the same thing from the same one place. `held`
- * reports what the account actually has, which is what a status page should show
- * rather than what the gate decided.
+ * **Gating is on since 2026-09-26**, when the tiers and prices were finalized. It
+ * was off through development so nothing was walled off while there were no tiers
+ * to enforce. `held` still reports what the account actually has, which is what a
+ * status page should show rather than what the gate decided.
  */
 
 /**
@@ -24,10 +24,10 @@ import { useCloudStore } from '../stores/cloudStore';
  * disabled button the server would happily have honoured, which is a bug in one
  * direction only and a harmless one.
  */
-const GATING_ENFORCED = false;
+const GATING_ENFORCED = true;
 
 export interface Entitlement {
-  /** Whether the feature may be used. True for everything while gating is deferred. */
+  /** Whether the feature may be used. */
   allowed: boolean;
   /** Whether the account genuinely holds it, regardless of the gate. */
   held: boolean;

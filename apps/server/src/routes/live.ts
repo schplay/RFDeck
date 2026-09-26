@@ -77,6 +77,19 @@ export const liveRoutes: FastifyPluginAsync = async (fastify) => {
     await recorder()?.reload().catch(() => {});
 
     log.info(`[live] Going live${showId ? ` with show ${showId}` : ' with no show'}; enabled ${toEnable.length} device(s)`);
+    // The boundary a post-show report is built between. Without it the cloud has
+    // a continuous stream of RF events and no idea which of them were a show.
+    const show = showId ? await prisma.show.findUnique({ where: { id: showId } }) : null;
+    (fastify as any).cloud?.emit?.({
+      type: 'rfdeck.show.went_live',
+      severity: 'notice',
+      ...(showId ? { subject: { kind: 'show', id: showId, name: show?.name ?? undefined } } : {}),
+      attrs: {
+        message: show?.name ? `Went live with "${show.name}"` : 'Went live with no show selected',
+        devicesEnabled: toEnable.length,
+        ...(show?.venue ? { venue: show.venue } : {}),
+      },
+    });
     return { ...(await broadcast()), enabled: toEnable.length };
   });
 
@@ -101,6 +114,28 @@ export const liveRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     log.info(`[live] Standing down; disabled ${toDisable.length} device(s)`);
+    // The closing boundary. Carries the show it was live with and how long, so a
+    // report can be generated from the stream without RFDeck sending one.
+    const wasShow = s.liveShowId
+      ? await prisma.show.findUnique({ where: { id: s.liveShowId } })
+      : null;
+    (fastify as any).cloud?.emit?.({
+      type: 'rfdeck.show.stood_down',
+      severity: 'notice',
+      ...(s.liveShowId
+        ? { subject: { kind: 'show', id: s.liveShowId, name: wasShow?.name ?? undefined } }
+        : {}),
+      attrs: {
+        message: wasShow?.name ? `Stood down from "${wasShow.name}"` : 'Stood down',
+        devicesDisabled: toDisable.length,
+        ...(s.liveStartedAt
+          ? {
+              wentLiveAt: s.liveStartedAt.toISOString(),
+              durationSec: Math.round((Date.now() - s.liveStartedAt.getTime()) / 1000),
+            }
+          : {}),
+      },
+    });
     return { ...(await broadcast()), disabled: toDisable.length };
   });
 };

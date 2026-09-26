@@ -1526,6 +1526,20 @@ export class DeviceManagerService extends EventEmitter {
               }
             }
 
+            // A carrier moving is part of the RF environment's history, and
+            // until now nothing server-side noticed: it was tracked in a browser
+            // store, so it was per-client and lost on reload.
+            if (oldChannel.frequency > 0 && newChannel.frequency > 0
+                && oldChannel.frequency !== newChannel.frequency) {
+              this.emit('channel:frequency', {
+                channelId,
+                channelName: newChannel.name,
+                deviceId,
+                fromKHz: oldChannel.frequency,
+                toKHz: newChannel.frequency,
+              });
+            }
+
             // RF dropout / recovery — see evaluateRfState.
             this.evaluateRfState(channelId, deviceId, oldChannel, newChannel);
           }
@@ -1630,6 +1644,12 @@ export class DeviceManagerService extends EventEmitter {
       this.rfEventLog.length = this.RF_EVENT_LOG_MAX;
     }
     this.io.emit('rf:event', event);
+    // Also as an EventEmitter signal, for anything that wants the *complete* RF
+    // record rather than the throttled human-facing alert feed. The cloud event
+    // stream is the case that matters: an event history showing dropouts and no
+    // recoveries would be worse than none, because it reads as a rig that never
+    // came back.
+    this.emit('rf:event', event);
 
     // A dropout is the first thing worth keeping audio for. Emitted as its own
     // signal rather than calling the recorder directly, so device tracking
@@ -1870,8 +1890,26 @@ export class DeviceManagerService extends EventEmitter {
     if (sig === this.intermodSig) return;
     this.intermodSig = sig;
 
+    const before = this.intermod.hits.length;
     this.intermod = findIntermodHits(sources);
     this.io.emit('intermod:report', this.intermod);
+
+    // Only when the picture actually changes, which the signature check above
+    // already guarantees — the report is recomputed on every carrier move, and an
+    // event per recomputation would bury a real finding in noise.
+    if (this.intermod.hits.length !== before) {
+      this.emit('intermod:changed', {
+        hits: this.intermod.hits.length,
+        sourceCount: this.intermod.sourceCount,
+        worst: this.intermod.hits[0]
+          ? {
+              formula: this.intermod.hits[0].formula,
+              victimName: this.intermod.hits[0].victimName,
+              offsetKHz: this.intermod.hits[0].offsetKHz,
+            }
+          : null,
+      });
+    }
 
     if (this.intermod.hits.length > 0) {
       const worst = this.intermod.hits[0];

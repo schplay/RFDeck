@@ -23,12 +23,20 @@ const GRACE_MS = 30 * 24 * 60 * 60_000;
 /**
  * Whether a missing entitlement actually withholds anything.
  *
- * False while monetisation is deferred: `entitled()` still computes the honest
- * answer, and `enforced()` is what a feature checks. When the owner turns
- * gating on, this becomes true and every gate starts biting at once — which is
- * the point of there being exactly one of them.
+ * **True since 2026-09-26**, when the cloud tiers and prices were finalized. It was
+ * false through development so that nothing was walled off while there were no
+ * tiers to enforce; the point of there being exactly one of these is that turning
+ * it on was a one-line change rather than a hunt.
+ *
+ * `holds()` still reports the honest answer alongside `entitled()`, so a status
+ * page shows what an account actually has rather than what the gate decided.
+ *
+ * Note what this does *not* affect: an install with no cloud configured, or one
+ * that is not linked, is not gated. A paywall appearing because somebody has not
+ * signed in would be a paywall nobody asked for — and for the features this gates,
+ * an unlinked rig has no cloud data to withhold anyway.
  */
-export const GATING_ENFORCED = false;
+export const GATING_ENFORCED = true;
 
 interface CachedEntitlements {
   accountId: string;

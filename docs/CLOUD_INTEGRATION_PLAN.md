@@ -841,16 +841,62 @@ turn gating on — which is one constant on each side.
 Three paid features arrived with the tier breakdown that RFDeck has not built, and
 they are product scope rather than plumbing:
 
+Two of the three turned out to be *data RFDeck should already be sending*, not
+features to build — the cloud can generate them from the event stream. Which was
+true in principle and **not true in practice**: the event tap only listened to
+alerts, and alerts are a throttled, human-facing subset. The gap and the fix:
+
+| Was missing | Consequence | Now |
+|---|---|---|
+| **RECOVERY** | Dropouts were emitted, recoveries were not — an RF history showing a rig that dropped out and never came back | Emitted from the RF event signal, which is complete rather than rate-limited. `DROPOUT` moved there too, and off the alert mapping, so it is not counted twice |
+| **Frequency changes** | Nothing server-side noticed a carrier move; it was tracked in a browser store, so it was per-client and lost on reload | `rfdeck.frequency.changed`, with the from and to |
+| **Audio faults** | Fuzz, noise and clicks — RFDeck's whole differentiator — reached the recorder and nothing else | `rfdeck.audio.fault_detected`, with the trigger and the RF levels at the time |
+| **Intermodulation** | Never left the rig | `rfdeck.intermod.detected` / `.cleared`, only when the picture changes — a report recomputed on every carrier move would bury a real finding |
+| **Show boundaries** | The cloud had a continuous stream and no idea which parts were a show, so a post-show report was not derivable at all | `rfdeck.show.went_live` / `.stood_down`, the second carrying the show, when it started and how long it ran |
+| **Inventory changes** | Nothing | `rfdeck.inventory.added` / `.changed` / `.removed`, with make, model, location, serial, firmware and band — and **never a password, not even a boolean saying one exists** |
+
+So **RF environment history and post-show reports need nothing further from
+RFDeck**: the stream now carries the transitions and the boundaries to build both.
+
 | Phase | What | Note |
 |---|---|---|
-| D.8 | **RF environment history** — keeping the RF picture over time rather than only now | Needs scoping: what is retained, for how long, and whether it is stored locally, in the cloud, or both |
-| D.9 | **Post-show RF report generation** | RFDeck already has a printable show report. Whether this is that report extended, or something the cloud renders from the event stream, is the first question to settle |
-| D.10 | **Online inventory listing** | Presumably the inventory surfaced in the Meros portal, which would make it a matter of what RFDeck sends rather than anything it displays |
+| D.8 | **Online inventory listing** | The one genuinely new thing. Needs a cloud endpoint to push the current listing to, which does not exist yet. Meanwhile the *changes* travel as events, so the history will already be there when the listing arrives rather than starting from whenever it was built |
 
 And three more that belong to **RFDeck Pro** and are deferred with it: one-click
 remote restore and provisioning, remote UI and control, and attributed change
 history. A desktop install cannot have these — there is no always-on server to
 reach — so they are the separation plan's business, not this one's.
+
+### What a show file is — an open design question
+
+RFDeck's show file is **per show**: one document per show, carrying the show row, its
+periods, cast, castings, channel assignments, quick changes and mic-check state. It
+does *not* carry the performer roster's own data (fit notes, photos), the inventory,
+or application settings.
+
+The owner's mental model is broader — an all-encompassing snapshot including shows,
+performers, inventory and settings such as audio routing. Worth resolving, because
+the two serve different purposes and one payload cannot do both well:
+
+- **Carrying a show between venues** wants the cast and their assignments, and must
+  *not* replace the destination's inventory. Two venues have different hardware, and
+  a restore that overwrote the local rig would be a disaster dressed as a feature.
+- **Restoring to replacement hardware** — Phase 8's own stated driver — wants
+  everything, including the inventory and the settings.
+
+**Proposal: two collections, which is also what the free tier's own wording implies.**
+The tier breakdown lists "app config / settings backup" *and* "showfile backup" as
+separate items, and if a show file were all-encompassing the first would be redundant.
+
+| Collection | Contains | Purpose |
+|---|---|---|
+| `shows/{showId}` | What it does today — portable, per show | Carry a production to another venue |
+| `config/instance` | Inventory, settings, audio routing, the performer roster | Restore this install onto replacement hardware |
+
+That keeps a show portable and makes a whole-install restore a separate, clearly
+destructive action rather than a side effect of opening last week's show. The
+`config/instance` half is not built; it is small, and it is what "app config /
+settings backup" in the free tier presumably means.
 
 ### The backup cap, which changes an assumption
 

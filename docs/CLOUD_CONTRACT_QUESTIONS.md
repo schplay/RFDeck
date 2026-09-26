@@ -327,18 +327,50 @@ reports, online inventory listing, and the three Pro-only remote features. RFDec
 will not invent names for these — a guessed flag silently never matches, which
 presents as a paid feature that is simply missing.
 
-### K. Which tier is profile sync in?
+### K. Which tier is profile sync in? — ✅ ANSWERED
 
-It is not named in either list. The free tier says "app config / settings backup",
-which *might* be the person-scoped profile sync built in D.3, or might be something
-else entirely — RFDeck has both a person profile and server settings, and they are
-different things with different scopes. Phase 8 previously called profile sync a free
-loss-leader, so free is the likely answer; confirmation would settle whether the
-account menu should say anything about tiers at all.
+**Always free tier** (owner, 2026-09-26). It is not named in Meros's breakdown, which
+is an omission rather than an exclusion. Nothing in RFDeck changes: profile sync was
+never gated, and the account menu says nothing about tiers.
 
-### L. Does gating switch on now?
+### L. Does gating switch on now? — ✅ ANSWERED
 
-`GATING_ENFORCED` is still `false` on both sides, per the earlier deferral, so every
-feature is granted. With tiers and prices finalized, is that still right? RFDeck will
-not flip it unprompted: doing so would start withholding features from testers, and
-turning it on is one constant on each side whenever the answer is yes.
+**Yes** (owner, 2026-09-26). `GATING_ENFORCED` is now `true` on both sides.
+
+One consequence worth expecting rather than discovering: **spectrum data will now go
+dark on any account without an active `rfdeck` entitlement**, including the staging
+test account unless it has been given one. That is the gate working, not a fault —
+the RF panel says which of the reasons applies rather than showing an empty list, and
+`holds()` still reports the truth beside the gate.
+
+Installs with no cloud configured, and linked ones that are not signed in, are
+deliberately *not* gated: a paywall appearing because somebody has not signed in
+would be a paywall nobody asked for, and an unlinked rig has no cloud data to
+withhold in the first place.
+
+### J-bis. The exact flag strings RFDeck needs
+
+Expanding question J into a list that can be answered literally, since that is what
+RFDeck consumes. For each capability, the `rfdeck.*` string that will appear in
+`GET /v1/entitlements?product=rfdeck`:
+
+| Capability (tier breakdown wording) | Flag RFDeck uses today | Confirmed? |
+|---|---|---|
+| Spectrum data (FCC, etc.) | `rfdeck.regional-data` | Documented in §4 — assumed still right |
+| Backup history (100 files FIFO) | *none — needs a name* | ❓ |
+| RF environment history | *none — needs a name* | ❓ |
+| Post-show RF report generation | *none — needs a name* | ❓ |
+| Online inventory listing | *none — needs a name* | ❓ |
+| Remote restore / provisioning (Pro) | *none — needs a name* | ❓ |
+| Remote UI / control (Pro) | *none — needs a name* | ❓ |
+| Attributed change history / audit (Pro) | *none — needs a name* | ❓ |
+
+Two flags RFDeck currently references that may no longer correspond to anything:
+`rfdeck.notify-relay` (alerts are now free except SMS, and SMS is a Meros-side
+channel rather than an RFDeck capability) and `rfdeck.battery-prediction` /
+`rfdeck.cross-venue-rf` from §4's examples, which appear in no tier. Confirmation
+that these are dead would let RFDeck stop carrying them.
+
+**Why it matters concretely:** gating is now on. A flag RFDeck guesses wrong never
+matches, so the feature is silently unavailable to a paying account — which presents
+as a bug in RFDeck, not a naming mismatch.

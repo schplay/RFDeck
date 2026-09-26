@@ -12,6 +12,45 @@ function publicDevice<T extends { password?: string | null }>(device: T) {
   return { ...rest, hasPassword: !!password };
 }
 
+
+/**
+ * The inventory changed, as an event.
+ *
+ * "Online inventory listing" is a paid feature whose cloud endpoint does not exist
+ * yet. Until it does, the *changes* travel as events, which costs nothing extra
+ * and means the history is already there when the listing arrives rather than
+ * starting from whenever it was built.
+ *
+ * Deliberately no password, ever — not even a boolean saying one exists. A device
+ * password unlocks somebody's hardware and has no business in a stream.
+ */
+function emitInventoryEvent(
+  fastify: any,
+  verb: 'added' | 'changed' | 'removed',
+  device: any,
+  extra: Record<string, unknown> = {},
+) {
+  fastify.cloud?.emit?.({
+    type: `rfdeck.inventory.${verb}`,
+    severity: 'info',
+    subject: { kind: 'device', id: device.id, name: device.name ?? undefined },
+    attrs: {
+      message: `${device.name ?? 'A device'} was ${verb}`,
+      manufacturer: device.manufacturer,
+      model: device.model,
+      ip: device.ip,
+      port: device.port,
+      deviceType: device.deviceType,
+      active: device.active,
+      ...(device.location ? { location: device.location } : {}),
+      ...(device.serial ? { serial: device.serial } : {}),
+      ...(device.firmware ? { firmware: device.firmware } : {}),
+      ...(device.band ? { band: device.band } : {}),
+      ...extra,
+    },
+  });
+}
+
 export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
   // POST trigger a one-shot network discovery scan
   fastify.post('/discovery/scan', async (request, reply) => {
@@ -76,6 +115,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
       (fastify as any).deviceManager.trackDevice(device);
     }
 
+    emitInventoryEvent(fastify, 'added', device);
     return publicDevice(device);
   });
 
@@ -95,6 +135,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
       id: device.id, ip: device.ip, port: device.port, active,
     });
 
+    emitInventoryEvent(fastify, 'changed', device, { change: active ? 'activated' : 'deactivated' });
     return publicDevice(device);
   });
 
@@ -122,6 +163,9 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
     });
 
     (fastify as any).deviceManager.setDisabledSlots(device, device.disabledSlots);
+    emitInventoryEvent(fastify, 'changed', device, {
+      change: 'slots', disabledSlots: device.disabledSlots || null,
+    });
     (fastify as any).io.emit('device:slots-changed', {
       id: device.id, ip: device.ip, port: device.port, disabledSlots: device.disabledSlots,
     });
@@ -181,6 +225,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
     // If IP/port changed, we should probably recreate the client
     (fastify as any).deviceManager.updateTrackedDevice(device);
 
+    emitInventoryEvent(fastify, 'changed', device, { change: 'edited' });
     return publicDevice(device);
   });
 
@@ -210,6 +255,9 @@ export const inventoryRoutes: FastifyPluginAsync = async (fastify, options) => {
     if (device) {
       await prisma.inventoryDevice.delete({ where: { id } });
       (fastify as any).deviceManager.untrackDevice(device.ip, device.port);
+      // Emitted after the delete succeeded, so the stream never records a removal
+      // that did not happen.
+      emitInventoryEvent(fastify, 'removed', device);
     }
 
     return { success: true };

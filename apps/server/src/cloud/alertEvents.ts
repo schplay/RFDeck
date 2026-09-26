@@ -39,8 +39,10 @@ const SEVERITY: Record<string, Severity> = {
  * a place someone has to come and change on purpose.
  */
 const TYPES: Record<string, string> = {
-  DROPOUT: 'rfdeck.channel.dropped_out',
-  RECOVERY: 'rfdeck.channel.recovered',
+  // DROPOUT and RECOVERY are deliberately absent: they come from the RF event
+  // signal instead, which is complete rather than rate-limited. Mapping them here
+  // as well would emit every dropout twice — and since each emit generates its own
+  // ULID, the collector's dedupe would not catch it.
   LOW_BATTERY: 'rfdeck.battery.low',
   CRITICAL_BATTERY: 'rfdeck.battery.critical',
   MUTED: 'rfdeck.channel.muted',
@@ -63,8 +65,88 @@ export function severityFor(alertSeverity: string): Severity {
   return SEVERITY[alertSeverity?.toUpperCase()] ?? 'info';
 }
 
-/** Attach the event stream to a source of alerts. */
+/**
+ * Attach the event stream to everything worth recording.
+ *
+ * More than alerts, deliberately. Alerts are a throttled, human-facing subset —
+ * one dropout a minute per channel — and an event history built only from them
+ * would be missing the things a post-show RF report needs most: recoveries,
+ * carrier moves, and the audio faults that are RFDeck's whole differentiator.
+ */
 export function attachEventEmitter(source: EventEmitter, cloud: CloudService): void {
+  // ── RF transitions, complete ────────────────────────────────────────────────
+  source.on('rf:event', (event: any) => {
+    cloud.emit({
+      type: event.type === 'RECOVERY' ? 'rfdeck.channel.recovered' : 'rfdeck.channel.dropped_out',
+      severity: event.type === 'RECOVERY' ? 'info' : 'warning',
+      occurredAt: event.timestamp ? new Date(event.timestamp) : undefined,
+      subject: { kind: 'channel', id: event.channelId, name: event.channelName ?? undefined },
+      attrs: {
+        message: event.type === 'RECOVERY'
+          ? `${event.channelName ?? 'A channel'} recovered`
+          : `RF dropout on ${event.channelName ?? 'a channel'}`,
+        rfLevelA: event.rfLevelA,
+        rfLevelB: event.rfLevelB,
+        deviceId: event.deviceId,
+      },
+    });
+  });
+
+  // ── A carrier moved ────────────────────────────────────────────────────────
+  source.on('channel:frequency', (change: any) => {
+    cloud.emit({
+      type: 'rfdeck.frequency.changed',
+      severity: 'notice',
+      subject: { kind: 'channel', id: change.channelId, name: change.channelName ?? undefined },
+      attrs: {
+        message: `${change.channelName ?? 'A channel'} moved from ` +
+                 `${(change.fromKHz / 1000).toFixed(3)} to ${(change.toKHz / 1000).toFixed(3)} MHz`,
+        fromKHz: change.fromKHz,
+        toKHz: change.toKHz,
+        deviceId: change.deviceId,
+      },
+    });
+  });
+
+  // ── Audio faults: fuzz, noise, a click ─────────────────────────────────────
+  //
+  // The thing RFDeck can say that an RF meter cannot, so it belongs in an RF
+  // history more than most of what is here.
+  source.on('rf:detection', (detection: any) => {
+    // RF dropouts already arrive via rf:event; this signal carries both, so the
+    // RF-triggered ones are skipped rather than counted twice.
+    if (detection.trigger === 'RF_DROPOUT') return;
+    cloud.emit({
+      type: 'rfdeck.audio.fault_detected',
+      severity: severityFor(detection.severity),
+      subject: { kind: 'channel', id: detection.channelKey, name: detection.channelName ?? undefined },
+      attrs: {
+        message: detection.message,
+        trigger: detection.trigger,
+        rfLevelA: detection.rfLevelA,
+        rfLevelB: detection.rfLevelB,
+        deviceId: detection.deviceId,
+      },
+    });
+  });
+
+  // ── Intermodulation, when the picture changes ───────────────────────────────
+  source.on('intermod:changed', (report: any) => {
+    cloud.emit({
+      type: report.hits > 0 ? 'rfdeck.intermod.detected' : 'rfdeck.intermod.cleared',
+      severity: report.hits > 0 ? 'warning' : 'info',
+      attrs: {
+        message: report.hits > 0
+          ? `${report.hits} intermodulation product(s) land on a live channel` +
+            (report.worst ? `; closest is ${report.worst.formula} on ${report.worst.victimName}` : '')
+          : 'No intermodulation products land on a live channel',
+        hits: report.hits,
+        sourceCount: report.sourceCount,
+        ...(report.worst ? { worst: report.worst } : {}),
+      },
+    });
+  });
+
   source.on('alert', (alert: OutboundAlert) => {
     cloud.emit({
       type: eventTypeFor(alert.type),

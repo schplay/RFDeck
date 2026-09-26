@@ -210,16 +210,40 @@ describe('entitlements', () => {
     expect(snap.features).toContain('rfdeck.notify-relay');
   });
 
-  it('grants everything while gating is deferred, but reports what is held honestly', async () => {
+  it('withholds a feature the account does not hold, now that gating is on', async () => {
     const { client, link } = await harness({ features: [] });
     await link.start();
     await settle(link);
     const ents = new Entitlements(client, link, new MemoryEntitlementCache());
     await ents.refresh();
-    // The gate is built and open — the point of deferred gating.
-    expect(await ents.entitled('rfdeck.regional-data')).toBe(true);
-    // ...while the honest answer is still available to anyone who asks for it.
+    expect(await ents.entitled('rfdeck.regional-data')).toBe(false);
     expect(await ents.holds('rfdeck.regional-data')).toBe(false);
+  });
+
+  it('allows a feature the account does hold', async () => {
+    const { client, link } = await harness({ features: ['rfdeck.regional-data'] });
+    await link.start();
+    await settle(link);
+    const ents = new Entitlements(client, link, new MemoryEntitlementCache());
+    await ents.refresh();
+    expect(await ents.entitled('rfdeck.regional-data')).toBe(true);
+    expect(await ents.holds('rfdeck.regional-data')).toBe(true);
+    // A feature nobody has bought is still withheld, so holding one thing does
+    // not open everything.
+    expect(await ents.entitled('rfdeck.notify-relay')).toBe(false);
+  });
+
+  it('keeps `holds` honest and separate from the gate', async () => {
+    // The two exist apart so a status page can show what an account actually has
+    // rather than what the gate concluded — which is what makes "your
+    // subscription covers X" truthful.
+    const { client, link } = await harness({ features: ['rfdeck.regional-data'] });
+    await link.start();
+    await settle(link);
+    const ents = new Entitlements(client, link, new MemoryEntitlementCache());
+    await ents.refresh();
+    const snap = await ents.snapshot();
+    expect(snap.features).toEqual(['rfdeck.regional-data']);
   });
 
   it('keeps answering from cache when Meros goes away', async () => {
