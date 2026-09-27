@@ -320,7 +320,7 @@ export class DeviceManagerService extends EventEmitter {
     // Trigger startup scans to find devices that may have changed IP after a power cycle
     // or DHCP reassignment. Three passes cover already-booted devices, slow-booting devices,
     // and devices that finish booting after the second scan.
-    const startupScan = () => this.discovery.scan().catch(() => {});
+    const startupScan = () => { void this.scanForMissingDevices(); };
     setTimeout(startupScan, 2_000);
     setTimeout(startupScan, 30_000);
     setTimeout(startupScan, 75_000);
@@ -1404,7 +1404,7 @@ export class DeviceManagerService extends EventEmitter {
       // that could be read back out of it.
       const signature = secrets.length === 0
         ? 'none'
-        : crypto.createHash('sha256').update(secrets.join(' ')).digest('hex');
+        : crypto.createHash('sha256').update(secrets.join(String.fromCharCode(0))).digest('hex');
 
       if (this.credentialsTried.get(ip) === signature) {
         log.debug(`[DeviceManager] ${ip} already tried with these passwords — not repeating`);
@@ -1918,8 +1918,34 @@ export class DeviceManagerService extends EventEmitter {
     const now = Date.now();
     if (now - this.lastAutoScanAt < this.AUTO_SCAN_COOLDOWN_MS) return;
     this.lastAutoScanAt = now;
-    log.debug('[DeviceManager] Device went offline — triggering discovery scan (cooldown: 60s)');
-    this.discovery.scan().catch(() => {});
+    log.debug('[DeviceManager] Device went offline — triggering discovery scan');
+    void this.scanForMissingDevices();
+  }
+
+  /**
+   * Tell discovery where this rig's hardware lives, then scan.
+   *
+   * Discovery on its own only knows the subnets of the server's own network
+   * interfaces, so a rig on its own VLAN — or one device that moved onto another —
+   * was never swept and never found. The inventory is the missing half of that
+   * picture: every row records where its device last answered, and that stays true
+   * about the *network* long after the host part has changed.
+   *
+   * Passed on every scan rather than once at startup, so a device added or edited
+   * since is included without anything else having to remember to say so.
+   */
+  private async scanForMissingDevices(): Promise<void> {
+    try {
+      const rows = await prisma.inventoryDevice.findMany({
+        where: { active: true },
+        select: { ip: true },
+      });
+      this.discovery.setSearchHints(rows.map(r => r.ip));
+    } catch (err: any) {
+      // A scan of the interface subnets alone is still better than no scan.
+      log.debug(`[DeviceManager] Could not read inventory for search hints: ${err?.message}`);
+    }
+    await this.discovery.scan().catch(() => {});
   }
 
   // ── Alerts ──

@@ -169,6 +169,53 @@ export class DiscoveryService extends EventEmitter {
   private seenSerials  = new Map<string, string>();
 
   /**
+   * Where RFDeck's own devices were last seen.
+   *
+   * The sweep walked the subnets of the server's network interfaces and nothing
+   * else, which is only the same thing when every receiver shares a subnet with
+   * the server. A rig routed onto its own VLAN, or a device that moved across
+   * one, was never probed at all — no discovery, no log line, nothing to explain
+   * it. The operator was left retyping an address RFDeck had every means to find.
+   *
+   * An inventory row's address is evidence about where its hardware lives, and it
+   * stays true across the DHCP change that invalidated the host part. So the /24
+   * around each known device is searched as well.
+   */
+  private searchHints: string[] = [];
+
+  /** Told by the device manager, which is the half of RFDeck that has the inventory. */
+  setSearchHints(ips: string[]): void {
+    this.searchHints = [...new Set(ips.filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip)))];
+  }
+
+  /**
+   * Every address worth sweeping: the interfaces' own subnets, plus the /24 around
+   * each place a device was last seen that those subnets do not already reach.
+   */
+  private sweepTargets(): Array<{ label: string; addresses: string[] }> {
+    const targets: Array<{ label: string; addresses: string[] }> = [];
+    const covered = new Set<string>();
+
+    for (const iface of mcpBus.getActiveInterfaces()) {
+      const addresses = this.subnetAddresses(iface);
+      for (const a of addresses) covered.add(a);
+      targets.push({ label: `interface ${iface.address}`, addresses });
+    }
+
+    const extra = new Map<string, string[]>();
+    for (const hint of this.searchHints) {
+      if (covered.has(hint)) continue;           // already in an interface subnet
+      const base = hint.split('.').slice(0, 3).join('.');
+      if (extra.has(base)) continue;
+      extra.set(base, Array.from({ length: 254 }, (_, i) => `${base}.${i + 1}`));
+    }
+    for (const [base, addresses] of extra) {
+      targets.push({ label: `${base}.0/24, where a device was last seen`, addresses });
+    }
+    return targets;
+  }
+
+  /**
    * Addresses already settled this session, and how.
    *
    * Not a cache with an expiry — that was an arbitrary half hour that also meant a
@@ -498,41 +545,19 @@ export class DiscoveryService extends EventEmitter {
     // `Name` only here too — a receiver on another subnet, where broadcast does
     // not reach, is exactly why this exists, and it is still not a reason to
     // command anything.
-    for (const iface of mcpBus.getActiveInterfaces()) {
-      const hostCount = this.subnetHostCount(iface.netmask);
-      if (hostCount <= 1022) {
-        this.scanRange(iface.address, iface.netmask, hostCount);
-      } else {
-        const parts = iface.address.split('.');
-        const base  = `${parts[0]}.${parts[1]}.${parts[2]}`;
-        log.debug(`[Discovery] Unicast query of ${base}.1–254`);
-        for (let host = 1; host <= 254; host++) {
-          const ip = `${base}.${host}`;
-          if (this.excluded(ip)) continue;
-          mcpBus.sendTo(ip, 'Name');
-        }
+    //
+    // Same target set as the HTTP sweep: the interfaces' subnets *and* the /24
+    // around each place a device was last seen. A G3 that moved across a VLAN was
+    // as invisible as an EW-DX that did.
+    for (const { addresses } of this.sweepTargets()) {
+      for (const ip of addresses) {
+        if (this.excluded(ip)) continue;
+        mcpBus.sendTo(ip, 'Name');
       }
     }
   }
 
-  private scanRange(ifaceIp: string, netmask: string, hostCount: number) {
-    const maskParts = netmask.split('.').map(Number);
-    const ipParts   = ifaceIp.split('.').map(Number);
-    const network   = ipParts.map((b, i) => b & maskParts[i]);
-    log.debug(`[Discovery] Unicast scan of subnet (${hostCount} hosts)`);
-    for (let i = 1; i <= hostCount; i++) {
-      const o4 = (network[3] + i) & 0xff;
-      const carry3 = Math.floor((network[3] + i) / 256);
-      const o3 = (network[2] + carry3) & 0xff;
-      const carry2 = Math.floor((network[2] + carry3) / 256);
-      const o2 = (network[1] + carry2) & 0xff;
-      const o1 = network[0];
-      const ip = `${o1}.${o2}.${o3}.${o4}`;
-      if (this.excluded(ip)) continue;
-      // `Name` only. Never `Push`: see runUdpProbes.
-      mcpBus.sendTo(ip, 'Name');
-    }
-  }
+
 
   // ── HTTP scan (EW-DX / SSCv2, active scan, on-demand only) ──────────
 
@@ -658,12 +683,11 @@ export class DiscoveryService extends EventEmitter {
   // that guards against a pathological network and one that silently truncates
   // every normal scan.
   private async runHttpScan() {
-    const ifaces = mcpBus.getActiveInterfaces();
-    if (ifaces.length === 0) return;
-    log.debug(`[Discovery] HTTP scan across ${ifaces.length} interface(s)…`);
-    for (const iface of ifaces) {
-      const addresses = this.subnetAddresses(iface);
-      log.debug(`[Discovery] Sweeping ${addresses.length} address(es) from ${iface.address}`);
+    const targets = this.sweepTargets();
+    if (targets.length === 0) return;
+    log.debug(`[Discovery] HTTP scan across ${targets.length} range(s)…`);
+    for (const { label, addresses } of targets) {
+      log.debug(`[Discovery] Sweeping ${addresses.length} address(es) from ${label}`);
 
       // Identify each host the moment the sweep reaches it, rather than
       // collecting the whole subnet first. On a /16 the sweep takes the better
