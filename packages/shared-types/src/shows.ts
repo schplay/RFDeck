@@ -1,4 +1,4 @@
-import { QuickChange } from './environments';
+import { QuickChange } from './environments.js';
 
 export interface Show {
   id: string;

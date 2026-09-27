@@ -1,4 +1,4 @@
-import { Show } from './shows';
+import { Show } from './shows.js';
 
 // What a show type calls things, and which parts of the performer notebook
 // apply to it.

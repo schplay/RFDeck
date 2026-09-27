@@ -75,6 +75,15 @@ jobs:
       - name: Test shared packages
         run: pnpm --filter @rfdeck/shared-utils test
 
+      # Both builds, because the end-to-end job runs the real server serving the
+      # real bundle — `e2e/serve.mjs` refuses to start without either.
+      #
+      # The server build was missing from the day the e2e tests were added. It went
+      # unnoticed because the job never got this far: the typecheck above failed
+      # first, so the hole only surfaced once that was fixed.
+      - name: Build server
+        run: pnpm --filter @rfdeck/server build
+
       - name: Build web
         run: pnpm --filter @rfdeck/web build
 
