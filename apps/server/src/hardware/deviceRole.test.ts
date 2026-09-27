@@ -88,6 +88,22 @@ describe('isSscModel — which devices may take the G3/G4 fallback', () => {
     expect(isSscModel('EM 9046')).toBe(true);
   });
 
+  it('protects an EW-DX whose model runs straight into a digit', () => {
+    // A receiver reporting "EWDX2CHDS" was read as not-SSC, because the old
+    // pattern wanted a word boundary after DX and a digit is not one. RFDeck then
+    // started a G3/G4 MCP client against an EW-DX, which can never answer it —
+    // seen in the field as an EW-DX that would not come back while the G3s did.
+    expect(isSscModel('EWDX2CHDS')).toBe(true);
+    expect(isSscModel('EWDX2')).toBe(true);
+    expect(isSscModel('EW-DX2')).toBe(true);
+  });
+
+  it('still refuses a match inside another word', () => {
+    // The leading boundary is what makes the relaxed pattern safe.
+    expect(isSscModel('NEWDXER')).toBe(false);
+    expect(isSscModel('RENEWDX')).toBe(false);
+  });
+
   it('leaves the fallback available for the devices that need it', () => {
     // "EW G3/G4" is precisely the case the fallback exists to rescue: the SSC
     // probe fails and MCP is tried instead.

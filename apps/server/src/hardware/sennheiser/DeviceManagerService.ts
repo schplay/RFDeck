@@ -221,11 +221,7 @@ export class DeviceManagerService extends EventEmitter {
         log.debug(`[DeviceManager] ${ip} wants credentials, but no SSC device is missing — leaving it alone`);
         return;
       }
-      log.info(
-        `[DeviceManager] ${ip} wants credentials and an SSC device is unreachable — ` +
-        `trying the passwords already stored for it`,
-      );
-      this.tryAutoReconcile(ip, port).catch(() => {});
+      void this.tryCredentialsOnce(ip, port);
     });
 
     // After every scan, re-attempt reconciliation for devices that were discovered
@@ -1374,6 +1370,55 @@ export class DeviceManagerService extends EventEmitter {
 
       log.info(`[DeviceManager] Auto-reconnect: G3/G4 "${stale.name}" found at new IP ${ip} (was ${stale.ip})`);
       await this.migrateDeviceIp(stale, ip, port);
+    }
+  }
+
+
+  /**
+   * Offer stored passwords to an address that asked for credentials — once per
+   * set of passwords, not once per address.
+   *
+   * The distinction is the whole point. Retrying the same passwords against the
+   * same host every sweep cannot succeed where it just failed, and each attempt is
+   * a round of authenticated HTTPS that competes with telemetry. But an address
+   * already tried is *not* settled: an EW-DX that has been re-adopted in Sennheiser
+   * Control Cockpit comes back with a new password, the operator types it into
+   * RFDeck, and the very next sweep has to try it. Keyed on the address alone that
+   * retry never happens and the receiver stays offline until somebody presses a
+   * button — which is the state this was supposed to end.
+   *
+   * So what is remembered is which *passwords* were tried here. Change one, add
+   * one, remove one, and the signature changes and the address is tried again on
+   * its own.
+   */
+  private readonly credentialsTried = new Map<string, string>();
+
+  private async tryCredentialsOnce(ip: string, port: number): Promise<void> {
+    try {
+      const rows = await prisma.inventoryDevice.findMany({ where: { port, active: true } });
+      const secrets = rows
+        .map(d => decryptSecret(d.password ?? null) ?? '')
+        .filter(Boolean)
+        .sort();
+      // A digest, so nothing derived from a password is held in memory in a form
+      // that could be read back out of it.
+      const signature = secrets.length === 0
+        ? 'none'
+        : crypto.createHash('sha256').update(secrets.join(' ')).digest('hex');
+
+      if (this.credentialsTried.get(ip) === signature) {
+        log.debug(`[DeviceManager] ${ip} already tried with these passwords — not repeating`);
+        return;
+      }
+      this.credentialsTried.set(ip, signature);
+
+      log.info(
+        `[DeviceManager] ${ip} wants credentials and an SSC device is unreachable — ` +
+        `trying the ${secrets.length} password(s) stored for this rig`,
+      );
+      await this.tryAutoReconcile(ip, port);
+    } catch (err: any) {
+      log.debug(`[DeviceManager] credential attempt for ${ip} failed: ${err?.message}`);
     }
   }
 

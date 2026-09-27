@@ -99,7 +99,19 @@ export function isSscModel(model?: string | null): boolean {
   if (isLegacyMcpModel(m)) return false;
   // EW-DX and EW-D, and the EM-series receivers -- but not "EW G3/G4",
   // which is exactly the device the fallback exists for.
-  if (/\bEW[\s-]?DX\b|\bEW[\s-]?D\b|\bEWDX\b/i.test(m)) return true;
+  // No trailing word boundary after DX.
+  //
+  // A receiver reporting itself as "EWDX2CHDS" was classified as not-SSC, because
+  // the digit straight after DX is a word character and `\bEWDX\b` needs a break
+  // there. RFDeck then started a G3/G4 MCP client for an EW-DX, which can never
+  // answer one — visible in the journal as "did not answer as SSCv2 — trying
+  // G3/G4 MCP" against a device that is plainly an EW-DX.
+  //
+  // The *leading* boundary is what stops this matching inside another word, and
+  // it stays: "NEWDXER" is still not a receiver. The trailing one only ever
+  // excluded real devices.
+  if (/\bEW[\s-]?DX/i.test(m)) return true;
+  if (/\bEW[\s-]?D\b/i.test(m)) return true;
   if (/\bEM\s?\d{1,4}\b/i.test(m)) return true;
   return false;
 }

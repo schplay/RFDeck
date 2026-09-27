@@ -177,6 +177,11 @@ export class DiscoveryService extends EventEmitter {
    * stale: the operator pressing Rescan, or the host turning out to be a device
    * after all.
    *
+   * It holds only "this is not a Sennheiser device", a verdict from an
+   * unauthenticated probe that nothing here can change its mind about. Whether a
+   * password-protected host is worth another attempt depends on the passwords,
+   * which this class does not have — that decision belongs to the listener.
+   *
    * It exists because a sweep is not cheap. While a device is missing RFDeck scans
    * about once a minute, and without this every scan re-opens a TLS connection to
    * every appliance on the network and re-presents credentials to every host that
@@ -187,7 +192,7 @@ export class DiscoveryService extends EventEmitter {
    * An address never seen before is always probed, so new hardware is still found
    * without anyone asking.
    */
-  private settled = new Map<string, 'not-sennheiser' | 'credentials-tried'>();
+  private settled = new Map<string, 'not-sennheiser'>();
   private scanInProgress = false;
 
   // Addresses the operator has told RFDeck to leave alone. Applied before any
@@ -807,12 +812,13 @@ export class DiscoveryService extends EventEmitter {
         // — because the only extra traffic is to a host already answering on 443,
         // using a password we hold for hardware known to be absent.
         if (authWalled) {
-          // Credentials are offered once per address per session. Retrying the
-          // same passwords against the same host every sweep achieves nothing and
-          // costs a round of authenticated HTTPS requests each time.
-          if (this.settled.get(ip) === 'credentials-tried') return;
-          this.settled.set(ip, 'credentials-tried');
-          log.info(
+          // Announced on every sweep. Whether it is worth spending credentials on
+          // is not decidable here: this class does not know what passwords exist,
+          // so it cannot know that they changed — and an operator who has just
+          // re-adopted a receiver and typed its new password needs the next sweep
+          // to try it, not to be told the address was already settled. The
+          // listener dedupes against the passwords themselves.
+          log.debug(
             `[Discovery] ${ip} answered 443 with 401 on every path and its certificate ` +
             `does not name Sennheiser — passing it for authenticated identification ` +
             `in case it is a password-protected receiver that has changed address`,
