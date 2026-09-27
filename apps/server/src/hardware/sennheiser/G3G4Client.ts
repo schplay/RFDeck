@@ -57,17 +57,34 @@ export class G3G4Client extends EventEmitter {
     this.port = port; // inventory port (e.g. 443); actual MCP is always on McpBus port 53212
   }
 
+  /**
+   * Ask before commanding.
+   *
+   * This used to open with `Push` — the MCP subscription command — plus `Name` and
+   * `Frequency`, aimed at whatever address it was handed, with no evidence that
+   * anything there was a receiver. `scheduleResub` then repeated the subscription
+   * on a timer and `handleOffline` re-sent it every fifteen seconds for as long as
+   * nothing answered. Forever, and again on every restart.
+   *
+   * An inventory row whose device has moved points at an address somebody else now
+   * holds. On a venue network that is a lighting node, and RFDeck was issuing it a
+   * subscription command every fifteen seconds. DMX nodes were locking up, and the
+   * operator noticed it happened when RFDeck restarted — which is exactly when
+   * every stale row starts its client at once.
+   *
+   * So the opening move is `Name`: a read, which a G3/G4 answers and which asks
+   * nothing of anything else. Only once a valid MCP response has come back does
+   * this subscribe. An address that is not a receiver receives one short query per
+   * retry and never a command.
+   */
   startPolling(_intervalMs?: number) {
     if (this.msgHandler) return; // already started
 
     this.msgHandler = (raw: string) => this.handleData(raw);
     mcpBus.addHandler(this.ip, this.msgHandler);
 
-    log.debug(`[G3G4Client] Subscribing to MCP for ${this.ip} via shared UDP :53212`);
-    this.sendSubscribe();
+    log.debug(`[G3G4Client] Asking ${this.ip} whether it is a G3/G4 (no subscription yet)`);
     this.send('Name');
-    this.send('Frequency');
-    this.scheduleResub();
     this.resetOfflineTimer();
   }
 
@@ -78,11 +95,21 @@ export class G3G4Client extends EventEmitter {
       this.msgHandler = null;
     }
     this.isConnected = false;
+    // Reset, so a client restarted against the same address asks again before it
+    // commands anything. Addresses change hands.
+    this.confirmed = false;
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
+  /** True once this address has answered MCP. Nothing is commanded before it does. */
+  private confirmed = false;
+
   private sendSubscribe() { this.send(`Push ${PUSH_TIMEOUT_S} ${PUSH_INTERVAL_MS} 3`); }
+
+  private clearResub() {
+    if (this.resubTimer) { clearInterval(this.resubTimer); this.resubTimer = null; }
+  }
 
   private scheduleResub() {
     this.resubTimer = setInterval(() => this.sendSubscribe(), RESUB_INTERVAL_MS);
@@ -95,9 +122,20 @@ export class G3G4Client extends EventEmitter {
 
   private handleOffline() {
     this.isConnected = false;
-    // Re-subscribe immediately — some firmware (especially in RF_Mute/squelch state)
-    // drops the Push subscription before the PUSH_TIMEOUT_S window expires.
-    this.sendSubscribe();
+
+    // Back to asking.
+    //
+    // A confirmed receiver that went quiet may simply have dropped its
+    // subscription — some firmware does that in RF_Mute before the timeout
+    // expires — so re-subscribing is right for one that has answered before.
+    // For an address that has never answered it is not: that is the path that
+    // had RFDeck commanding a lighting node every fifteen seconds.
+    if (this.confirmed) {
+      this.sendSubscribe();
+    } else {
+      this.clearResub();
+      this.send('Name');
+    }
     if (!this.disconnectSignaled) {
       this.disconnectSignaled = true;
       log.warn(`[G3G4Client] ${this.ip}:53212 — no data for ${OFFLINE_MS / 1000}s. If the Push echo arrives but no status follows, enable "Network Control" on the device.`);
@@ -114,6 +152,16 @@ export class G3G4Client extends EventEmitter {
     if (/^\d{4}:/.test(raw.trim())) {
       log.warn(`[G3G4Client] MCP error from ${this.ip}: ${raw.trim()}`);
       return;
+    }
+
+    if (!this.confirmed) {
+      // It answered MCP, so it is a receiver and may be subscribed to. This is
+      // the only place a subscription is ever started.
+      this.confirmed = true;
+      log.debug(`[G3G4Client] ${this.ip} answered MCP — subscribing`);
+      this.sendSubscribe();
+      this.send('Frequency');
+      this.scheduleResub();
     }
 
     if (!this.isConnected) {
