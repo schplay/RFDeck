@@ -750,7 +750,45 @@ export class DiscoveryService extends EventEmitter {
       // Nothing in the bodies names the vendor — auth-only, or JSON that any
       // appliance might return. The certificate is the remaining evidence.
       if (!(await this.certificateIdentifiesSennheiser(ip))) {
+        const authWalled = bodies.length === 0 && hits.some(h => h.kind === 'auth');
+
+        // A host that answers 443 with 401 on every path is not a host that said
+        // no. It said "credentials, please" — which is exactly what a
+        // password-protected EW-DX says, and RFDeck is holding the passwords for
+        // the very devices it is looking for.
+        //
+        // Rejecting it here on the certificate alone is what left an EW-DX
+        // permanently offline after a DHCP move: the row kept polling a dead
+        // address, the receiver sat at a new one answering 401, and the
+        // reconcile that would have recognised it with a stored password never
+        // ran, because the address was discarded before reconcile could see it —
+        // then cached as "not Sennheiser" for half an hour.
+        //
+        // So an auth wall is announced as a *candidate* rather than offered as a
+        // device. Nothing is claimed and nothing is shown to the operator; a
+        // listener may try credentials it already has. If none fit, the address
+        // is written off exactly as before. That keeps the promise this probe
+        // chain was tightened for — RFDeck does not present itself to strangers'
+        // appliances — because the only extra traffic is to a host already
+        // answering on 443, using a password we hold for a device that is
+        // missing right now.
         this.notSennheiser.set(ip, Date.now());
+
+        if (authWalled) {
+          // Still cached above, and deliberately: the address is written off for
+          // discovery exactly as before, so the sweep does not come back to it.
+          // That keeps the flood protection this chain was tightened for — the
+          // listener gets one authenticated attempt per host per half hour, not
+          // one per sweep.
+          log.info(
+            `[Discovery] ${ip} answered 443 with 401 on every path and its certificate ` +
+            `does not name Sennheiser — passing it for authenticated identification ` +
+            `in case it is a password-protected receiver that has changed address`,
+          );
+          this.emit('auth-wall', { ip, port: SSC_PORT });
+          return;
+        }
+
         const summary = bodies.length > 0
           ? `answered on 443 but the response is not SSC (${JSON.stringify(bodies[0].data).slice(0, 120)})`
           : 'answered on 443 with HTTPS 401 on every path';

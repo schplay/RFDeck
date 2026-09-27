@@ -200,6 +200,34 @@ export class DeviceManagerService extends EventEmitter {
       this.handleDiscovered(device);
     });
 
+    // A host behind an auth wall: something is on 443 that wants credentials and
+    // could not be identified without them. `tryAutoReconcile` already knows how
+    // to settle that — it tries each password the inventory holds and matches the
+    // answer by serial or MAC — so the only thing that was missing was being told
+    // the address existed.
+    this.discovery.on('auth-wall', ({ ip, port }: { ip: string; port: number }) => {
+      // Only when something is actually missing.
+      //
+      // Presenting stored credentials to a stranger's appliance is the thing the
+      // probe chain was tightened to stop, so this asks first whether RFDeck is
+      // even looking for anything. With every tracked device reachable there is
+      // nothing this address could be, and nothing is sent.
+      const missing = [...this.clients.entries()].some(([key, client]) => {
+        if (key.endsWith('-legacy')) return false;
+        if (!key.endsWith(':443')) return false;   // an SSC row is what this could be
+        return !client.isConnected && !this.clients.get(`${key}-legacy`)?.isConnected;
+      });
+      if (!missing) {
+        log.debug(`[DeviceManager] ${ip} wants credentials, but no SSC device is missing — leaving it alone`);
+        return;
+      }
+      log.info(
+        `[DeviceManager] ${ip} wants credentials and an SSC device is unreachable — ` +
+        `trying the passwords already stored for it`,
+      );
+      this.tryAutoReconcile(ip, port).catch(() => {});
+    });
+
     // After every scan, re-attempt reconciliation for devices that were discovered
     // but never matched to inventory.  Without this, a failed first reconcile
     // (e.g. ARP race) leaves the IP in seenIps and it is never retried — the
@@ -1255,6 +1283,17 @@ export class DeviceManagerService extends EventEmitter {
         await this.migrateDeviceIp(known, ip, port);
         return;
       }
+
+      // Falling out of that loop means no stored password read an identity from
+      // this address. Said out loud, because the silence here is why an EW-DX
+      // that had moved looked like a device RFDeck simply could not see: the
+      // address was probed, refused, and nothing recorded that it had been tried.
+      log.warn(
+        `[DeviceManager] ${ip} answers on 443 but none of the ${passwords.length} ` +
+        `stored password(s) could read an identity from it. If this is a receiver ` +
+        `whose password was changed at the rack, update it in Inventory and it will ` +
+        `be re-linked automatically.`,
+      );
     } else if (port === 53212) {
       // G3/G4 MCP device: ARP cache is populated once we send a UDP probe to this IP.
       // On Windows, the cache entry can take a moment to appear — retry a few times.
