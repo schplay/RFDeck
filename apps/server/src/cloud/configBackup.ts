@@ -13,7 +13,7 @@ import { Documents, DocumentConflict, DocumentNotFound, contentHash } from './do
  * Same three-layer split as show files: format in `configFile.ts`, protocol in
  * `documents.ts`, and this part knows about RFDeck's tables.
  *
- * One document per install, at `config/instance`, because a restore should have one
+ * One document per install, at `config/app`, because a restore should have one
  * obvious thing to take rather than a list to choose from.
  */
 export class ConfigBackup {

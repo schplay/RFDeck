@@ -54,8 +54,21 @@
 
 export const CONFIG_FILE_VERSION = 1;
 
-/** The document key. One per install, so a restore has one obvious thing to take. */
-export const CONFIG_KEY = 'instance';
+/**
+ * The document path: `config/app`.
+ *
+ * One key, so a restore has one obvious thing to take rather than a list to choose
+ * from — and a **collection of its own**, which is the part that matters. Meros caps
+ * versions per document, keyed by `(account, product, collection, key)`, and prunes
+ * only that document's own history. Sharing a collection *and* key with the show file
+ * would make them one document splitting a single free-tier slot, so each push would
+ * silently discard the other backup.
+ *
+ * `app` because that is the path Meros documents for an RFDeck config backup. Both
+ * sides have to name the same document for any of this to work, so the key is theirs
+ * to specify and not ours to improve on.
+ */
+export const CONFIG_KEY = 'app';
 export const CONFIG_COLLECTION = 'config';
 
 export interface ConfigDevice {

@@ -184,7 +184,7 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
   //
   // The other half of the split: a show file carries a production to another
   // venue and deliberately leaves the local rig alone, whereas this rebuilds
-  // *this* rig on replacement hardware. One document, `config/instance`, so a
+  // *this* rig on replacement hardware. One document, `config/app`, so a
   // restore has one obvious thing to take.
 
   /** What this install would send, without sending it. */

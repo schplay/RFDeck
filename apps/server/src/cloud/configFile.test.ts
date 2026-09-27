@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildConfigFile, parseConfigFile, describeRestore,
-  ConfigFileError, CONFIG_FILE_VERSION,
+  ConfigFileError, CONFIG_FILE_VERSION, CONFIG_KEY, CONFIG_COLLECTION,
 } from './configFile';
+import { showFileKey } from './showFile';
 
 // The install snapshot.
 //
@@ -57,6 +58,24 @@ const input = () => ({
   ],
   version: '1.4.0',
   edition: 'server',
+});
+
+describe('the document path', () => {
+  // Meros caps versions per document, keyed by (account, product, collection, key),
+  // and prunes only that document's own history. These two assertions are the reason
+  // a free account can hold a config backup and a show file at the same time.
+  it('is config/app, the path Meros documents', () => {
+    expect(`${CONFIG_COLLECTION}/${CONFIG_KEY}`).toBe('config/app');
+  });
+
+  it('never collides with a show file, whatever the show is called', () => {
+    // The trap Meros named: same collection and key would make these one document
+    // splitting a single free-tier slot, so each push would discard the other backup.
+    // A show id can be anything a key accepts, including the literal config key.
+    for (const showId of ['b0a1c2d3-0000-4000-8000-000000000001', 'app', 'current', 'config']) {
+      expect(`shows/${showFileKey(showId)}`).not.toBe(`${CONFIG_COLLECTION}/${CONFIG_KEY}`);
+    }
+  });
 });
 
 describe('what the snapshot carries', () => {

@@ -312,17 +312,17 @@ history, so two documents at distinct paths never compete.
 
 | What | Path | Free tier |
 |---|---|---|
-| Install snapshot | `config/instance` | keep latest (1) |
+| Install snapshot | `config/app` | keep latest (1) |
 | Show file | `shows/{showId}` | keep latest (1) each |
 
 So a free account holds one config backup **and** one show file at the same time, and
 on `rfdeck.backup.history` each independently keeps up to 100 FIFO versions.
 
-The cloud agent's example wrote the config path as `config/app` where RFDeck uses
-`config/instance`. That is only a key name and the quota is keyed on it either way, so
-nothing breaks — **worth one confirmation that Meros has no presentation or rollup that
-expects the literal key `app`**, since a mismatch there would be invisible rather than
-an error.
+RFDeck uses **`config/app`**, the key Meros documents. It briefly used `instance`,
+which was wrong on two counts: both sides have to name the same document for any of
+this to work, so the key is Meros's to specify; and "instance" is not a thing RFDeck
+has a concept of anywhere an operator would meet it. `configFile.test.ts` pins the
+path, and pins that it cannot collide with a show file whatever a show is called.
 
 The trap they named — putting both under the same collection and key, making them one
 document sharing a single version slot so each push prunes the other — is the thing
@@ -445,7 +445,7 @@ RFDeck now writes two different documents for two different jobs:
 - `shows/{showId}` — a **portable** production: cast, channel assignments, quick
   changes, mic-check state. Carries a show to another venue and deliberately does not
   touch the local inventory, because two venues have different hardware.
-- `config/instance` — the **whole install**: inventory, roster, audio routing, alert
+- `config/app` — the **whole install**: inventory, roster, audio routing, alert
   thresholds, network and discovery settings. One document per account, so a restore
   has one obvious thing to take.
 
@@ -456,7 +456,7 @@ split was anticipated on that side too.
 
 The only thing still open that touches it is **question I** — whether the FIFO cap is
 per document or per version. It matters more for `config` than for shows, because
-`config/instance` is a single key that is rewritten repeatedly: per-version means a
+`config/app` is a single key that is rewritten repeatedly: per-version means a
 free account keeps the latest snapshot and that is exactly right, whereas per-document
 would mean backing up the install competes with backing up a show for the same slot.
 

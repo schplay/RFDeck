@@ -867,7 +867,7 @@ services wait for their shapes.
 | D.5 | Events: the envelope, a persisted instance id and sequence, batching, a bounded queue, a collector list | ✅ **Built** |
 | D.6 | Regional TV occupancy: signed packs, per-cell cache, cell arithmetic, point-in-polygon, coordinator exclusions, the RF panel | ✅ **Built** |
 | D.7 | Device-profile feed, as a public pack with validated overrides | ✅ **Built** — waiting only on Meros publishing the pack |
-| D.8 | The install snapshot: `config/instance`, described before it restores | ✅ **Built** |
+| D.8 | The install snapshot: `config/app`, described before it restores | ✅ **Built** |
 | D.9 | The online inventory listing: one-way reconcile to `/v1/inventory/rfdeck` | ✅ **Built** |
 
 **Stage D is complete.** What remains is not RFDeck's: Meros has to publish the
@@ -932,7 +932,7 @@ separate items, and if a show file were all-encompassing the first would be redu
 | Collection | Contains | Purpose |
 |---|---|---|
 | `shows/{showId}` | What it does today — portable, per show | Carry a production to another venue |
-| `config/instance` | Inventory, settings, audio routing, the performer roster | Restore this install onto replacement hardware |
+| `config/app` | Inventory, settings, audio routing, the performer roster | Restore this install onto replacement hardware |
 
 That keeps a show portable and makes a whole-install restore a separate, clearly
 destructive action rather than a side effect of opening last week's show.
