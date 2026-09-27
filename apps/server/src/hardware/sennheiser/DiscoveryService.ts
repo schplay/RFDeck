@@ -167,6 +167,27 @@ export class DiscoveryService extends EventEmitter {
   // EW-DX (which shares the same serial number as the control interface) from appearing
   // as a second device when both NICs are on the same VLAN.
   private seenSerials  = new Map<string, string>();
+
+  /**
+   * Addresses already settled this session, and how.
+   *
+   * Not a cache with an expiry — that was an arbitrary half hour that also meant a
+   * receiver plugged in five minutes after a scan was ignored for the rest of it.
+   * This is a record of work already done, cleared by the events that make it
+   * stale: the operator pressing Rescan, or the host turning out to be a device
+   * after all.
+   *
+   * It exists because a sweep is not cheap. While a device is missing RFDeck scans
+   * about once a minute, and without this every scan re-opens a TLS connection to
+   * every appliance on the network and re-presents credentials to every host that
+   * asked for them. That work competes with the polling that produces audio levels
+   * and RF, and it showed: telemetry went visibly laggy the moment this was
+   * removed.
+   *
+   * An address never seen before is always probed, so new hardware is still found
+   * without anyone asking.
+   */
+  private settled = new Map<string, 'not-sennheiser' | 'credentials-tried'>();
   private scanInProgress = false;
 
   // Addresses the operator has told RFDeck to leave alone. Applied before any
@@ -245,7 +266,12 @@ export class DiscoveryService extends EventEmitter {
    *   every address either way.
    */
   async scan(operatorRequested = false): Promise<void> {
-    if (operatorRequested) log.debug('[Discovery] Operator rescan');
+    if (operatorRequested && this.settled.size > 0) {
+      // "Look again" means what it says: forget every verdict and every address
+      // already tried with credentials.
+      log.debug(`[Discovery] Operator rescan — reconsidering ${this.settled.size} address(es)`);
+      this.settled.clear();
+    }
     if (this.disabled) return;
     if (this.scanInProgress) {
       log.debug('[Discovery] Scan already in progress, skipping');
@@ -694,6 +720,9 @@ export class DiscoveryService extends EventEmitter {
   }
 
   private async httpProbeHost(ip: string): Promise<void> {
+    // Already judged this session. See `settled`.
+    if (this.settled.get(ip) === 'not-sennheiser') return;
+
     const key = `${ip}:${SSC_PORT}`;
     if (this.seenIps.has(key)) return;
     // Asked and answered. Re-presenting unauthenticated requests to a host
@@ -740,10 +769,9 @@ export class DiscoveryService extends EventEmitter {
       .map(s => s.value);
     if (hits.length === 0) {
       // Something is listening on 443 but neither SSC path answered — a web UI,
-      // a NAS, an appliance. Nothing is remembered about it: a scan only happens
-      // when RFDeck is missing a device, and on the next one this address costs a
-      // connect that goes nowhere. Caching the verdict bought little and meant a
-      // receiver plugged in five minutes later was ignored for half an hour.
+      // a NAS, an appliance. Remembered for this session so the next sweep does
+      // not open another TLS connection to it.
+      this.settled.set(ip, 'not-sennheiser');
       return;
     }
 
@@ -779,6 +807,11 @@ export class DiscoveryService extends EventEmitter {
         // — because the only extra traffic is to a host already answering on 443,
         // using a password we hold for hardware known to be absent.
         if (authWalled) {
+          // Credentials are offered once per address per session. Retrying the
+          // same passwords against the same host every sweep achieves nothing and
+          // costs a round of authenticated HTTPS requests each time.
+          if (this.settled.get(ip) === 'credentials-tried') return;
+          this.settled.set(ip, 'credentials-tried');
           log.info(
             `[Discovery] ${ip} answered 443 with 401 on every path and its certificate ` +
             `does not name Sennheiser — passing it for authenticated identification ` +
@@ -791,6 +824,7 @@ export class DiscoveryService extends EventEmitter {
         const summary = bodies.length > 0
           ? `answered on 443 but the response is not SSC (${JSON.stringify(bodies[0].data).slice(0, 120)})`
           : 'answered on 443 with HTTPS 401 on every path';
+        this.settled.set(ip, 'not-sennheiser');
         this.reportNotOffered(
           `http:${ip}`,
           `${ip} ${summary}, and its TLS certificate does not name Sennheiser — ` +
@@ -816,6 +850,8 @@ export class DiscoveryService extends EventEmitter {
     }
 
     log.debug(`[Discovery] HTTP probe found EW-DX at ${ip}: ${name}`);
+    // It is a device after all — any earlier verdict about this address is void.
+    this.settled.delete(ip);
     this.emitDiscovered(ip, SSC_PORT, name, 'ssc');
   }
 
