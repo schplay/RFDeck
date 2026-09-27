@@ -48,8 +48,16 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @rfdeck/server exec prisma generate
 
-      - name: Build shared types
-        run: pnpm --filter @rfdeck/shared-types build
+      # Every package under packages/, not a named list.
+      #
+      # This step used to name `@rfdeck/shared-types` alone, which was fine only for
+      # as long as it was the sole package anything imported. The moment
+      # `@rfdeck/shared-utils` gained its first real consumer, the server typecheck
+      # failed here with "cannot find module" — the package resolves through
+      # `dist/index.d.ts`, and `dist` is gitignored, so an unbuilt package is an
+      # unresolvable import. A glob means the next package added does not repeat it.
+      - name: Build shared packages
+        run: pnpm --filter "./packages/*" build
 
       - name: Typecheck server
         run: pnpm --filter @rfdeck/server exec tsc --noEmit

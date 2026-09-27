@@ -14,7 +14,7 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",
     "test": "turbo run test",
-    "test:e2e": "pnpm --filter @rfdeck/shared-types build && pnpm --filter @rfdeck/server build && pnpm --filter @rfdeck/web build && playwright test",
+    "test:e2e": "pnpm --filter \"./packages/*\" build && pnpm --filter @rfdeck/server build && pnpm --filter @rfdeck/web build && playwright test",
     "test:e2e:only": "playwright test"
   },
   "devDependencies": {
