@@ -175,7 +175,7 @@ pnpm --filter @rfdeck/desktop dev      # builds server + web, then opens the win
 To produce a Windows installer:
 
 ```bash
-pnpm --filter @rfdeck/shared-types build
+pnpm --filter "./packages/*" build
 pnpm --filter @rfdeck/web build
 pnpm --filter @rfdeck/server build
 pnpm --filter @rfdeck/desktop package

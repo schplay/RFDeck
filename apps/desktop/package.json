@@ -6,7 +6,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "node scripts/fetch-ffmpeg.mjs && tsc && node scripts/build-preload.mjs",
-    "package": "pnpm --filter @rfdeck/shared-types build && pnpm --filter @rfdeck/web build && pnpm --filter @rfdeck/server build && pnpm build && pnpm build:db-template && pnpm stage:prisma && electron-builder",
+    "package": "pnpm --filter \"./packages/*\" build && pnpm --filter @rfdeck/web build && pnpm --filter @rfdeck/server build && pnpm build && pnpm build:db-template && pnpm stage:prisma && electron-builder",
     "dev": "pnpm build && electron .",
     "predev": "pnpm --filter @rfdeck/server build && pnpm --filter @rfdeck/web build",
     "build:db-template": "node scripts/build-db-template.mjs",

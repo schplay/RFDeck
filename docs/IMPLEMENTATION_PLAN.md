@@ -943,7 +943,7 @@ Stages 5–7 reorder freely against what the next production needs.
 ### 7.5 Continuous integration — **S** — ✅ *complete*
 
 > `.github/workflows/ci.yml`: on every push to `main` and every pull request —
-> install, Prisma generate, shared-types build, typecheck of server and web,
+> install, Prisma generate, shared-package builds, typecheck of server and web,
 > the Vitest suite, the web build, and a syntax check of the deploy scripts.
 > The desktop build is deliberately excluded; Electron packaging is verified on
 > a clean machine.

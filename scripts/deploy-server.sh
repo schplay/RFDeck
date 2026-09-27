@@ -77,7 +77,9 @@ pnpm --filter @rfdeck/server exec prisma generate >/dev/null \
   || fail "prisma generate failed. If RFDeck is running, close it and re-run."
 
 info "Building"
-pnpm --filter @rfdeck/shared-types build
+# Every package under packages/, not a named list — naming one breaks as soon as a
+# second package gains a consumer, because these resolve through their built dist.
+pnpm --filter "./packages/*" build
 pnpm --filter @rfdeck/web build      # the server serves this build
 pnpm --filter @rfdeck/server build
 ok "Build complete"

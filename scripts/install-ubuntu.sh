@@ -354,7 +354,10 @@ ok "Dependencies installed"
 pnpm --filter @rfdeck/server exec prisma generate >/dev/null
 ok "Database client generated"
 
-pnpm --filter @rfdeck/shared-types build >/dev/null
+# Every package under packages/, not a named list — see the same line in
+# update-server.sh for why naming one of them breaks the moment a second gains a
+# consumer.
+pnpm --filter "./packages/*" build >/dev/null
 pnpm --filter @rfdeck/web build >/dev/null
 pnpm --filter @rfdeck/server build >/dev/null
 ok "Application built"

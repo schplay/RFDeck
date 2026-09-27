@@ -263,7 +263,11 @@ pnpm install --silent --prefer-offline || build_failed "pnpm install failed"
 ok "Dependencies up to date"
 
 pnpm --filter @rfdeck/server exec prisma generate >/dev/null || build_failed "prisma generate failed"
-pnpm --filter @rfdeck/shared-types build >/dev/null || build_failed "shared-types build failed"
+# Every package under packages/, not a named list. Naming shared-types alone was
+# fine only while it was the sole package anything imported — the moment
+# shared-utils gained a consumer, the web build started failing here on an
+# unresolvable import, because these packages resolve through their built dist.
+pnpm --filter "./packages/*" build >/dev/null || build_failed "shared package build failed"
 pnpm --filter @rfdeck/web build >/dev/null || build_failed "web build failed"
 pnpm --filter @rfdeck/server build >/dev/null || build_failed "server build failed"
 ok "Application built"
