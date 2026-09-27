@@ -351,15 +351,31 @@ cd "$INSTALL_DIR"
 pnpm install --silent
 ok "Dependencies installed"
 
-pnpm --filter @rfdeck/server exec prisma generate >/dev/null
+# Quiet on success, and on failure it prints the reason. `tsc` writes its errors to
+# stdout, so a bare `>/dev/null` here would throw away the only description of what
+# went wrong and leave an installer that says nothing but "failed".
+run_build() {
+  local label="$1"; shift
+  local log
+  log="$(mktemp)"
+  if ! "$@" >"$log" 2>&1; then
+    warn "$label failed:"
+    sed 's/^/    /' "$log" >&2
+    rm -f "$log"
+    die "$label failed"
+  fi
+  rm -f "$log"
+}
+
+run_build "prisma generate" pnpm --filter @rfdeck/server exec prisma generate
 ok "Database client generated"
 
 # Every package under packages/, not a named list — see the same line in
 # update-server.sh for why naming one of them breaks the moment a second gains a
 # consumer.
-pnpm --filter "./packages/*" build >/dev/null
-pnpm --filter @rfdeck/web build >/dev/null
-pnpm --filter @rfdeck/server build >/dev/null
+run_build "shared package build" pnpm --filter "./packages/*" build
+run_build "web build" pnpm --filter @rfdeck/web build
+run_build "server build" pnpm --filter @rfdeck/server build
 ok "Application built"
 
 # ── Database ─────────────────────────────────────────────────────────────────

@@ -262,14 +262,33 @@ step "Building"
 pnpm install --silent --prefer-offline || build_failed "pnpm install failed"
 ok "Dependencies up to date"
 
-pnpm --filter @rfdeck/server exec prisma generate >/dev/null || build_failed "prisma generate failed"
+# Quiet on success, and on failure it prints what actually went wrong.
+#
+# These used to be `>/dev/null`, which was worse than it looks: `tsc` reports errors
+# on **stdout**, so the redirect discarded the only description of the fault and left
+# "web build failed" as the entire diagnosis. Three upgrade attempts were spent
+# guessing at causes that the build had been printing all along.
+run_build() {
+  local label="$1"; shift
+  local log
+  log="$(mktemp)"
+  if ! "$@" >"$log" 2>&1; then
+    warn "$label failed:"
+    sed 's/^/    /' "$log" >&2
+    rm -f "$log"
+    build_failed "$label failed"
+  fi
+  rm -f "$log"
+}
+
+run_build "prisma generate" pnpm --filter @rfdeck/server exec prisma generate
 # Every package under packages/, not a named list. Naming shared-types alone was
 # fine only while it was the sole package anything imported — the moment
 # shared-utils gained a consumer, the web build started failing here on an
 # unresolvable import, because these packages resolve through their built dist.
-pnpm --filter "./packages/*" build >/dev/null || build_failed "shared package build failed"
-pnpm --filter @rfdeck/web build >/dev/null || build_failed "web build failed"
-pnpm --filter @rfdeck/server build >/dev/null || build_failed "server build failed"
+run_build "shared package build" pnpm --filter "./packages/*" build
+run_build "web build" pnpm --filter @rfdeck/web build
+run_build "server build" pnpm --filter @rfdeck/server build
 ok "Application built"
 
 step "Applying schema changes"
