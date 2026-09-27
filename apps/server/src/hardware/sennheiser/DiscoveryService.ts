@@ -156,7 +156,6 @@ export function bodyIdentifiesSennheiser(d: any): boolean {
 }
 
 // Short-lived subscription to make devices respond; 500ms is the min accepted interval
-const MCP_PUSH = 'Push 5 500 3';
 
 export class DiscoveryService extends EventEmitter {
   private browsers:    Bonjour[] = [];
@@ -279,7 +278,7 @@ export class DiscoveryService extends EventEmitter {
     log.debug('[Discovery] On-demand scan started');
     const before = this.seenIps.size;
     try {
-      this.runUdpProbes();
+      this.runUdpProbes(operatorRequested);
       // A guard against a sweep that never returns, not a deadline for one that
       // is working.
       //
@@ -451,14 +450,45 @@ export class DiscoveryService extends EventEmitter {
 
   // ── UDP probes (active scan, on-demand only) ───────────────────────────
 
-  private runUdpProbes() {
-    // 1. Broadcast probes on all interfaces
+  /**
+   * Look for G3/G4 receivers.
+   *
+   * ── What this must never do again ────────────────────────────────────────
+   *
+   * This used to send two datagrams to **every address on the subnet** — up to
+   * 1022 per interface — and one of them was `Push`, which is not a question but
+   * a *subscription command*. It ran three times at startup and once a minute for
+   * as long as any device was unreachable.
+   *
+   * ArtNet and sACN nodes were locking up and crashing. Lighting controllers have
+   * small embedded stacks, and a repeated unsolicited unicast flood is enough to
+   * do it whatever port it names. RFDeck has no business issuing device commands
+   * to hardware that has never said it is a receiver.
+   *
+   * So: `Push` is gone from discovery entirely. Tracked devices subscribe through
+   * their own client once they are known to be receivers, which is the only place
+   * a subscription belongs. Discovery asks `Name` and nothing else — a read, not
+   * an instruction — and asks it by **broadcast**, one datagram per interface,
+   * which reaches every receiver on the segment without addressing anything that
+   * is not listening for it.
+   *
+   * The per-host unicast sweep now happens only when the operator presses Rescan.
+   * That is the moment they are standing at the rack saying "look again, I have
+   * changed something", and it is bounded, deliberate and attributable — not a
+   * background timer walking the venue's network every minute.
+   */
+  private runUdpProbes(operatorRequested = false) {
+    // Broadcast only, and `Name` only: a question every G3/G4 answers and
+    // nothing else is addressed by.
     const broadcasts = mcpBus.getBroadcastAddresses();
-    log.debug(`[Discovery] UDP probe broadcast to: ${broadcasts.join(', ')}`);
-    mcpBus.sendToMany(broadcasts, MCP_PUSH);
+    log.debug(`[Discovery] MCP broadcast query to: ${broadcasts.join(', ')}`);
     mcpBus.sendToMany(broadcasts, 'Name');
 
-    // 2. Unicast scan per interface
+    if (!operatorRequested) return;
+
+    // Operator-initiated only. Still `Name` only — a receiver on another subnet,
+    // where broadcast does not reach, is exactly why this exists, and it is still
+    // not a reason to command anything.
     for (const iface of mcpBus.getActiveInterfaces()) {
       const hostCount = this.subnetHostCount(iface.netmask);
       if (hostCount <= 1022) {
@@ -466,11 +496,10 @@ export class DiscoveryService extends EventEmitter {
       } else {
         const parts = iface.address.split('.');
         const base  = `${parts[0]}.${parts[1]}.${parts[2]}`;
-        log.debug(`[Discovery] Large subnet — unicast scan of ${base}.1–254`);
+        log.info(`[Discovery] Operator rescan — unicast query of ${base}.1–254`);
         for (let host = 1; host <= 254; host++) {
           const ip = `${base}.${host}`;
           if (this.excluded(ip)) continue;
-          mcpBus.sendTo(ip, MCP_PUSH);
           mcpBus.sendTo(ip, 'Name');
         }
       }
@@ -491,7 +520,7 @@ export class DiscoveryService extends EventEmitter {
       const o1 = network[0];
       const ip = `${o1}.${o2}.${o3}.${o4}`;
       if (this.excluded(ip)) continue;
-      mcpBus.sendTo(ip, MCP_PUSH);
+      // `Name` only. Never `Push`: see runUdpProbes.
       mcpBus.sendTo(ip, 'Name');
     }
   }
