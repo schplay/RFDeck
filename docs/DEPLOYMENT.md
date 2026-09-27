@@ -40,6 +40,29 @@ the database in `/var/lib/rfdeck`, registers a hardened systemd unit, opens the
 firewall, and verifies the service responds before reporting success. Re-running
 it upgrades in place and preserves the database.
 
+#### Where things live
+
+The clone you run the installer from is **source**. The application itself is
+installed elsewhere, and the two are easy to confuse when something fails:
+
+| | Path | What it is |
+|---|---|---|
+| Your checkout | wherever you cloned, e.g. `~/rfdeck` | Source only. No `node_modules`, no build output — the installer excludes both when copying |
+| The install | `/opt/rfdeck` (`--install-dir` to change) | What actually runs. Dependencies, builds and migrations happen here |
+| The database | `/var/lib/rfdeck` | Kept out of the install so an upgrade cannot touch it |
+
+The systemd unit runs `<install-dir>/apps/server`, so the install directory is
+two levels up from its `WorkingDirectory`. To see what a given machine is using:
+
+```bash
+grep -E '^(WorkingDirectory|User)=' /etc/systemd/system/rfdeck.service
+```
+
+**This matters when a deploy fails.** `update-server.sh` builds in the install
+directory, so that is where a build error comes from. Running a build by hand in
+your checkout fails with `tsc: not found` regardless — there are no dependencies
+installed there — which looks like the same fault and is not.
+
 Full options, upgrade and backup procedure, and log-level control are in
 [`../scripts/README.md`](../scripts/README.md).
 

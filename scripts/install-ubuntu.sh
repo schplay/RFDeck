@@ -25,6 +25,17 @@
 #   sudo ./scripts/install-ubuntu.sh --accept-data-loss
 #                                       answer yes in advance to a schema change
 #                                       that drops data, for unattended installs
+#   sudo ./scripts/install-ubuntu.sh --install-dir /srv/rfdeck
+#                                       install somewhere other than /opt/rfdeck
+#
+# ── Where it installs ────────────────────────────────────────────────────────
+#
+# /opt/rfdeck, not the directory you run this from. The checkout you run it from
+# is source: this copies it to the install directory, builds there, and points a
+# systemd unit at <install-dir>/apps/server running as an unprivileged service
+# account. Your checkout keeps no node_modules and no build output, so a build
+# run by hand inside it fails with "tsc: not found" — which says nothing about
+# the deployed copy.
 #
 # Re-running upgrades in place: the database and settings are preserved.
 #

@@ -19,6 +19,23 @@
 #                                                   schema change that drops
 #                                                   data, for unattended runs
 #
+#
+# ── Two directories, which is worth knowing before you debug one ─────────────
+#
+# Your git checkout is *source*. The running application lives somewhere else —
+# /opt/rfdeck by default, and whatever the systemd unit's WorkingDirectory says
+# in practice. This script rsyncs the checkout into the install directory and
+# then installs, builds and migrates *there*.
+#
+# So `node_modules` and `dist` never exist in your checkout, and running a build
+# by hand inside it fails with "tsc: not found" — correctly, and with nothing to
+# do with whatever made the deploy fail. To poke at a failing build, work in the
+# install directory:
+#
+#   grep -E '^(WorkingDirectory|User)=' /etc/systemd/system/rfdeck.service
+#
+# The install directory is two levels up from WorkingDirectory.
+#
 # Use install-ubuntu.sh instead when changing configuration — port, TLS, AES67 —
 # since those live in the systemd unit this script deliberately leaves alone.
 #
