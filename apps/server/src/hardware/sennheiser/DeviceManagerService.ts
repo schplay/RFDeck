@@ -178,6 +178,8 @@ export class DeviceManagerService extends EventEmitter {
   // Devices whose loss was announced, so the return can be announced too.
   private lostIps = new Set<string>();
   // Scans on a cadence while any tracked device is unreachable. See start().
+  /** Last reported unreachable set, so the warning repeats only when it changes. */
+  private lastUnreachableSignature = '';
   private recoveryTimer: NodeJS.Timeout | null = null;
   // Recent disconnect timestamps per ip. A device that reconnects inside the
   // loss debounce never reaches the event log, so rapid churn was invisible —
@@ -353,15 +355,46 @@ export class DeviceManagerService extends EventEmitter {
     // outlived the burst and then nothing ever looked for it again. RFDeck
     // runs unattended — a tracked device must never need a human to find it.
     this.recoveryTimer = setInterval(() => {
-      let unreachable = 0;
+      const down: string[] = [];
       for (const [key, client] of this.clients) {
         if (key.endsWith('-legacy')) continue; // counted via its base entry
         const legacy = this.clients.get(`${key}-legacy`);
-        if (!client.isConnected && !(legacy?.isConnected)) unreachable++;
+        if (!client.isConnected && !(legacy?.isConnected)) {
+          // The client class is the single most useful fact here: an EW-DX on a
+          // G3G4Client can never connect however long it is given, and that is
+          // invisible from the outside — the device is in the discovery list,
+          // the row says offline, and nothing says why.
+          down.push(
+            `${this.deviceNames.get(key) ?? key} at ${key} on ${client.constructor.name}` +
+            (legacy ? ` (+${legacy.constructor.name} standing in)` : ''),
+          );
+        }
       }
-      if (unreachable > 0) {
-        log.debug(`[DeviceManager] ${unreachable} tracked device(s) unreachable — periodic recovery scan`);
+
+      if (down.length > 0) {
+        // Said at `warn`, and only when the set changes.
+        //
+        // A deployed server runs at LOG_LEVEL=warn, so this was `debug` and
+        // therefore invisible on every real install — which is why "some devices
+        // are always offline" went weeks without anything to go on. A device
+        // RFDeck is tracking and cannot reach is the product's most common
+        // operational fault, and it must never be silent.
+        const signature = down.join('|');
+        if (signature !== this.lastUnreachableSignature) {
+          this.lastUnreachableSignature = signature;
+          const lines = [
+            `[DeviceManager] ${down.length} tracked device(s) unreachable:`,
+            ...down.map(d => `  ${d}`),
+            '  If one of these is in the discovery list at a different address, its row '
+            + 'has not been re-linked; if the client class above cannot speak that '
+            + "device's protocol, the row's port or model is what chose it.",
+          ];
+          log.warn(lines.join('\n'));
+        }
         this.maybeAutoScan();
+      } else if (this.lastUnreachableSignature !== '') {
+        this.lastUnreachableSignature = '';
+        log.warn('[DeviceManager] All tracked devices are reachable again');
       }
     }, 60_000);
   }
@@ -436,7 +469,9 @@ export class DeviceManagerService extends EventEmitter {
     // stored on 53212, which is how discovery found them) and a model that
     // names the generation.
     if (device.port === MCP_PORT || isLegacyMcpModel(device.model)) {
-      log.debug(
+      // `info`, not `debug`: this decision is irreversible for the life of the
+      // client and is exactly what makes an EW-DX unreachable if it is wrong.
+      log.info(
         `[DeviceManager] ${device.ip} is a G3/G4 (${device.port === MCP_PORT ? `port ${MCP_PORT}` : `model "${device.model}"`}) ` +
         `— starting on MCP without probing for SSC`,
       );

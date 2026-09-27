@@ -555,9 +555,20 @@ Environment=PORT=${PORT}
 Environment=HOST=0.0.0.0
 Environment=DATABASE_URL=file:${DB_PATH}
 ${TLS_ENV}
-# Raise to debug when a device will not connect:
+# info, not warn.
+#
+# warn was chosen to keep the journal quiet, and it hid the product's most common
+# operational fault: a device RFDeck is tracking and cannot reach. Every line
+# explaining one — which protocol was chosen for a row, a device answering or not
+# answering as SSC, an address being re-linked, a client giving up — is logged at
+# info or debug, so on a deployed server there was nothing in the journal at all.
+# Weeks of "some devices are always offline" had no evidence to work from because
+# of this one word.
+#
+# The volume is a handful of lines per device at startup and nothing at rest.
+# Raise to debug for probe-by-probe detail:
 #   sudo systemctl edit ${SERVICE_NAME}   →   Environment=LOG_LEVEL=debug
-Environment=LOG_LEVEL=warn
+Environment=LOG_LEVEL=info
 # Older Sennheiser firmware negotiates TLS 1.0.
 Environment=NODE_OPTIONS=--tls-min-v1.0
 
