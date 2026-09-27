@@ -77,12 +77,6 @@ const HOST_PROBE_CONCURRENCY = 512;
 // receiver look undiscoverable in the first place.
 const SCAN_GUARD_MS = 180_000;
 
-// How long a "this is not a Sennheiser device" verdict stands before an
-// automatic scan will try the address again. Long enough that a resident
-// server is not re-probing the neighbours all evening; short enough that a
-// receiver given a recycled DHCP lease is still found without anyone asking.
-const NOT_SENNHEISER_TTL_MS = 30 * 60_000;
-
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
 
@@ -189,7 +183,6 @@ export class DiscoveryService extends EventEmitter {
   // is remembered and not revisited for a while; an operator asking for a
   // scan from the Add Device dialog clears it, because that is the moment
   // they are telling RFDeck that something on the network has changed.
-  private notSennheiser = new Map<string, number>();
 
   private readonly disabled: boolean;
 
@@ -244,30 +237,15 @@ export class DiscoveryService extends EventEmitter {
     return isIgnored(ip, this.ignoreRules);
   }
 
-  /**
-   * Already probed and found not to be a Sennheiser device, recently enough
-   * that asking again would just be noise on somebody else's appliance.
-   */
-  private recentlyRejected(ip: string): boolean {
-    const at = this.notSennheiser.get(ip);
-    if (at === undefined) return false;
-    if (Date.now() - at < NOT_SENNHEISER_TTL_MS) return true;
-    this.notSennheiser.delete(ip);
-    return false;
-  }
-
   // ── On-demand scan ───────────────────────────────────────────────────────
 
   /**
-   * @param operatorRequested The operator pressed Rescan, rather than this
-   *   being a startup or recovery sweep. Forgets what was previously rejected,
-   *   so "scan again" means what it says.
+   * @param operatorRequested The operator pressed Rescan rather than this being a
+   *   startup or recovery sweep. Only affects what is logged: a scan looks at
+   *   every address either way.
    */
   async scan(operatorRequested = false): Promise<void> {
-    if (operatorRequested && this.notSennheiser.size > 0) {
-      log.debug(`[Discovery] Operator rescan — re-probing ${this.notSennheiser.size} previously rejected host(s)`);
-      this.notSennheiser.clear();
-    }
+    if (operatorRequested) log.debug('[Discovery] Operator rescan');
     if (this.disabled) return;
     if (this.scanInProgress) {
       log.debug('[Discovery] Scan already in progress, skipping');
@@ -278,7 +256,7 @@ export class DiscoveryService extends EventEmitter {
     log.debug('[Discovery] On-demand scan started');
     const before = this.seenIps.size;
     try {
-      this.runUdpProbes(operatorRequested);
+      this.runUdpProbes();
       // A guard against a sweep that never returns, not a deadline for one that
       // is working.
       //
@@ -472,23 +450,23 @@ export class DiscoveryService extends EventEmitter {
    * which reaches every receiver on the segment without addressing anything that
    * is not listening for it.
    *
-   * The per-host unicast sweep now happens only when the operator presses Rescan.
-   * That is the moment they are standing at the rack saying "look again, I have
-   * changed something", and it is bounded, deliberate and attributable — not a
-   * background timer walking the venue's network every minute.
+   * The per-host unicast sweep stays, because a receiver that has moved to another
+   * subnet is exactly what it is for and nobody should have to press a button to
+   * get their rig back. What makes it acceptable is *when* it runs: a scan happens
+   * at startup, or because a tracked device is unreachable, or because the operator
+   * asked — never while the rig is healthy. RFDeck looks for hardware when it is
+   * missing hardware, and otherwise leaves the network alone.
    */
-  private runUdpProbes(operatorRequested = false) {
+  private runUdpProbes() {
     // Broadcast only, and `Name` only: a question every G3/G4 answers and
     // nothing else is addressed by.
     const broadcasts = mcpBus.getBroadcastAddresses();
     log.debug(`[Discovery] MCP broadcast query to: ${broadcasts.join(', ')}`);
     mcpBus.sendToMany(broadcasts, 'Name');
 
-    if (!operatorRequested) return;
-
-    // Operator-initiated only. Still `Name` only — a receiver on another subnet,
-    // where broadcast does not reach, is exactly why this exists, and it is still
-    // not a reason to command anything.
+    // `Name` only here too — a receiver on another subnet, where broadcast does
+    // not reach, is exactly why this exists, and it is still not a reason to
+    // command anything.
     for (const iface of mcpBus.getActiveInterfaces()) {
       const hostCount = this.subnetHostCount(iface.netmask);
       if (hostCount <= 1022) {
@@ -496,7 +474,7 @@ export class DiscoveryService extends EventEmitter {
       } else {
         const parts = iface.address.split('.');
         const base  = `${parts[0]}.${parts[1]}.${parts[2]}`;
-        log.info(`[Discovery] Operator rescan — unicast query of ${base}.1–254`);
+        log.debug(`[Discovery] Unicast query of ${base}.1–254`);
         for (let host = 1; host <= 254; host++) {
           const ip = `${base}.${host}`;
           if (this.excluded(ip)) continue;
@@ -721,7 +699,6 @@ export class DiscoveryService extends EventEmitter {
     // Asked and answered. Re-presenting unauthenticated requests to a host
     // that has already said it is not a receiver is the part of discovery
     // that is nobody else's problem to put up with.
-    if (this.recentlyRejected(ip)) return;
     if (this.excluded(ip)) return;
 
     // Probe both SSC paths concurrently, but decide only once BOTH have answered.
@@ -762,9 +739,11 @@ export class DiscoveryService extends EventEmitter {
       .filter((s): s is PromiseFulfilledResult<Hit> => s.status === 'fulfilled')
       .map(s => s.value);
     if (hits.length === 0) {
-      // Something is listening on 443 but neither SSC path answered — a web
-      // UI, a NAS, an appliance. Remember, so the next sweep leaves it alone.
-      this.notSennheiser.set(ip, Date.now());
+      // Something is listening on 443 but neither SSC path answered — a web UI,
+      // a NAS, an appliance. Nothing is remembered about it: a scan only happens
+      // when RFDeck is missing a device, and on the next one this address costs a
+      // connect that goes nowhere. Caching the verdict bought little and meant a
+      // receiver plugged in five minutes later was ignored for half an hour.
       return;
     }
 
@@ -790,25 +769,16 @@ export class DiscoveryService extends EventEmitter {
         // permanently offline after a DHCP move: the row kept polling a dead
         // address, the receiver sat at a new one answering 401, and the
         // reconcile that would have recognised it with a stored password never
-        // ran, because the address was discarded before reconcile could see it —
-        // then cached as "not Sennheiser" for half an hour.
+        // ran, because the address was discarded before reconcile could see it.
         //
         // So an auth wall is announced as a *candidate* rather than offered as a
         // device. Nothing is claimed and nothing is shown to the operator; a
-        // listener may try credentials it already has. If none fit, the address
-        // is written off exactly as before. That keeps the promise this probe
-        // chain was tightened for — RFDeck does not present itself to strangers'
-        // appliances — because the only extra traffic is to a host already
-        // answering on 443, using a password we hold for a device that is
-        // missing right now.
-        this.notSennheiser.set(ip, Date.now());
-
+        // listener may try credentials it already has, and only ever for a device
+        // it is currently missing. That keeps the promise this probe chain was
+        // tightened for — RFDeck does not present itself to strangers' appliances
+        // — because the only extra traffic is to a host already answering on 443,
+        // using a password we hold for hardware known to be absent.
         if (authWalled) {
-          // Still cached above, and deliberately: the address is written off for
-          // discovery exactly as before, so the sweep does not come back to it.
-          // That keeps the flood protection this chain was tightened for — the
-          // listener gets one authenticated attempt per host per half hour, not
-          // one per sweep.
           log.info(
             `[Discovery] ${ip} answered 443 with 401 on every path and its certificate ` +
             `does not name Sennheiser — passing it for authenticated identification ` +
@@ -845,7 +815,6 @@ export class DiscoveryService extends EventEmitter {
       this.seenSerials.set(serial, ip);
     }
 
-    this.notSennheiser.delete(ip);
     log.debug(`[Discovery] HTTP probe found EW-DX at ${ip}: ${name}`);
     this.emitDiscovered(ip, SSC_PORT, name, 'ssc');
   }
@@ -933,7 +902,6 @@ export class DiscoveryService extends EventEmitter {
     this.shureProbed.delete(ip);
     // And any "not a Sennheiser device" verdict, so re-adding an address the
     // operator has just corrected does not wait out the cache.
-    this.notSennheiser.delete(ip);
     this.deviceNames.delete(ip);
     // Clear serial registrations for this IP so an EW-DX coming back at a new IP
     // won't be blocked by the dual-NIC dedup guard.
