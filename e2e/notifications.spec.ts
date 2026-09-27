@@ -1,106 +1,47 @@
 import { test, expect } from '@playwright/test';
-import http from 'http';
-import { AddressInfo } from 'net';
 
-// Alerts that leave the browser — the free half of C.2.
+// Alerts that leave the browser.
 //
-// Delivery is exercised against a real listener started inside the test,
-// because the thing worth knowing is that a POST actually arrives, signed,
-// with the alert in it. And the failures are exercised too: a webhook that is
-// failing has to say so in the list, or an operator finds out on the night
-// nothing arrived.
+// Browser push is the only alert channel the application owns: no account, no bill,
+// the browser's own push service does the delivery and RFDeck only signs. Webhooks,
+// email and SMS are delivered by Meros from rules configured there over RFDeck's
+// event stream, so there is nothing local to test for them.
+//
+// This file used to test a local webhook implementation — delivery against a real
+// listener, signing, failure recording. That feature was removed on 2026-09-27
+// because the cloud delivers webhooks from the same events, and two implementations
+// of one feature only disagree about what was sent. The tests went with it, and the
+// first describe below replaces them: it asserts the routes are actually gone, which
+// is the part worth keeping now.
 
-async function receiver() {
-  const hits: Array<{ headers: http.IncomingHttpHeaders; body: any }> = [];
-  const server = http.createServer((req, res) => {
-    let body = '';
-    req.on('data', c => { body += c; });
-    req.on('end', () => {
-      hits.push({ headers: req.headers, body: JSON.parse(body || '{}') });
-      res.writeHead(200); res.end('ok');
-    });
-  });
-  await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
-  const { port } = server.address() as AddressInfo;
-  return { url: `http://127.0.0.1:${port}/alerts`, hits, close: () => server.close() };
-}
-
-test.describe('webhooks', () => {
-  test('a test alert arrives at the URL, signed, and the result is recorded', async ({ request }) => {
-    const rx = await receiver();
-    try {
-      const hook = await (await request.post('/api/notifications/webhooks', {
-        data: { name: 'Test receiver', url: rx.url, secret: 'shh' },
-      })).json();
-      expect(hook.hasSecret).toBe(true);
-      expect(hook.minSeverity).toBe('CRITICAL');   // the quiet default
-
-      const r = await (await request.post(`/api/notifications/webhooks/${hook.id}/test`)).json();
-      expect(r.ok).toBe(true);
-      expect(r.status).toBe(200);
-
-      expect(rx.hits).toHaveLength(1);
-      expect(rx.hits[0].body.event).toBe('test');
-      expect(rx.hits[0].body.alert.message).toMatch(/Test from RFDeck/);
-      expect(rx.hits[0].headers['x-rfdeck-signature']).toMatch(/^sha256=[0-9a-f]{64}$/);
-
-      const listed = (await (await request.get('/api/notifications/webhooks')).json())
-        .find((h: any) => h.id === hook.id);
-      expect(listed.lastStatus).toBe(200);
-      expect(listed.lastError).toBeNull();
-      expect(listed.failures).toBe(0);
-      // Never the secret itself.
-      expect(listed.secret).toBeUndefined();
-
-      await request.delete(`/api/notifications/webhooks/${hook.id}`);
-    } finally { rx.close(); }
-  });
-
-  test('a failing webhook says so in the list', async ({ request }) => {
-    // Port 1 is never listening.
-    const hook = await (await request.post('/api/notifications/webhooks', {
-      data: { name: 'Dead', url: 'http://127.0.0.1:1/x' },
-    })).json();
-    try {
-      const r = await (await request.post(`/api/notifications/webhooks/${hook.id}/test`)).json();
-      expect(r.ok).toBe(false);
-      expect(r.error).toBeTruthy();
-
-      const listed = (await (await request.get('/api/notifications/webhooks')).json())
-        .find((h: any) => h.id === hook.id);
-      expect(listed.failures).toBe(1);
-      expect(listed.lastError).toBeTruthy();
-    } finally { await request.delete(`/api/notifications/webhooks/${hook.id}`); }
-  });
-
-  test('refuses a URL that is not http or https', async ({ request }) => {
-    for (const url of ['ftp://x', 'not a url', 'javascript:alert(1)']) {
-      const res = await request.post('/api/notifications/webhooks', { data: { url } });
-      expect(res.status(), url).toBe(400);
+test.describe('the removed webhook routes', () => {
+  // A deletion nobody checks is a deletion that comes back. These are cheap, and
+  // they would catch a revert or a half-finished re-introduction.
+  test('are not served any more', async ({ request }) => {
+    const gone = [
+      await request.get('/api/notifications/webhooks'),
+      await request.post('/api/notifications/webhooks', { data: { url: 'http://127.0.0.1:1/x' } }),
+    ];
+    for (const res of gone) {
+      // 404 from the router, never a 200 with an empty list — that would mean the
+      // routes survived and only the UI went.
+      expect(res.status()).toBe(404);
     }
   });
+});
 
-  test('editing the name leaves the secret alone', async ({ request }) => {
-    const hook = await (await request.post('/api/notifications/webhooks', {
-      data: { url: 'http://127.0.0.1:1/x', secret: 'keep-me' },
-    })).json();
-    try {
-      const after = await (await request.put(`/api/notifications/webhooks/${hook.id}`, {
-        data: { name: 'Renamed' },
-      })).json();
-      expect(after.name).toBe('Renamed');
-      expect(after.hasSecret).toBe(true);
-
-      const cleared = await (await request.put(`/api/notifications/webhooks/${hook.id}`, {
-        data: { secret: null },
-      })).json();
-      expect(cleared.hasSecret).toBe(false);
-    } finally { await request.delete(`/api/notifications/webhooks/${hook.id}`); }
-  });
-
+test.describe('the notifications settings tab', () => {
   test('is on the alerts tab', async ({ page }) => {
     await page.goto('/#/settings?tab=alerts');
     await expect(page.getByRole('heading', { name: /Notifications/ })).toBeVisible();
+  });
+
+  test('says where the channels it no longer owns have gone', async ({ page }) => {
+    // An operator who expects webhooks should find out they are configured in the
+    // cloud, rather than concluding RFDeck cannot do it at all.
+    await page.goto('/#/settings?tab=alerts');
+    await expect(page.getByText(/Webhooks, email and SMS are configured in your Meros account/i))
+      .toBeVisible();
   });
 });
 

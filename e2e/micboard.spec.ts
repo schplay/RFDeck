@@ -13,7 +13,9 @@ test.describe('Micboard', () => {
     await open(page, '/micboard');
 
     await expect(page.locator('.mb-standby')).toBeVisible();
-    await expect(page.getByText(/standing by\. An operator starts the rig/i)).toBeVisible();
+    // The copy says what to *do*, not what is happening — a wall display is read by
+    // people who cannot act on it, but the operator walking past can.
+    await expect(page.getByText(/Standing by\. Start the rig with Go Live\./i)).toBeVisible();
     await expectNoCrash(page);
   });
 
