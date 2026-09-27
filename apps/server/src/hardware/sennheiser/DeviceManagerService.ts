@@ -79,53 +79,6 @@ export function secondaryAddresses(
   );
 }
 
-/**
- * Which unidentified G3/G4 row, if any, a discovered label belongs to.
- *
- * Pure, and exported, because this is the judgement worth being able to read and
- * test on its own: it is the one place RFDeck adopts a device on evidence weaker
- * than a hardware address, and the bounds on it are the whole safety argument.
- *
- * @param candidates rows already narrowed to active G3/G4 rows with **no recorded
- *   MAC** at a different address — never a row that carries stored identity.
- * @param isConnected whether a candidate is answering at its own recorded address;
- *   one that is cannot also be the device that just appeared somewhere else.
- */
-export function chooseByName<T extends { name: string | null; ip: string; port: number }>(
-  discoveredName: string | undefined,
-  candidates: T[],
-  isConnected: (d: T) => boolean,
-): { match?: T; reason?: string } {
-  const wanted = (discoveredName ?? '').trim().toLowerCase();
-  if (!wanted) return { reason: 'the device reported no name' };
-
-  // A placeholder is not a name. Discovery invents these when a device has not
-  // said what it is called, and every unnamed receiver on the network would
-  // otherwise look like the same device to this rule.
-  if (/^sennheiser g3\/g4 \(/i.test(wanted) || /^unknown/i.test(wanted)) {
-    return { reason: `"${discoveredName}" is a placeholder, not a name the operator set` };
-  }
-
-  const byName = candidates.filter(d => (d.name ?? '').trim().toLowerCase() === wanted);
-  if (byName.length === 0) {
-    return { reason: `no unidentified device is called "${discoveredName}"` };
-  }
-
-  const offline = byName.filter(d => !isConnected(d));
-  if (offline.length === 0) {
-    return { reason: `"${discoveredName}" is already connected at its own address` };
-  }
-  if (offline.length > 1) {
-    // Ambiguity goes to the operator. Picking one would be a coin toss that
-    // moves a device's history onto the wrong hardware.
-    return {
-      reason: `${offline.length} offline devices are called "${discoveredName}", `
-        + 'which is too ambiguous to adopt automatically',
-    };
-  }
-  return { match: offline[0] };
-}
-
 export class DeviceManagerService extends EventEmitter {
   private discovery: DiscoveryService;
   private io: Server;
@@ -1341,57 +1294,6 @@ export class DeviceManagerService extends EventEmitter {
       const stale = mac
         ? await prisma.inventoryDevice.findFirst({ where: { mac, active: true, NOT: { ip } } })
         : null;
-
-      // ── Last resort: an unclaimed name, for a row that was never identified ──
-      //
-      // The MAC is the only key that can prove a G3 is a given unit, and MCP
-      // offers nothing else — no serial, no id, just a label. But the MAC can
-      // only be *recorded* while the device sits at the address already on its
-      // row, so a receiver that moved before it was ever seen has `mac: null`
-      // and nothing to compare against. That is not an edge case: it is every
-      // G3 in an install where DHCP moved things while RFDeck was off, and it
-      // left half a rig offline with no way back but editing IPs by hand.
-      //
-      // Matching on the label alone used to be the general fallback and was
-      // rightly removed: a relabelled receiver could be adopted onto a
-      // different unit's record, moving its history and patch onto the wrong
-      // hardware. This is deliberately not that. Every one of these must hold:
-      //
-      //   • we have a MAC for the newcomer, so this can be recorded and never
-      //     needed again for this device;
-      //   • no row anywhere already claims that MAC — if one does it is that
-      //     row, and we never got here;
-      //   • the candidate has never been identified (`mac: null`), so no
-      //     stored evidence is being overridden;
-      //   • the candidate is not answering at its own recorded address;
-      //   • and exactly one candidate carries this name. Two devices called
-      //     "Vocal 1" is ambiguous, and ambiguity goes to the operator.
-      //
-      // So the label is used once, to recover an identity that was never
-      // captured, and is replaced by the MAC in the same breath.
-      if (!stale && mac && (discoveredName ?? '').trim()) {
-        const candidates = await prisma.inventoryDevice.findMany({
-          where: { port: 53212, active: true, mac: null, NOT: { ip } },
-        });
-        const decision = chooseByName(discoveredName, candidates, d =>
-          !!this.clients.get(`${d.ip}:${d.port}`)?.isConnected ||
-          !!this.clients.get(`${d.ip}:${d.port}-legacy`)?.isConnected);
-
-        if (decision.match) {
-          const match = decision.match;
-          log.info(
-            `[DeviceManager] Auto-reconnect: G3/G4 "${match.name}" found at ${ip} ` +
-            `(was ${match.ip}) — matched on its name because it had no recorded MAC, ` +
-            `and ${mac} is now stored so this cannot happen to it again`,
-          );
-          await prisma.inventoryDevice.update({ where: { id: match.id }, data: { mac } });
-          await this.migrateDeviceIp(match, ip, port);
-          return;
-        }
-        if (decision.reason) {
-          log.warn(`[DeviceManager] ${ip} not adopted by name: ${decision.reason}`);
-        }
-      }
 
       if (!stale) {
         // A discovered G3 that matches nothing, while G3 rows sit unreachable,
