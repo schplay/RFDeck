@@ -76,15 +76,37 @@ const HOST_PROBE_TIMEOUT_MS = 400;
 // outbound connections failing: git fetches timing out on a network with nothing
 // else wrong with it.
 //
-// RFDeck is a guest on somebody's show network. A sweep taking longer is a cost
-// to RFDeck; a sweep taking out the network is a cost to everyone, and it is not
-// ours to spend. Slower and invisible beats faster and disruptive.
-const HOST_PROBE_CONCURRENCY = 48;
+// RFDeck is a guest on somebody's show network. But 48 was an over-correction in
+// the other direction: a bare connect to an empty address fails immediately on a
+// LAN, so most of a sweep costs nothing, and cutting concurrency this far mainly
+// slows the part that was already cheap — while pushing a large network's sweep
+// past the point where it finishes at all.
+//
+// 256 halves the peak connection pressure against the measured figure and still
+// walks a /16 well inside its guard. The repetition was always the larger part of
+// the problem, and that is fixed where it belongs, in how often a sweep runs.
+const HOST_PROBE_CONCURRENCY = 256;
 
-// Upper bound on one sweep, so a scan can never hang forever. Well above the
-// ~51s a full /16 takes, because cutting a working sweep short is what made a
-// receiver look undiscoverable in the first place.
-const SCAN_GUARD_MS = 180_000;
+// Upper bound on one sweep, so a scan can never hang forever — derived from the
+// size of the sweep rather than fixed.
+//
+// A fixed three minutes was quietly an assumption about how big a network is. It
+// held for a /16 at the concurrency of the day and would have silently truncated
+// the sweep the moment either changed: addresses beyond the cut would never be
+// probed, and a receiver sitting on one would be undiscoverable with nothing to
+// say why. That is the same class of fault as the original 20-second cap this
+// replaced.
+//
+// Networks are not ours to predict. The guard now scales with the work: the time
+// the sweep would take if *every* address were a silent host paying the full
+// connect timeout, which is the worst case, plus a generous floor for small
+// networks where the fixed costs dominate.
+const SCAN_GUARD_FLOOR_MS = 180_000;
+
+export function scanGuardMs(addressCount: number): number {
+  const worstCase = Math.ceil(addressCount / HOST_PROBE_CONCURRENCY) * HOST_PROBE_TIMEOUT_MS;
+  return Math.max(SCAN_GUARD_FLOOR_MS, worstCase * 2);
+}
 
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
@@ -353,10 +375,14 @@ export class DiscoveryService extends EventEmitter {
       // running and a receiver reached afterwards arrived to an audience that
       // had already been told there was nothing there.
       //
-      // A full /16 measures at about 51 seconds; this leaves generous headroom
-      // above that. The per-address stall the original cap existed for is now
-      // handled where it belongs, by the connect timeout in hostsListeningOn.
-      const cap = new Promise<void>(resolve => setTimeout(resolve, SCAN_GUARD_MS));
+      // Sized from the sweep itself, so a large network is never cut off partway
+      // and a small one is not held open. The per-address stall the original cap
+      // existed for is handled where it belongs, by the connect timeout in
+      // hostsListeningOn.
+      const total = this.sweepTargets().reduce((n, t) => n + t.addresses.length, 0);
+      const guardMs = scanGuardMs(total);
+      log.debug(`[Discovery] Sweeping ${total} address(es); guard ${Math.round(guardMs / 1000)}s`);
+      const cap = new Promise<void>(resolve => setTimeout(resolve, guardMs));
       await Promise.race([this.runHttpScan(), cap]);
     } finally {
       this.scanInProgress = false;

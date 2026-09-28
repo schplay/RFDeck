@@ -93,6 +93,44 @@ describe('subnets where devices were last seen', () => {
   });
 });
 
+describe('a flat /16, which is a perfectly ordinary show network', () => {
+  it('is swept in full rather than reduced to the local /24', () => {
+    ifaces.push({ address: '10.2.3.10', netmask: '255.255.0.0' });
+    const all = targets();
+    // Both ends, and an address in a different third octet from the server's.
+    expect(all).toContain('10.2.0.1');
+    expect(all).toContain('10.2.3.234');
+    expect(all).toContain('10.2.255.254');
+    expect(all.length).toBeGreaterThan(65_000);
+  });
+
+  it('gets a guard long enough to finish, so nothing is cut off unprobed', async () => {
+    // A fixed guard was an unstated assumption about network size: exceed it and
+    // every address past the cut is silently never probed, which looks exactly
+    // like a receiver that cannot be found.
+    const { scanGuardMs } = await import('./DiscoveryService');
+    ifaces.push({ address: '10.2.3.10', netmask: '255.255.0.0' });
+    const total = targets().length;
+
+    // A /16 measured at about 51 seconds on real hardware. The guard has to sit
+    // well above that, and above the worst case where every address is a silent
+    // host paying the full connect timeout.
+    expect(scanGuardMs(total)).toBeGreaterThan(120_000);
+  });
+
+  it('never guards a sweep for less than the floor, however small', async () => {
+    const { scanGuardMs } = await import('./DiscoveryService');
+    expect(scanGuardMs(0)).toBeGreaterThanOrEqual(180_000);
+    expect(scanGuardMs(254)).toBeGreaterThanOrEqual(180_000);
+  });
+
+  it('grows with the network rather than assuming one', async () => {
+    // The property that makes this safe on a size nobody predicted.
+    const { scanGuardMs } = await import('./DiscoveryService');
+    expect(scanGuardMs(1_000_000)).toBeGreaterThan(scanGuardMs(65_534));
+  });
+});
+
 describe('with no interfaces at all', () => {
   it('still searches where the devices were', () => {
     // A server whose interface enumeration comes back empty should not silently
