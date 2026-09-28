@@ -1509,6 +1509,9 @@ export class DeviceManagerService extends EventEmitter {
 
       log.info(`[DeviceManager] Auto-reconnect: G3/G4 "${matched.name}" found at new IP ${ip} (was ${matched.ip})`);
       await this.migrateDeviceIp(matched, ip, port);
+    } else {
+      // Everything else: Shure, Digital 6000, and whatever is added next.
+      await this.reconcileByHardwareAddress(ip, port, discoveredName);
     }
   }
 
@@ -1559,6 +1562,101 @@ export class DeviceManagerService extends EventEmitter {
     } catch (err: any) {
       log.debug(`[DeviceManager] credential attempt for ${ip} failed: ${err?.message}`);
     }
+  }
+
+
+  /**
+   * Re-link a device of any protocol that has changed address.
+   *
+   * Reconciliation was written twice, once for SSC and once for G3/G4, and the
+   * function simply fell off the end for anything else. A Shure receiver or a
+   * Digital 6000 that came back on a different address was never matched, never
+   * migrated and never even reported — the branch did not exist, so there was not
+   * so much as a log line. It looked identical to a device that was not there.
+   *
+   * The identity used here is the hardware address from the OS neighbour table,
+   * which is the one key that does not care what a device speaks. Every protocol
+   * answers ARP; only some of them offer a serial. That makes this the right
+   * default for a family RFDeck has not met yet, rather than a gap that waits for
+   * somebody to notice their rig is not coming back.
+   *
+   * What it cannot do is identify a device on the far side of a router, where
+   * there is no neighbour entry to read. For SSC that does not matter — the
+   * device reports its own serial — and for the rest it is a real limit, said
+   * out loud in the alert rather than left as silence.
+   */
+  private async reconcileByHardwareAddress(
+    ip: string, port: number, discoveredName?: string,
+  ): Promise<void> {
+    let mac: string | null = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      mac = await getMacByIp(ip);
+      if (mac) break;
+      await new Promise<void>(r => setTimeout(r, 400));
+    }
+
+    if (mac) {
+      // Record it against a row already at this address, so the next move is
+      // provable rather than guessed at.
+      const { count } = await prisma.inventoryDevice.updateMany({
+        where: { ip, mac: null }, data: { mac },
+      });
+      if (count > 0) {
+        log.info(`[DeviceManager] Recorded MAC ${mac} for the device at ${ip}`);
+      }
+    }
+
+    let matched = mac
+      ? await prisma.inventoryDevice.findFirst({ where: { mac, active: true, NOT: { ip } } })
+      : null;
+
+    // The same bounded name match the G3/G4 path uses, for a row that has never
+    // been identified. Held to the same conditions, for the same reason: a name
+    // is the operator's and can be duplicated, so it may only ever recover an
+    // identity that was never captured, never override one that was.
+    if (!matched && mac) {
+      const candidates = await prisma.inventoryDevice.findMany({
+        where: { port, active: true, mac: null, NOT: { ip } },
+      });
+      const decision = chooseByName(discoveredName, candidates, d =>
+        !!this.clients.get(`${d.ip}:${d.port}`)?.isConnected);
+      if (decision.match) {
+        matched = decision.match;
+        log.info(
+          `[DeviceManager] "${matched.name}" recognised at ${ip} by the name it reports ` +
+          `(was ${matched.ip}); recording MAC ${mac}`,
+        );
+        await prisma.inventoryDevice.update({ where: { id: matched.id }, data: { mac } });
+      }
+    }
+
+    if (!matched) {
+      const rows = await prisma.inventoryDevice.findMany({ where: { port, active: true } });
+      const anyDown = rows.some(d => !this.clients.get(`${d.ip}:${d.port}`)?.isConnected);
+      if (anyDown && !this.orphanAlerted.has(ip)) {
+        this.orphanAlerted.add(ip);
+        this.emitAlert({
+          severity: 'WARNING',
+          type: 'DEVICE_UNMATCHED',
+          message: `A device named "${discoveredName ?? ip}" was found at ${ip} but could not be matched to any offline device`,
+          detail: mac
+            ? 'None of the offline devices has this hardware address on record. Point the right one at this address in Inventory and its identity will be stored, so this never needs doing again.'
+            : 'Its hardware address could not be read, which usually means it is on the far side of a router from this server. Set its address in Inventory to adopt it.',
+          deviceId: `${ip}:${port}`,
+        });
+      }
+      log.warn(
+        `[DeviceManager] tryAutoReconcile: nothing matches ${ip}:${port} ` +
+        `(label="${discoveredName ?? ''}", mac=${mac ?? 'none'}); ` +
+        `${rows.length} row(s) on this port, ${rows.filter(d => !d.mac).length} with no recorded MAC`,
+      );
+      return;
+    }
+
+    if (this.clients.get(`${matched.ip}:${matched.port}`)?.isConnected) return;
+
+    log.info(`[DeviceManager] Auto-reconnect: "${matched.name}" found at new IP ${ip} (was ${matched.ip})`);
+    await this.migrateDeviceIp(matched, ip, port);
   }
 
   private async migrateDeviceIp(
