@@ -69,6 +69,42 @@ describe('reaching a device at all', () => {
   });
 });
 
+describe('a receiver that goes quiet', () => {
+  it('is reported as disconnected, which is the whole point of watching it', () => {
+    // This regressed: `handleOffline` returned early for a device that had
+    // connected before, so a receiver that was switched off was never reported
+    // gone. The dashboard kept showing it online and no alert fired. A monitor
+    // that keeps claiming a dead receiver is live is worse than a slow one.
+    client.startPolling();
+    client.handleData('Name Vocal 1\r');   // it is alive
+    const seen: string[] = [];
+    client.on('disconnected', (why: string) => seen.push(why));
+
+    elapse(60);                            // power it off
+    expect(seen.length).toBeGreaterThan(0);
+  });
+
+  it('reports it once, not on every retry', () => {
+    client.startPolling();
+    client.handleData('Name Vocal 1\r');
+    const seen: string[] = [];
+    client.on('disconnected', (why: string) => seen.push(why));
+
+    elapse(10 * 60);
+    expect(seen).toHaveLength(1);
+  });
+
+  it('reports an address that never answered at all', () => {
+    // A device that has never been reachable still has to be shown as offline.
+    client.startPolling();
+    const seen: string[] = [];
+    client.on('disconnected', (why: string) => seen.push(why));
+
+    elapse(60);
+    expect(seen.length).toBeGreaterThan(0);
+  });
+});
+
 describe('an address that never answers', () => {
   it('is not commanded every fifteen seconds indefinitely', () => {
     client.startPolling();

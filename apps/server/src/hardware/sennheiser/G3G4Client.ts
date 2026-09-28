@@ -151,29 +151,34 @@ export class G3G4Client extends EventEmitter {
   private handleOffline() {
     this.isConnected = false;
 
-    // A confirmed receiver that went quiet may simply have dropped its
-    // subscription — some firmware does that in RF_Mute before the timeout
-    // expires — so re-subscribing immediately is right for one that has answered
-    // before.
+    // Say it has gone, first and unconditionally.
     //
-    // An address that has never answered is a different thing entirely, and this
-    // is where a lighting node was being commanded four times a minute
-    // indefinitely. After a few unanswered attempts the fast cycle stops and the
-    // address is tried once every few minutes instead. It is never abandoned —
-    // a receiver switched off for the weekend still comes back on its own — but
-    // it stops being hammered.
-    if (this.confirmed) {
-      this.sendSubscribe();
-      return;
+    // This used to return early for a receiver that had connected before, on the
+    // reasoning that such a device only needed its subscription renewed. The
+    // consequence was that a G3/G4 which was switched off was never reported as
+    // disconnected at all: `isConnected` went false here and nothing was ever
+    // told, so the dashboard showed it online indefinitely and no alert fired.
+    // A monitoring tool that keeps claiming a dead receiver is live is worse than
+    // one that finds it slowly.
+    if (!this.disconnectSignaled) {
+      this.disconnectSignaled = true;
+      log.warn(
+        `[G3G4Client] ${this.ip}:53212 — no data for ${OFFLINE_MS / 1000}s. ` +
+        `If the Push echo arrives but no status follows, enable "Network Control" on the device.`,
+      );
+      this.emit('disconnected', 'timeout');
     }
 
+    // Then decide how hard to keep trying. Renewing the subscription is the
+    // right first move whether or not this address has answered before — some
+    // firmware drops it in RF_Mute well before the window expires — but it
+    // cannot go on forever at this rate, because an address whose device has
+    // moved may now belong to somebody else's equipment.
     this.unansweredCycles++;
     if (this.unansweredCycles <= UNANSWERED_ATTEMPTS_BEFORE_BACKOFF) {
       this.sendSubscribe();
-      // Re-arm, so the count keeps advancing. Without this the offline timer
-      // fired exactly once, the counter stuck at one, and the resubscribe
-      // interval carried on at full rate forever — the backoff existed but was
-      // unreachable, which a test caught before it shipped.
+      // Re-armed, so the cycle keeps advancing. Without this the offline timer
+      // fired once, the counter stuck, and nothing after it could ever run.
       this.resetOfflineTimer();
       return;
     }
@@ -181,19 +186,14 @@ export class G3G4Client extends EventEmitter {
     this.clearResub();
     if (!this.slowProbeTimer) {
       log.info(
-        `[G3G4Client] ${this.ip} has not answered MCP after ` +
-        `${UNANSWERED_ATTEMPTS_BEFORE_BACKOFF} attempts — backing off to one probe ` +
-        `every ${SLOW_PROBE_MS / 60_000} minutes in case it is a receiver that is switched off`,
+        `[G3G4Client] ${this.ip} has not answered for ` +
+        `${UNANSWERED_ATTEMPTS_BEFORE_BACKOFF} attempts — probing every ` +
+        `${SLOW_PROBE_MS / 1000}s until it comes back`,
       );
       this.slowProbeTimer = setInterval(() => {
         this.sendSubscribe();
         this.send('Name');
       }, SLOW_PROBE_MS);
-    }
-    if (!this.disconnectSignaled) {
-      this.disconnectSignaled = true;
-      log.warn(`[G3G4Client] ${this.ip}:53212 — no data for ${OFFLINE_MS / 1000}s. If the Push echo arrives but no status follows, enable "Network Control" on the device.`);
-      this.emit('disconnected', 'timeout');
     }
   }
 
