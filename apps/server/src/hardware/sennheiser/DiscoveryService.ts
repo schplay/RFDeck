@@ -114,6 +114,13 @@ export function scanGuardMs(addressCount: number): number {
 // is asked to do.
 const MCP_PROBE = 'Push 5 500 3';
 
+// How many addresses are probed before pausing to let the UDP send buffer drain.
+// Without a pause a large sweep overflows the socket and most probes are
+// discarded before reaching the wire, which reads as a network with no receivers
+// on it.
+const UDP_PROBE_BATCH = 256;
+const UDP_PROBE_PAUSE_MS = 20;
+
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
 
@@ -371,7 +378,7 @@ export class DiscoveryService extends EventEmitter {
     log.debug('[Discovery] On-demand scan started');
     const before = this.seenIps.size;
     try {
-      this.runUdpProbes();
+      void this.runUdpProbes();
       // A guard against a sweep that never returns, not a deadline for one that
       // is working.
       //
@@ -582,24 +589,40 @@ export class DiscoveryService extends EventEmitter {
    * asked — never while the rig is healthy. RFDeck looks for hardware when it is
    * missing hardware, and otherwise leaves the network alone.
    */
-  private runUdpProbes() {
+  private async runUdpProbes(): Promise<void> {
     const broadcasts = mcpBus.getBroadcastAddresses();
     log.debug(`[Discovery] MCP broadcast probe to: ${broadcasts.join(', ')}`);
     mcpBus.sendToMany(broadcasts, MCP_PROBE);
     mcpBus.sendToMany(broadcasts, 'Name');
 
-    // `Name` only here too — a receiver on another subnet, where broadcast does
-    // not reach, is exactly why this exists, and it is still not a reason to
-    // command anything.
-    //
     // Same target set as the HTTP sweep: the interfaces' subnets *and* the /24
     // around each place a device was last seen. A G3 that moved across a VLAN was
     // as invisible as an EW-DX that did.
-    for (const { addresses } of this.sweepTargets()) {
+    //
+    // **Paced, and that is not a nicety.** This walked every target address in one
+    // synchronous loop. On a flat /16 that is over a hundred and thirty thousand
+    // datagrams handed to the socket with no chance to drain — the send buffer
+    // overflows, most of them are discarded before they ever reach the wire, and
+    // the sweep both floods the link and finds nothing. A receiver that was
+    // powered on and answering would simply never be asked.
+    //
+    // A short pause every batch lets the socket empty. It costs a few seconds
+    // across a /16 and is the difference between a probe that arrives and one
+    // that is dropped on the way out.
+    const targets = this.sweepTargets();
+    const total = targets.reduce((n, t) => n + t.addresses.length, 0);
+    log.debug(`[Discovery] MCP unicast probe across ${total} address(es)`);
+
+    let inBatch = 0;
+    for (const { addresses } of targets) {
       for (const ip of addresses) {
         if (this.excluded(ip)) continue;
         mcpBus.sendTo(ip, MCP_PROBE);
         mcpBus.sendTo(ip, 'Name');
+        if (++inBatch >= UDP_PROBE_BATCH) {
+          inBatch = 0;
+          await new Promise<void>(r => setTimeout(r, UDP_PROBE_PAUSE_MS));
+        }
       }
     }
   }

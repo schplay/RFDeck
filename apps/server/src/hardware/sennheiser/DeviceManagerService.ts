@@ -166,7 +166,16 @@ export class DeviceManagerService extends EventEmitter {
   private readonly AUTO_SCAN_COOLDOWN_MS = 20_000;
   /** How long to wait before the next automatic sweep. Grows while nothing changes. */
   private autoScanGapMs = 20_000;
-  private readonly AUTO_SCAN_GAP_MAX_MS = 5 * 60_000;
+  /**
+   * Slowest the automatic sweep ever gets.
+   *
+   * Two minutes, not five. The backoff exists so a rig switched off for the
+   * weekend is not scanned for four times a minute, but it also sets how long an
+   * operator waits after powering the rig back on — and nobody powers up a rack
+   * and expects to wait five minutes to see it. Two is quiet enough to be
+   * invisible on the network and short enough to feel automatic.
+   */
+  private readonly AUTO_SCAN_GAP_MAX_MS = 2 * 60_000;
   // RF dropout alert debounce: EW-DX diversity switching can report 0% then 100%
   // within the same second. Only alert when the signal stays low for the confirm
   // window, and don't re-alert the same channel more than once a minute.
@@ -582,6 +591,16 @@ export class DeviceManagerService extends EventEmitter {
     if (active) {
       log.info(`[DeviceManager] Activating "${device.name ?? id}" — resuming tracking`);
       this.trackDevice(device);
+      // Look for it now, at the address it is at rather than the one on file.
+      //
+      // Re-enabling only started a client aimed at the recorded address, so an
+      // operator whose receiver had moved could toggle a device off and on and
+      // watch nothing happen — the one manual step they would obviously reach
+      // for, doing nothing. Enabling a device is a statement that it is supposed
+      // to be there, which is exactly when it is worth sweeping for it.
+      this.resetAutoScanGap();
+      this.lastAutoScanAt = 0;
+      this.maybeAutoScan();
     } else {
       log.info(`[DeviceManager] Deactivating "${device.name ?? id}" — stopping tracking`);
       // Cancel any pending dropout timers for this device's channels so a
