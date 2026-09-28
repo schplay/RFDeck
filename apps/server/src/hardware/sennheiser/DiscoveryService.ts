@@ -392,8 +392,7 @@ export class DiscoveryService extends EventEmitter {
       // Awaiting costs a few seconds on a /16 and is what makes the probes
       // arrive. The failure is logged rather than swallowed, because a UDP sweep
       // that threw silently would take every G3 with it.
-      await this.runUdpProbes().catch(err =>
-        log.warn(`[Discovery] MCP probe sweep failed: ${err?.message ?? err}`));
+      await this.probeMcp();
       // A guard against a sweep that never returns, not a deadline for one that
       // is working.
       //
@@ -442,6 +441,61 @@ export class DiscoveryService extends EventEmitter {
   }
 
   get isScanning(): boolean { return this.scanInProgress; }
+
+  /**
+   * Ask the G3/G4s, and only them.
+   *
+   * These two searches have nothing in common but the word "scan". The MCP probe
+   * is a few seconds of paced UDP and is the *only* way a G3/G4 is ever found —
+   * they do not listen on 443. The HTTPS sweep walks every address on the network
+   * looking for EW-DX and, on a flat /16, that is 65,534 connects taking minutes.
+   *
+   * Welding them together meant a G3 powered on a moment after the probes went
+   * out had to wait for the whole HTTPS sweep to finish, and then for the backoff
+   * gap on top, before anything asked it again — ten minutes in practice, with
+   * nothing on screen to suggest RFDeck was doing anything at all. It also meant
+   * the expensive sweep ran at the frequency the cheap one needed, which is what
+   * was loading the network.
+   *
+   * So this is separately callable, deliberately not guarded by `scanInProgress`:
+   * it does not contend with the HTTPS sweep and must not be blocked by one that
+   * is halfway through tens of thousands of addresses.
+   */
+  async probeMcp(): Promise<void> {
+    if (this.disabled) return;
+    if (this.mcpProbeInFlight) return;
+    this.mcpProbeInFlight = true;
+    try {
+      await this.runUdpProbes();
+    } catch (err: any) {
+      log.warn(`[Discovery] MCP probe sweep failed: ${err?.message ?? err}`);
+    } finally {
+      this.mcpProbeInFlight = false;
+    }
+  }
+
+  private mcpProbeInFlight = false;
+
+  /**
+   * Ask every G3/G4 on the segment, with two datagrams.
+   *
+   * This is what a broadcast is *for*, and it is what should have been carrying
+   * routine recovery all along. The unicast sweep exists for a receiver that
+   * broadcast cannot reach — another subnet, or a switch that does not forward
+   * it — and on a flat /16 that sweep is 131,000 datagrams. Running that every
+   * minute to notice a receiver being switched on is the load, not the answer.
+   *
+   * Cheap enough to run often, which is what makes a rig appear within a minute
+   * of being powered up instead of ten.
+   */
+  broadcastMcpProbe(): void {
+    if (this.disabled) return;
+    const broadcasts = mcpBus.getBroadcastAddresses();
+    if (broadcasts.length === 0) return;
+    mcpBus.sendToMany(broadcasts, MCP_PROBE);
+    mcpBus.sendToMany(broadcasts, 'Name');
+    log.debug(`[Discovery] MCP broadcast probe to ${broadcasts.join(', ')}`);
+  }
 
   // ── mDNS (EW-DX and newer firmware) ───────────────────────────────────
 
@@ -605,10 +659,7 @@ export class DiscoveryService extends EventEmitter {
    * missing hardware, and otherwise leaves the network alone.
    */
   private async runUdpProbes(): Promise<void> {
-    const broadcasts = mcpBus.getBroadcastAddresses();
-    log.debug(`[Discovery] MCP broadcast probe to: ${broadcasts.join(', ')}`);
-    mcpBus.sendToMany(broadcasts, MCP_PROBE);
-    mcpBus.sendToMany(broadcasts, 'Name');
+    this.broadcastMcpProbe();
 
     // Same target set as the HTTP sweep: the interfaces' subnets *and* the /24
     // around each place a device was last seen. A G3 that moved across a VLAN was

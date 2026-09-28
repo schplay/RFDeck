@@ -398,6 +398,19 @@ export class DeviceManagerService extends EventEmitter {
       }
 
       if (down.length > 0) {
+        // Two datagrams, every time round.
+        //
+        // A broadcast reaches every G3/G4 on the segment, which is the whole job
+        // when a receiver has just been switched on. This used to be carried by
+        // the full scan — which also walks every address on the network for
+        // EW-DX, minutes on a /16 — so a device powered on had to wait for that
+        // sweep to finish and for the backoff gap on top. Ten minutes in
+        // practice, with nothing on screen to say RFDeck was even looking.
+        //
+        // The expensive unicast sweep stays on the slow cadence, for the case
+        // broadcast cannot reach. This is the case that actually happens.
+        this.discovery.broadcastMcpProbe();
+
         // Said at `warn`, and only when the set changes.
         //
         // A deployed server runs at LOG_LEVEL=warn, so this was `debug` and
@@ -423,7 +436,13 @@ export class DeviceManagerService extends EventEmitter {
         this.resetAutoScanGap();
         log.warn('[DeviceManager] All tracked devices are reachable again');
       }
-    }, 60_000);
+      // Twenty seconds, not sixty.
+      //
+      // The work here is now two datagrams and a walk over the client map, so
+      // the interval can be set by how long an operator should wait rather than
+      // by what the network can stand. Nobody powers up a rack and expects to
+      // wait a minute to see it, let alone ten.
+    }, 20_000);
   }
 
   stop() {
@@ -829,12 +848,26 @@ export class DeviceManagerService extends EventEmitter {
       if (client instanceof G3G4Client) {
         const mac = await getMacByIp(ip);
         if (mac) {
-          // Store the MAC on the inventory row so future lookups work
-          await prisma.inventoryDevice.updateMany({
+          // Store the MAC on the inventory row so future lookups work.
+          //
+          // This is the only thing that ever gives a G3/G4 row an identity, so
+          // whether it happened is worth saying rather than inferring. A device
+          // that has connected many times and still has no MAC means this lookup
+          // is failing, which is a fault here and not something about the device.
+          const { count } = await prisma.inventoryDevice.updateMany({
             where: { ip, mac: null },
             data: { mac },
           });
+          if (count > 0) {
+            log.info(`[DeviceManager] Recorded MAC ${mac} for the device at ${ip} — it can now be recognised wherever it moves`);
+          }
           await this.reconcileByMac(mac, ip, port);
+        } else {
+          log.warn(
+            `[DeviceManager] Connected to the G3/G4 at ${ip} but could not read its MAC ` +
+            `from the neighbour table. Without one this device cannot be recognised if its ` +
+            `address changes, so this is worth fixing rather than living with.`,
+          );
         }
       }
     });
