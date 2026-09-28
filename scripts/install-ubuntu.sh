@@ -763,6 +763,33 @@ step "Installing the rfdeck admin CLI"
 install -m 755 "$INSTALL_DIR/scripts/rfdeck" /usr/local/bin/rfdeck
 ok "rfdeck command installed"
 
+# ── UDP buffer limits ────────────────────────────────────────────────────────
+#
+# One UDP socket carries both the status stream from every tracked receiver and
+# the discovery sweep, which on a flat /16 sends tens of thousands of datagrams
+# and invites replies from anything that hears them. At Ubuntu's default
+# net.core.rmem_max of about 208 KiB the receive queue overflows while a sweep is
+# running, and what gets dropped is the telemetry — so healthy receivers fall
+# silent, time out, and are reported offline because *other* devices were being
+# found.
+#
+# The application asks for a larger buffer, but Linux silently clamps SO_RCVBUF
+# to this limit unless the process holds CAP_NET_ADMIN, which RFDeck deliberately
+# does not. So the ceiling has to be raised here or the request does nothing.
+
+step "Allowing larger UDP buffers"
+cat > /etc/sysctl.d/60-rfdeck.conf <<SYSCTL
+# RFDeck: room for receiver telemetry to survive a discovery sweep on the same
+# socket. See McpBus.ts.
+net.core.rmem_max = 8388608
+net.core.wmem_max = 4194304
+SYSCTL
+if sysctl --system >/dev/null 2>&1; then
+  ok "UDP buffer ceiling raised (rmem_max 8 MiB)"
+else
+  warn "Could not apply sysctl settings — receivers may drop out during a network scan"
+fi
+
 # ── Firewall ─────────────────────────────────────────────────────────────────
 #
 # Only the HTTP port is obvious. The UDP ports are where deployments fail: with

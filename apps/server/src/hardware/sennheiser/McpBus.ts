@@ -59,6 +59,33 @@ class McpBus {
 
       sock.bind(MCP_PORT, () => {
         sock.setBroadcast(true);
+
+        // Buffers sized for a sweep happening at the same time as live telemetry.
+        //
+        // One socket carries both: the status stream from every tracked receiver,
+        // arriving continuously, and the discovery sweep, which on a flat /16
+        // sends 131,000 datagrams and invites replies from anything that hears
+        // them. At the OS default of a couple of hundred kilobytes the receive
+        // queue overflows while a sweep runs, and what is dropped is the
+        // telemetry — so receivers that were online and perfectly healthy fall
+        // silent, hit their fifteen-second timeout and are reported offline. The
+        // symptom is devices dropping *because* other devices were found, which
+        // reads as anything but a buffer size.
+        //
+        // The kernel clamps these to net.core.rmem_max / wmem_max, so the request
+        // is deliberately generous and the result is logged rather than assumed.
+        try {
+          sock.setRecvBufferSize(8 * 1024 * 1024);
+          sock.setSendBufferSize(4 * 1024 * 1024);
+        } catch (err: any) {
+          log.warn(`[McpBus] Could not resize socket buffers: ${err?.message}`);
+        }
+        try {
+          log.info(
+            `[McpBus] UDP buffers: receive ${Math.round(sock.getRecvBufferSize() / 1024)} KiB, ` +
+            `send ${Math.round(sock.getSendBufferSize() / 1024)} KiB`,
+          );
+        } catch { /* not every platform reports these */ }
         this.ready = true;
         log.debug(`[McpBus] Shared UDP socket bound to :${MCP_PORT}`);
         for (const { ip, buf } of this.sendQueue) {
