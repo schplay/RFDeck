@@ -24,8 +24,22 @@ const PUSH_INTERVAL_MS  = 500;   // min accepted by G3/G4 firmware; 250 returns 
 const PUSH_TIMEOUT_S    = 60;
 /** Unanswered offline cycles before an address stops being asked at the fast rate. */
 const UNANSWERED_ATTEMPTS_BEFORE_BACKOFF = 4;
-/** How often an address that has never answered is tried once backed off. */
-const SLOW_PROBE_MS = 5 * 60_000;
+/**
+ * How often an address that has never answered is tried once backed off.
+ *
+ * Thirty seconds, not five minutes. Five was chosen against the wrong risk: the
+ * DMX lock-ups came from the discovery sweep commanding *every address on the
+ * network*, tens of thousands of them, not from one client politely retrying the
+ * single address an operator put in the inventory. Two datagrams to one host every
+ * half minute is nothing to a lighting node.
+ *
+ * What five minutes did cost was real. A receiver that keeps its address and is
+ * simply switched off — the ordinary case, a rack powered down overnight — is
+ * found by its own client and nothing else. At five minutes that is how long an
+ * operator stands watching a powered-on rig that RFDeck still calls offline. It
+ * was a large part of the ten minutes observed on a real rack.
+ */
+const SLOW_PROBE_MS = 30_000;
 
 const RESUB_INTERVAL_MS = 8_000;  // re-subscribe every 8s; some firmware drops subscription early in squelch/RF_Mute state
 const OFFLINE_MS        = 15_000; // 15s — 30 missed 500ms packets before declaring offline

@@ -76,8 +76,16 @@ describe('an address that never answers', () => {
 
     // Ten minutes of silence. The old behaviour was a subscription every eight
     // seconds forever — about seventy-five of them aimed at a lighting node.
+    //
+    // The bound is not as low as it could be, deliberately. This client only ever
+    // talks to the one address an operator put in the inventory, so the cost to a
+    // host that is not a receiver is two datagrams every thirty seconds, while the
+    // benefit is that a receiver switched back on at its own address is found in
+    // half a minute rather than five. The lock-ups came from the discovery sweep
+    // commanding tens of thousands of addresses, which is a different thing and is
+    // bounded elsewhere.
     elapse(10 * 60);
-    expect(subscriptions().length).toBeLessThan(20);
+    expect(subscriptions().length).toBeLessThan(40);
   });
 
   it('is still tried occasionally, so a receiver switched off comes back on its own', () => {
