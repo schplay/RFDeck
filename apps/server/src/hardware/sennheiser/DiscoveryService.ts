@@ -378,7 +378,22 @@ export class DiscoveryService extends EventEmitter {
     log.debug('[Discovery] On-demand scan started');
     const before = this.seenIps.size;
     try {
-      void this.runUdpProbes();
+      // Finished before the HTTP sweep starts, not alongside it.
+      //
+      // These are the only way a G3/G4 is ever found — they do not listen on 443,
+      // so the HTTP sweep is irrelevant to them. Fired off with `void` they ran
+      // concurrently with a sweep opening 256 connections across tens of
+      // thousands of addresses, which saturates the event loop: the short pause
+      // between probe batches stretched out under that load and the probes were
+      // starved, going out long after the devices had been asked and stopped
+      // waiting. G3s stopped being discovered at all the moment that became
+      // concurrent.
+      //
+      // Awaiting costs a few seconds on a /16 and is what makes the probes
+      // arrive. The failure is logged rather than swallowed, because a UDP sweep
+      // that threw silently would take every G3 with it.
+      await this.runUdpProbes().catch(err =>
+        log.warn(`[Discovery] MCP probe sweep failed: ${err?.message ?? err}`));
       // A guard against a sweep that never returns, not a deadline for one that
       // is working.
       //
@@ -611,7 +626,9 @@ export class DiscoveryService extends EventEmitter {
     // that is dropped on the way out.
     const targets = this.sweepTargets();
     const total = targets.reduce((n, t) => n + t.addresses.length, 0);
-    log.debug(`[Discovery] MCP unicast probe across ${total} address(es)`);
+    // `info`: this is the only thing that finds a G3/G4, and its absence is
+    // indistinguishable from a network with no receivers on it.
+    log.info(`[Discovery] MCP unicast probe across ${total} address(es)`);
 
     let inBatch = 0;
     for (const { addresses } of targets) {
