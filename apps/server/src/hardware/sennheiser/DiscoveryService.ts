@@ -66,11 +66,20 @@ const SHURE_PORT = 2202;
 // for addresses that swallow packets rather than refusing them.
 const HOST_PROBE_TIMEOUT_MS = 400;
 
-// How many connects are in flight at once while sweeping. Measured, not
-// guessed: 512 swept a /16 in 51s and found every host on it; 2048 exhausted
-// the socket table and reported an empty network in 15s. The failure mode of
-// too much concurrency is silence, so this stays where it was proven.
-const HOST_PROBE_CONCURRENCY = 512;
+// How many connects are in flight at once while sweeping.
+//
+// This was 512, chosen by measuring how fast a /16 could be swept. That was the
+// wrong thing to optimise. Five hundred simultaneous half-open connections is
+// enough to exhaust the connection-tracking table on an ordinary venue router,
+// and when a sweep repeats every minute — which it does for as long as a device
+// is missing — the effect is continuous. It showed up as the server's own
+// outbound connections failing: git fetches timing out on a network with nothing
+// else wrong with it.
+//
+// RFDeck is a guest on somebody's show network. A sweep taking longer is a cost
+// to RFDeck; a sweep taking out the network is a cost to everyone, and it is not
+// ours to spend. Slower and invisible beats faster and disruptive.
+const HOST_PROBE_CONCURRENCY = 48;
 
 // Upper bound on one sweep, so a scan can never hang forever. Well above the
 // ~51s a full /16 takes, because cutting a working sweep short is what made a

@@ -164,6 +164,9 @@ export class DeviceManagerService extends EventEmitter {
   // devices drop at once (e.g. network switch reboot).
   private lastAutoScanAt = 0;
   private readonly AUTO_SCAN_COOLDOWN_MS = 20_000;
+  /** How long to wait before the next automatic sweep. Grows while nothing changes. */
+  private autoScanGapMs = 20_000;
+  private readonly AUTO_SCAN_GAP_MAX_MS = 5 * 60_000;
   // RF dropout alert debounce: EW-DX diversity switching can report 0% then 100%
   // within the same second. Only alert when the signal stays low for the confirm
   // window, and don't re-alert the same channel more than once a minute.
@@ -371,6 +374,7 @@ export class DeviceManagerService extends EventEmitter {
         this.maybeAutoScan();
       } else if (this.lastUnreachableSignature !== '') {
         this.lastUnreachableSignature = '';
+        this.resetAutoScanGap();
         log.warn('[DeviceManager] All tracked devices are reachable again');
       }
     }, 60_000);
@@ -734,6 +738,8 @@ export class DeviceManagerService extends EventEmitter {
 
     client.on('connected', async () => {
       this.lastSeen.set(id, Date.now());
+      // A device came back: the picture is moving, so drop back to looking often.
+      this.resetAutoScanGap();
       log.info(`[DeviceManager] Connected to ${ip} via ${client instanceof SSCClient ? 'SSCv2' : 'G3/G4'}`);
       // Cancel any pending lost timer — device reconnected within the grace period
       const pendingLost = this.lostTimers.get(ip);
@@ -1167,10 +1173,16 @@ export class DeviceManagerService extends EventEmitter {
       return;
     }
     this.discoveredCache.set(`${device.ip}:${device.port}`, device);
+    // Something is appearing on the network: worth looking again soon.
+    this.resetAutoScanGap();
     this.emit('device:discovered', device);
     // If this IP isn't already tracked, check whether it's a known inventory
     // device that changed IP (e.g. DHCP re-assignment after power cycle).
-    this.tryAutoReconcile(device.ip, device.port)
+    // The name comes with the discovery and was being dropped here, so every
+    // unmatched-device alert reported the address where the name should be —
+    // "a G3/G4 named 10.2.3.5 was found at 10.2.3.5" — which reads like RFDeck
+    // knows nothing about a device it had just been told the name of.
+    this.tryAutoReconcile(device.ip, device.port, device.name)
       .then(() => {
         // If the first attempt failed (e.g. ARP cache not yet populated on Windows),
         // schedule a retry after 3s without going through the seenIps-gated discovery
@@ -1179,7 +1191,7 @@ export class DeviceManagerService extends EventEmitter {
                         this.clients.has(`${device.ip}:${device.port}-legacy`);
         if (!tracked) {
           setTimeout(() => {
-            this.tryAutoReconcile(device.ip, device.port).catch(() => {});
+            this.tryAutoReconcile(device.ip, device.port, device.name).catch(() => {});
           }, 3_000);
         }
       })
@@ -1914,10 +1926,28 @@ export class DeviceManagerService extends EventEmitter {
 
   // Auto-triggered when a device goes offline; debounced to avoid hammering
   // the network when several devices drop at the same time.
+  /** Something changed, so look again promptly rather than at the backed-off rate. */
+  private resetAutoScanGap(): void {
+    this.autoScanGapMs = this.AUTO_SCAN_COOLDOWN_MS;
+  }
+
   private maybeAutoScan() {
     const now = Date.now();
-    if (now - this.lastAutoScanAt < this.AUTO_SCAN_COOLDOWN_MS) return;
+    if (now - this.lastAutoScanAt < this.autoScanGapMs) return;
     this.lastAutoScanAt = now;
+
+    // Back off while nothing is changing.
+    //
+    // A sweep repeats for as long as a device is missing, and a device can be
+    // missing because it is switched off for the weekend. At a fixed twenty
+    // seconds that is a permanent scan of somebody's network, which is how
+    // RFDeck ended up interfering with traffic that had nothing to do with it.
+    //
+    // The gap doubles each time a sweep changes nothing and resets the moment
+    // anything does — a device connecting, or discovery finding something. So a
+    // rig that comes back is still found quickly, and a rig that is genuinely
+    // away is looked for a few times an hour instead of a few times a minute.
+    this.autoScanGapMs = Math.min(this.autoScanGapMs * 2, this.AUTO_SCAN_GAP_MAX_MS);
     log.debug('[DeviceManager] Device went offline — triggering discovery scan');
     void this.scanForMissingDevices();
   }
