@@ -118,10 +118,16 @@ export class G3G4Client extends EventEmitter {
       this.msgHandler = null;
     }
     this.isConnected = false;
-    // Reset, so a client restarted against the same address earns its confirmation
-    // again. Addresses change hands.
+    // Every piece of per-run state, together.
+    //
+    // These are reset as a set because they are only correct as a set: a client
+    // restarted against the same address has to earn its confirmation again
+    // (addresses change hands), and has to be able to report the next disconnect
+    // (leaving `disconnectSignaled` true would swallow it silently, which is the
+    // failure this file has already had once).
     this.confirmed = false;
     this.unansweredCycles = 0;
+    this.disconnectSignaled = false;
     if (this.slowProbeTimer) { clearInterval(this.slowProbeTimer); this.slowProbeTimer = null; }
   }
 
