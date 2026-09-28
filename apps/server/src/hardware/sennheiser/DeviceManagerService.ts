@@ -79,6 +79,43 @@ export function secondaryAddresses(
   );
 }
 
+/**
+ * Which unidentified G3/G4 row, if any, a reported name belongs to.
+ *
+ * Pure and exported, because this is the one place RFDeck adopts a device on
+ * evidence weaker than a hardware address, and the bounds on it are the whole
+ * safety argument. The caller supplies only rows that have never been identified;
+ * a row carrying a stored MAC must never reach here, or a name would override
+ * real evidence.
+ */
+export function chooseByName<T extends { name: string | null; ip: string; port: number }>(
+  discoveredName: string | undefined,
+  candidates: T[],
+  isConnected: (d: T) => boolean,
+): { match?: T; reason?: string } {
+  const wanted = (discoveredName ?? '').trim().toLowerCase();
+  if (!wanted) return { reason: 'the device reported no name' };
+
+  // Discovery invents these when a device has not said what it is called, so
+  // every unnamed receiver on the network would otherwise look like one device.
+  if (/^sennheiser g[34e]?[\s/]*g?[34]?\s*\(/i.test(wanted) || /^unknown/i.test(wanted)) {
+    return { reason: `"${discoveredName}" is a placeholder, not a name anybody set` };
+  }
+
+  const byName = candidates.filter(d => (d.name ?? '').trim().toLowerCase() === wanted);
+  if (byName.length === 0) return { reason: `no unidentified device is called "${discoveredName}"` };
+
+  const offline = byName.filter(d => !isConnected(d));
+  if (offline.length === 0) return { reason: `"${discoveredName}" is already connected at its own address` };
+  if (offline.length > 1) {
+    return {
+      reason: `${offline.length} offline devices are called "${discoveredName}", `
+        + 'which is too ambiguous to adopt automatically',
+    };
+  }
+  return { match: offline[0] };
+}
+
 export class DeviceManagerService extends EventEmitter {
   private discovery: DiscoveryService;
   private io: Server;
@@ -1344,24 +1381,62 @@ export class DeviceManagerService extends EventEmitter {
         );
       }
 
-      // The MAC is the only key trusted here, because it is the only one the
-      // hardware cannot be talked out of.
-      //
-      // This used to fall back to matching the label the unit reports over
-      // MCP, on the reasoning that it is set on the device and survives an
-      // address change. Both halves are true and it is still the wrong key: a
-      // label is not ours, carries no guarantee of being unique, and is edited
-      // at the rack by whoever is holding the receiver. Matching on it meant a
-      // relabelled G3 could be adopted as a different unit's record — silently
-      // moving that unit's history, patch and mic-check ticks onto the wrong
-      // hardware. A device RFDeck cannot identify is reported as unmatched,
-      // below, and the operator points it at the right row. Being asked is a
-      // far better outcome than being wrong.
+      // The MAC first, because it is the one key the hardware cannot be talked
+      // out of.
       const stale = mac
         ? await prisma.inventoryDevice.findFirst({ where: { mac, active: true, NOT: { ip } } })
         : null;
 
-      if (!stale) {
+      // ── The name, when there is no stored MAC to compare against ──────────
+      //
+      // This is not a nicety, it is the only other thing a G3/G4 will tell us.
+      // MCP carries no serial and no identifier; the MAC comes from the OS
+      // neighbour table and is only ever *written to a row* when the device
+      // connects at the address that row already names. So the first time a
+      // receiver changes address before it has been recorded, the cycle closes:
+      // it cannot be matched without a MAC, cannot be given one without
+      // connecting, cannot connect until its row has the right address, and the
+      // row only gets that by being matched. Eleven receivers switched off
+      // overnight came back and none of them could ever be recognised again.
+      //
+      // Name matching was removed once for a real reason — a relabelled unit
+      // could be adopted onto another unit's record and take its history and
+      // patch with it — and removing it left nothing at all. So it is back with
+      // the conditions that make that impossible:
+      //
+      //   • only a row that has never been identified (`mac: null`), so no
+      //     stored evidence is ever overridden;
+      //   • only when the newcomer's MAC is readable and claimed by nobody,
+      //     so it can be recorded here and never needed again;
+      //   • only when exactly one offline row carries that name — two devices
+      //     called "Vocal 1" is a question for the operator, not a coin toss;
+      //   • never a discovery placeholder, which is just the address in
+      //     disguise and would make every unnamed receiver look identical.
+      //
+      // The MAC is written in the same breath, so this weaker evidence is used
+      // at most once per device and never again.
+      let matched = stale;
+      if (!matched && mac) {
+        const candidates = await prisma.inventoryDevice.findMany({
+          where: { port: 53212, active: true, mac: null, NOT: { ip } },
+        });
+        const decision = chooseByName(discoveredName, candidates, d =>
+          !!this.clients.get(`${d.ip}:${d.port}`)?.isConnected ||
+          !!this.clients.get(`${d.ip}:${d.port}-legacy`)?.isConnected);
+
+        if (decision.match) {
+          matched = decision.match;
+          log.info(
+            `[DeviceManager] "${matched.name}" recognised at ${ip} by the name it reports ` +
+            `(was ${matched.ip}); recording MAC ${mac} so this never depends on a name again`,
+          );
+          await prisma.inventoryDevice.update({ where: { id: matched.id }, data: { mac } });
+        } else if (decision.reason) {
+          log.info(`[DeviceManager] ${ip} not recognised by name: ${decision.reason}`);
+        }
+      }
+
+      if (!matched) {
         // A discovered G3 that matches nothing, while G3 rows sit unreachable,
         // is almost certainly one of them wearing a new address that cannot be
         // proven. Silence here left the operator staring at offline devices
@@ -1394,13 +1469,13 @@ export class DeviceManagerService extends EventEmitter {
         );
         return;
       }
-      if (this.clients.get(`${stale.ip}:${stale.port}`)?.isConnected) {
-        log.debug(`[DeviceManager] tryAutoReconcile: old client at ${stale.ip}:${stale.port} still connected`);
+      if (this.clients.get(`${matched.ip}:${matched.port}`)?.isConnected) {
+        log.debug(`[DeviceManager] tryAutoReconcile: old client at ${matched.ip}:${matched.port} still connected`);
         return;
       }
 
-      log.info(`[DeviceManager] Auto-reconnect: G3/G4 "${stale.name}" found at new IP ${ip} (was ${stale.ip})`);
-      await this.migrateDeviceIp(stale, ip, port);
+      log.info(`[DeviceManager] Auto-reconnect: G3/G4 "${matched.name}" found at new IP ${ip} (was ${matched.ip})`);
+      await this.migrateDeviceIp(matched, ip, port);
     }
   }
 
