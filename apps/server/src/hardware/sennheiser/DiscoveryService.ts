@@ -108,6 +108,12 @@ export function scanGuardMs(addressCount: number): number {
   return Math.max(SCAN_GUARD_FLOOR_MS, worstCase * 2);
 }
 
+// The probe that makes a G3/G4 answer: a five-second subscription, the shortest
+// the protocol takes. Discovery has no use for a long one — it wants a reply, not
+// a stream — and a short window is what limits what a host that is not a receiver
+// is asked to do.
+const MCP_PROBE = 'Push 5 500 3';
+
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
 
@@ -544,7 +550,7 @@ export class DiscoveryService extends EventEmitter {
   /**
    * Look for G3/G4 receivers.
    *
-   * ── What this must never do again ────────────────────────────────────────
+   * ── What this must not do, and what it turned out it must ────────────────
    *
    * This used to send two datagrams to **every address on the subnet** — up to
    * 1022 per interface — and one of them was `Push`, which is not a question but
@@ -556,12 +562,18 @@ export class DiscoveryService extends EventEmitter {
    * do it whatever port it names. RFDeck has no business issuing device commands
    * to hardware that has never said it is a receiver.
    *
-   * So: `Push` is gone from discovery entirely. Tracked devices subscribe through
-   * their own client once they are known to be receivers, which is the only place
-   * a subscription belongs. Discovery asks `Name` and nothing else — a read, not
-   * an instruction — and asks it by **broadcast**, one datagram per interface,
-   * which reaches every receiver on the segment without addressing anything that
-   * is not listening for it.
+   * Removing `Push` outright was tried and was wrong: it is what makes a G3/G4
+   * talk. Without it every G3 and G4 went silent — not discovered, not connected,
+   * and Network Scan came back empty. The protocol does not offer a politer way
+   * to ask.
+   *
+   * So the subscription is back, and the thing that actually caused harm is dealt
+   * with where it belongs: how often this runs. A sweep repeated every twenty
+   * seconds for as long as any device was missing, which on a rig switched off
+   * overnight is permanent. The gap between automatic sweeps now backs off to
+   * minutes, and the subscription requested here is a five-second one, so a host
+   * that is not a receiver sees two datagrams occasionally rather than a
+   * continuous stream of commands.
    *
    * The per-host unicast sweep stays, because a receiver that has moved to another
    * subnet is exactly what it is for and nobody should have to press a button to
@@ -571,10 +583,9 @@ export class DiscoveryService extends EventEmitter {
    * missing hardware, and otherwise leaves the network alone.
    */
   private runUdpProbes() {
-    // Broadcast only, and `Name` only: a question every G3/G4 answers and
-    // nothing else is addressed by.
     const broadcasts = mcpBus.getBroadcastAddresses();
-    log.debug(`[Discovery] MCP broadcast query to: ${broadcasts.join(', ')}`);
+    log.debug(`[Discovery] MCP broadcast probe to: ${broadcasts.join(', ')}`);
+    mcpBus.sendToMany(broadcasts, MCP_PROBE);
     mcpBus.sendToMany(broadcasts, 'Name');
 
     // `Name` only here too — a receiver on another subnet, where broadcast does
@@ -587,6 +598,7 @@ export class DiscoveryService extends EventEmitter {
     for (const { addresses } of this.sweepTargets()) {
       for (const ip of addresses) {
         if (this.excluded(ip)) continue;
+        mcpBus.sendTo(ip, MCP_PROBE);
         mcpBus.sendTo(ip, 'Name');
       }
     }

@@ -1,16 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// What RFDeck is allowed to transmit to an address that has not identified itself.
+// How long RFDeck keeps commanding an address that never answers.
 //
-// DMX nodes on a venue network were locking up, and it happened when RFDeck
-// restarted. The cause was this client: it opened with `Push` — the MCP
-// subscription command — aimed at whatever address its inventory row named, with
-// no evidence anything there was a receiver. A row whose device has moved points
-// at an address somebody else now holds, and on a restart every stale row starts
-// at once.
+// DMX nodes on a venue network were locking up, and it tracked RFDeck restarts.
+// The cause was this client: an inventory row whose device has moved points at an
+// address somebody else now holds, and this re-sent `Push` — the MCP subscription
+// command — to it every fifteen seconds, forever, starting again on every restart.
+// A restart starts every stale row's client at once.
 //
-// The rule these pin: ask first, command only after an answer. A query costs the
-// recipient one ignored datagram; a subscription asks it to start streaming.
+// The first attempt at a fix removed the subscription and opened with a bare
+// `Name` instead. That broke every G3 and G4: `Push` is what makes them talk, so
+// they went silent, undiscovered and unconnectable. The protocol offers no politer
+// way to ask.
+//
+// So the subscription stays and the *endlessness* goes. These pin that: a few
+// attempts at the fast rate, then minutes apart, and never abandoned — while a
+// device that has answered keeps the renewal its firmware needs.
 
 const sent: Array<{ ip: string; command: string }> = [];
 
@@ -25,6 +30,18 @@ vi.mock('./McpBus', () => ({
   },
 }));
 
+/**
+ * Advance in steps rather than one jump.
+ *
+ * A single large `advanceTimersByTime` runs a repeating interval to completion
+ * against nested timeouts in an order real time never produces, which made a
+ * working backoff look like it was not engaging at all. Stepping matches how the
+ * clock actually moves.
+ */
+function elapse(seconds: number, stepSeconds = 5) {
+  for (let t = 0; t < seconds; t += stepSeconds) vi.advanceTimersByTime(stepSeconds * 1000);
+}
+
 const IP = '10.2.3.234';
 const commands = () => sent.filter(s => s.ip === IP).map(s => s.command);
 const subscriptions = () => commands().filter(c => c.startsWith('Push'));
@@ -33,6 +50,7 @@ let client: any;
 
 beforeEach(async () => {
   sent.length = 0;
+  vi.useFakeTimers();
   const { G3G4Client } = await import('./G3G4Client');
   client = new G3G4Client(IP, 53212);
 });
@@ -42,76 +60,84 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('an address that has not answered', () => {
-  it('is asked, never commanded', () => {
+describe('reaching a device at all', () => {
+  it('subscribes on start, because that is what makes a G3/G4 answer', () => {
     client.startPolling();
-    // A bare `Name` is a read. Anything a lighting node receives should cost it
-    // nothing more than ignoring one datagram.
-    expect(commands()).toEqual(['Name']);
-    expect(subscriptions()).toEqual([]);
-  });
-
-  it('is not subscribed to when it stays silent', () => {
-    vi.useFakeTimers();
-    client.startPolling();
-    sent.length = 0;
-
-    // Fifteen seconds of silence used to re-send `Push`, and again every fifteen
-    // seconds after that, for as long as nothing answered.
-    vi.advanceTimersByTime(60_000);
-    expect(subscriptions()).toEqual([]);
-  });
-
-  it('is not subscribed to by the resubscribe timer either', () => {
-    vi.useFakeTimers();
-    client.startPolling();
-    sent.length = 0;
-    // The resubscribe interval must not be running at all before confirmation.
-    vi.advanceTimersByTime(5 * 60_000);
-    expect(subscriptions()).toEqual([]);
+    // Removing this is what left every G3 and G4 silent.
+    expect(subscriptions().length).toBeGreaterThan(0);
+    expect(commands()).toContain('Name');
   });
 });
 
-describe('an address that answers MCP', () => {
+describe('an address that never answers', () => {
+  it('is not commanded every fifteen seconds indefinitely', () => {
+    client.startPolling();
+    sent.length = 0;
+
+    // Ten minutes of silence. The old behaviour was a subscription every eight
+    // seconds forever — about seventy-five of them aimed at a lighting node.
+    elapse(10 * 60);
+    expect(subscriptions().length).toBeLessThan(20);
+  });
+
+  it('is still tried occasionally, so a receiver switched off comes back on its own', () => {
+    client.startPolling();
+    sent.length = 0;
+
+    // Backed off is not abandoned: a rig off for the weekend must return without
+    // anybody pressing anything.
+    elapse(30 * 60);
+    expect(subscriptions().length).toBeGreaterThan(0);
+  });
+
+  it('slows down rather than stopping dead after its first few attempts', () => {
+    client.startPolling();
+    sent.length = 0;
+
+    elapse(2 * 60);
+    const early = subscriptions().length;
+    elapse(2 * 60);
+    const later = subscriptions().length - early;
+
+    // The rate must fall sharply, not merely not rise.
+    expect(early).toBeGreaterThan(0);
+    expect(later).toBeLessThan(early);
+  });
+});
+
+describe('an address that answers', () => {
   const answer = () => client.handleData('Name Vocal 1\r');
 
-  it('is subscribed to, because now it is known to be a receiver', () => {
+  it('keeps its subscription renewed, which firmware in RF_Mute needs', () => {
     client.startPolling();
-    sent.length = 0;
     answer();
+    sent.length = 0;
+    elapse(5 * 60);
     expect(subscriptions().length).toBeGreaterThan(0);
   });
 
-  it('is asked for its frequency only after it has answered', () => {
+  it('is not left on the slow rate it may have fallen back to', () => {
+    // A receiver that was switched off, backed off, and then powered on again has
+    // to return to normal service rather than stay on a five-minute probe.
     client.startPolling();
-    expect(commands()).not.toContain('Frequency');
-    answer();
-    expect(commands()).toContain('Frequency');
-  });
-
-  it('keeps its subscription alive once confirmed', () => {
-    // Some firmware drops the subscription in RF_Mute before the window expires,
-    // so a device that has answered before is re-subscribed rather than re-asked.
-    vi.useFakeTimers();
-    client.startPolling();
-    answer();
+    elapse(10 * 60);   // fall back
+    answer();          // it comes back
     sent.length = 0;
-    vi.advanceTimersByTime(60_000);
+
+    elapse(90);
     expect(subscriptions().length).toBeGreaterThan(0);
   });
 });
 
-describe('an address that changes hands', () => {
-  it('has to prove itself again after the client is restarted', () => {
-    // Addresses get reassigned. A client stopped and started against the same
-    // address must not carry forward a confirmation earned by different hardware.
+describe('a client restarted against the same address', () => {
+  it('starts over rather than carrying forward what it learned', () => {
+    // Addresses change hands.
     client.startPolling();
     client.handleData('Name Vocal 1\r');
     client.stopPolling();
 
     sent.length = 0;
     client.startPolling();
-    expect(commands()).toEqual(['Name']);
-    expect(subscriptions()).toEqual([]);
+    expect(subscriptions().length).toBeGreaterThan(0);
   });
 });

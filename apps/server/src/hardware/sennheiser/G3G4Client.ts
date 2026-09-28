@@ -22,6 +22,11 @@ import { log } from '../../logger';
 
 const PUSH_INTERVAL_MS  = 500;   // min accepted by G3/G4 firmware; 250 returns error 1020
 const PUSH_TIMEOUT_S    = 60;
+/** Unanswered offline cycles before an address stops being asked at the fast rate. */
+const UNANSWERED_ATTEMPTS_BEFORE_BACKOFF = 4;
+/** How often an address that has never answered is tried once backed off. */
+const SLOW_PROBE_MS = 5 * 60_000;
+
 const RESUB_INTERVAL_MS = 8_000;  // re-subscribe every 8s; some firmware drops subscription early in squelch/RF_Mute state
 const OFFLINE_MS        = 15_000; // 15s — 30 missed 500ms packets before declaring offline
 
@@ -58,24 +63,25 @@ export class G3G4Client extends EventEmitter {
   }
 
   /**
-   * Ask before commanding.
+   * Subscribe, then stop asking if nothing ever answers.
    *
-   * This used to open with `Push` — the MCP subscription command — plus `Name` and
-   * `Frequency`, aimed at whatever address it was handed, with no evidence that
-   * anything there was a receiver. `scheduleResub` then repeated the subscription
-   * on a timer and `handleOffline` re-sent it every fifteen seconds for as long as
-   * nothing answered. Forever, and again on every restart.
+   * `Push` is what makes a G3/G4 talk. An attempt to open with a bare `Name` and
+   * subscribe only after a reply left every G3 and G4 silent: they were never
+   * discovered, never connected, and Network Scan came back empty. Asking politely
+   * is not an option the protocol offers.
    *
-   * An inventory row whose device has moved points at an address somebody else now
-   * holds. On a venue network that is a lighting node, and RFDeck was issuing it a
-   * subscription command every fifteen seconds. DMX nodes were locking up, and the
-   * operator noticed it happened when RFDeck restarted — which is exactly when
-   * every stale row starts its client at once.
+   * The harm was never the subscription itself, it was the endlessness. An
+   * inventory row whose device has moved points at an address somebody else now
+   * holds — on a venue network, a lighting node — and this re-sent `Push` to it
+   * every fifteen seconds forever, and again from the top on every restart. DMX
+   * nodes were locking up, and the operator saw it track RFDeck restarts, which is
+   * when every stale row starts its client at once.
    *
-   * So the opening move is `Name`: a read, which a G3/G4 answers and which asks
-   * nothing of anything else. Only once a valid MCP response has come back does
-   * this subscribe. An address that is not a receiver receives one short query per
-   * retry and never a command.
+   * So the subscription stays and the persistence goes. An address that has never
+   * answered is given a small number of attempts and then left almost entirely
+   * alone — one probe every few minutes instead of four a minute. A device that
+   * *has* answered keeps the behaviour it needs, because firmware in RF_Mute drops
+   * its subscription early and has to be renewed.
    */
   startPolling(_intervalMs?: number) {
     if (this.msgHandler) return; // already started
@@ -83,8 +89,11 @@ export class G3G4Client extends EventEmitter {
     this.msgHandler = (raw: string) => this.handleData(raw);
     mcpBus.addHandler(this.ip, this.msgHandler);
 
-    log.debug(`[G3G4Client] Asking ${this.ip} whether it is a G3/G4 (no subscription yet)`);
+    log.debug(`[G3G4Client] Subscribing to MCP for ${this.ip} via shared UDP :53212`);
+    this.sendSubscribe();
     this.send('Name');
+    this.send('Frequency');
+    this.scheduleResub();
     this.resetOfflineTimer();
   }
 
@@ -95,15 +104,20 @@ export class G3G4Client extends EventEmitter {
       this.msgHandler = null;
     }
     this.isConnected = false;
-    // Reset, so a client restarted against the same address asks again before it
-    // commands anything. Addresses change hands.
+    // Reset, so a client restarted against the same address earns its confirmation
+    // again. Addresses change hands.
     this.confirmed = false;
+    this.unansweredCycles = 0;
+    if (this.slowProbeTimer) { clearInterval(this.slowProbeTimer); this.slowProbeTimer = null; }
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
-  /** True once this address has answered MCP. Nothing is commanded before it does. */
+  /** True once this address has answered MCP. */
   private confirmed = false;
+  /** Consecutive offline cycles with no answer, before backing off. */
+  private unansweredCycles = 0;
+  private slowProbeTimer: NodeJS.Timeout | null = null;
 
   private sendSubscribe() { this.send(`Push ${PUSH_TIMEOUT_S} ${PUSH_INTERVAL_MS} 3`); }
 
@@ -123,18 +137,44 @@ export class G3G4Client extends EventEmitter {
   private handleOffline() {
     this.isConnected = false;
 
-    // Back to asking.
-    //
     // A confirmed receiver that went quiet may simply have dropped its
     // subscription — some firmware does that in RF_Mute before the timeout
-    // expires — so re-subscribing is right for one that has answered before.
-    // For an address that has never answered it is not: that is the path that
-    // had RFDeck commanding a lighting node every fifteen seconds.
+    // expires — so re-subscribing immediately is right for one that has answered
+    // before.
+    //
+    // An address that has never answered is a different thing entirely, and this
+    // is where a lighting node was being commanded four times a minute
+    // indefinitely. After a few unanswered attempts the fast cycle stops and the
+    // address is tried once every few minutes instead. It is never abandoned —
+    // a receiver switched off for the weekend still comes back on its own — but
+    // it stops being hammered.
     if (this.confirmed) {
       this.sendSubscribe();
-    } else {
-      this.clearResub();
-      this.send('Name');
+      return;
+    }
+
+    this.unansweredCycles++;
+    if (this.unansweredCycles <= UNANSWERED_ATTEMPTS_BEFORE_BACKOFF) {
+      this.sendSubscribe();
+      // Re-arm, so the count keeps advancing. Without this the offline timer
+      // fired exactly once, the counter stuck at one, and the resubscribe
+      // interval carried on at full rate forever — the backoff existed but was
+      // unreachable, which a test caught before it shipped.
+      this.resetOfflineTimer();
+      return;
+    }
+
+    this.clearResub();
+    if (!this.slowProbeTimer) {
+      log.info(
+        `[G3G4Client] ${this.ip} has not answered MCP after ` +
+        `${UNANSWERED_ATTEMPTS_BEFORE_BACKOFF} attempts — backing off to one probe ` +
+        `every ${SLOW_PROBE_MS / 60_000} minutes in case it is a receiver that is switched off`,
+      );
+      this.slowProbeTimer = setInterval(() => {
+        this.sendSubscribe();
+        this.send('Name');
+      }, SLOW_PROBE_MS);
     }
     if (!this.disconnectSignaled) {
       this.disconnectSignaled = true;
@@ -155,13 +195,13 @@ export class G3G4Client extends EventEmitter {
     }
 
     if (!this.confirmed) {
-      // It answered MCP, so it is a receiver and may be subscribed to. This is
-      // the only place a subscription is ever started.
+      // It answered, so it is a receiver: leave the slow probe behind and keep a
+      // live subscription.
       this.confirmed = true;
-      log.debug(`[G3G4Client] ${this.ip} answered MCP — subscribing`);
-      this.sendSubscribe();
-      this.send('Frequency');
-      this.scheduleResub();
+      this.unansweredCycles = 0;
+      if (this.slowProbeTimer) { clearInterval(this.slowProbeTimer); this.slowProbeTimer = null; }
+      if (!this.resubTimer) this.scheduleResub();
+      log.debug(`[G3G4Client] ${this.ip} answered MCP`);
     }
 
     if (!this.isConnected) {
