@@ -173,6 +173,38 @@ describe('an address that answers', () => {
   });
 });
 
+describe('a receiver that comes back after being away', () => {
+  it('is polled normally again, not left on the slow probe forever', () => {
+    // The recovery used to run only on the first packet a client ever saw, so a
+    // receiver that went quiet once and backed off stayed backed off: answering
+    // again did not restart the resubscribe timer, its Push subscription expired,
+    // and it dropped out again a few minutes later. Every G3 and G4 ended up
+    // offline that way, permanently, after one hiccup.
+    client.startPolling();
+    client.handleData('Name Vocal 1\r');     // alive
+    elapse(5 * 60);                        // switched off long enough to back off
+    client.handleData('Name Vocal 1\r');     // switched back on
+    sent.length = 0;
+
+    // Normal cadence is the 8s resubscribe; the slow probe is 30s. Inside one
+    // minute a healthy device should have been renewed several times.
+    elapse(60);
+    expect(subscriptions().length).toBeGreaterThan(3);
+  });
+
+  it('stays online rather than dropping out again after recovering', () => {
+    client.startPolling();
+    client.handleData('Name Vocal 1\r');
+    elapse(5 * 60);
+
+    const seen: string[] = [];
+    client.on('disconnected', (why: string) => seen.push(why));
+    // Back, and answering steadily the way a live receiver does.
+    for (let t = 0; t < 12; t++) { client.handleData('RF1 42\r'); elapse(5); }
+    expect(seen).toHaveLength(0);
+  });
+});
+
 describe('a client restarted against the same address', () => {
   it('starts over rather than carrying forward what it learned', () => {
     // Addresses change hands.

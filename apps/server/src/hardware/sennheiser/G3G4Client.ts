@@ -208,15 +208,24 @@ export class G3G4Client extends EventEmitter {
       return;
     }
 
+    // Every packet, not only the first.
+    //
+    // This recovery used to sit inside `if (!this.confirmed)`, which runs once in
+    // the life of a client. So the first time a receiver went quiet long enough to
+    // back off, it stayed backed off: answering again did not restore the
+    // resubscribe timer, and without that its Push subscription expired, the data
+    // stopped, and it dropped out again — permanently, a few minutes after the
+    // first hiccup. Every G3 and G4 ended up offline that way.
+    //
+    // Being heard from is what proves an address is a live receiver, and it proves
+    // it every time, not once.
     if (!this.confirmed) {
-      // It answered, so it is a receiver: leave the slow probe behind and keep a
-      // live subscription.
       this.confirmed = true;
-      this.unansweredCycles = 0;
-      if (this.slowProbeTimer) { clearInterval(this.slowProbeTimer); this.slowProbeTimer = null; }
-      if (!this.resubTimer) this.scheduleResub();
       log.debug(`[G3G4Client] ${this.ip} answered MCP`);
     }
+    this.unansweredCycles = 0;
+    if (this.slowProbeTimer) { clearInterval(this.slowProbeTimer); this.slowProbeTimer = null; }
+    if (!this.resubTimer) this.scheduleResub();
 
     if (!this.isConnected) {
       this.isConnected = true;
