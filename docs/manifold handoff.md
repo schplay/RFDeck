@@ -6,6 +6,10 @@ what manifold relies on, so a change here does not quietly break the console, an
 Manifold's own copy, with the full history, is `plans/handoff/RFDeck.md` in the manifold repo. Read against RFDeck
 at `5242955`.
 
+**RFDeck answered on 2026-09-28** — all three asks accepted and planned, shapes below under "RFDeck's answers", with
+the reasoning in `docs/MANIFOLD_INTEGRATION_PLAN.md`. The display-name write that blocks W13.4 is first. Also below:
+what changed in RFDeck after `5242955`, so the client's test fake does not drift.
+
 ## The relationship
 
 **Manifold is a client of RFDeck; RFDeck stays the source of truth for wireless devices.** A console shows RFDeck's
@@ -82,6 +86,75 @@ converts at each edge; a unit change on any of the three would retune the wrong 
    device credential for integrations) would match what that setting already means.
 3. *Optional:* a `GET /channels` (and `GET /alerts`) snapshot, so a REST-only or reconnecting client could recover
    without waiting for the socket replay. Not needed today.
+
+## RFDeck's answers (2026-09-28)
+
+All three asks are accepted and planned — `docs/MANIFOLD_INTEGRATION_PLAN.md` has the reasoning. Shapes below are
+settled enough to write the client against; anything still open is marked as such.
+
+### 1. Channel display name — building first, since it is what blocks W13.4
+
+```
+PUT /channels/:id/display-name      { "displayName": "Vox Lead" }   → the updated Channel
+PUT /channels/:id/display-name      { "displayName": null }         → clears it
+```
+
+Auth and refusals as every other write. `:id` is the channel id you already store (`<inventory row id>:<slot>`);
+it contains a colon, so percent-encode it in the path rather than relying on a client library to leave it alone.
+
+**It overlays `name`, so manifold needs no change to read it.** `Channel.name` becomes the display name when one is
+set and the receiver's own label otherwise. A new field `sourceName` carries the receiver's label unchanged, for
+views that want to show both — additive, ignore it if you do not.
+
+The write emits `channel:telemetry` for that channel immediately rather than waiting for the next poll, so "a write
+shows up when telemetry comes back changed" stays true and the console does not have to special-case its own writes.
+
+RFDeck does not rename the device on the hardware. It keeps a name beside the receiver's, it does not overwrite it.
+
+Alert messages will use the display name too — an alert naming a channel differently from the strip it came from is
+worse than one with no name in it.
+
+### 2. Tokens that survive a restart — building
+
+They deliberately do not today; that is a gap, not a decision, and it is being closed. A token will be persisted and
+keep working across a restart, so `reauthHours = 0` will mean what it says.
+
+Two behaviours worth knowing before they land:
+
+- **Changing the PIN invalidates every token.** Setting a new PIN is how an operator revokes access, so a persisted
+  token must not outlive it. The console will get `PIN_REQUIRED` and should ask for the PIN again, exactly as now.
+- Tokens are stored hashed, never in the clear. No change for the client; noted so nobody expects to read one out of
+  the database for support.
+
+Nothing about the login flow, the header, or the handshake changes.
+
+### 3. `GET /channels` and `GET /alerts` — planned, last
+
+Both will return what the socket replays on connect. Taken on despite "not needed today", because a REST-only
+client, a health check and a support bundle all currently have to open a socket to see what RFDeck thinks is
+connected. It is queued behind the two above; say so if that order is wrong for you.
+
+### Confirmed and now written down as contracts
+
+- **Long polling stays.** It works today only because no `transports` option is set on the Socket.io server. That was
+  undocumented, and `transports: ['websocket']` is exactly the kind of tidy-up somebody makes on a quiet afternoon —
+  it would disconnect the console with nothing on RFDeck's side to say why. There is now a comment at the server
+  saying it is a contract.
+- **Units are unchanged and now stated at each edge:** telemetry `frequency` in kHz, `channel:frequency` control in
+  Hz, coordination routes in kHz.
+- **Channel ids are unchanged** and stay stable across restarts, firmware updates and address changes.
+
+## What changed in RFDeck since `5242955`
+
+None of it breaks the contract above, but the fake should not go stale:
+
+| Change | What it means for manifold |
+|---|---|
+| New alert type `DEVICE_UNMATCHED` | A discovered receiver that could not be matched to an offline inventory row. Arrives as an ordinary `Alert`; only matters if the console enumerates types by name |
+| New socket event `inventory:updated` | Emitted when the inventory is replaced wholesale by a configuration restore. Treat exactly like `device:*` — refetch `GET /inventory` |
+| `Player` gained `stageX` / `stageY` | Additive, for a stage-plot view. Both `null` when unplaced |
+| Webhooks removed from RFDeck | They are a Meros Cloud feature now. `/notifications/webhooks` returns 404. Not used by manifold |
+| Discovery and device sync reworked | Address re-linking now covers every protocol rather than two; probes are paced and the UDP socket buffers sized. No visible contract change, but telemetry on a large flat network should be steadier and devices that move should re-link on their own |
 
 ## The original questions, answered from the code (2026-09-23, updated 2026-09-28)
 
