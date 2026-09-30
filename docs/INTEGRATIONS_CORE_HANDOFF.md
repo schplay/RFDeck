@@ -60,7 +60,7 @@ TypeScript types ship in `index.d.ts`. In short:
 ```ts
 import { Core, IntegrationsError } from '@meros/integrations';
 
-const core = new Core();                       // one per process
+const core = new Core({ bindAddress });        // one per process; see below
 const id = core.open({
   device: 'sennheiser-ew-dx',                  // spec id
   model: 'em-2',                               // model id within the spec
@@ -83,6 +83,11 @@ await core.close(id);
 core.dispose();                                // at shutdown, so the process can exit
 ```
 
+`bindAddress` is the core's equivalent of `McpBus.setBindAddress`: the local
+interface every UDP socket binds to, for venues with separate control and
+Dante networks. Pass the operator's Settings → Network choice, or omit it for
+every interface.
+
 Commands are validated against the spec before anything is sent. A channel
 out of range, or a command the model doesn't support, is rejected without
 touching the network. The full list per model is in `core.catalog()` and in
@@ -96,10 +101,13 @@ the command was sent, and the device neither confirmed nor refused it within
 
 | RFDeck decides it is… | `device` | `model` | `settings` |
 |---|---|---|---|
-| EW-DX (`isSscModel`) | `sennheiser-ew-dx` | `em-2`, `em-2-dante` or `em-4-dante` | `{ password }` (required); `port` defaults to 443 |
+| EW-DX (`isSscModel`) | `sennheiser-ew-dx` | `em-2`, `em-2-dante` or `em-4-dante` | `{ password }` (required) |
 | G3/G4 receiver (`isLegacyMcpModel`) | `sennheiser-ew-g3-g4` | `em-300-500-g4` or `em-300-500-g3` | none |
 | G3/G4 IEM transmitter (`inferDeviceRole` → output) | `sennheiser-ew-g3-g4` | `sr-iem-g4` | none |
-| Digital 6000 (`isDigital6000`) | `sennheiser-digital-6000` | `em-6000` or `em-6000-dante` | `port` defaults to 45 |
+| Digital 6000 (`isDigital6000`) | `sennheiser-digital-6000` | `em-6000` or `em-6000-dante` | none |
+
+`open` also takes an optional `port`, for a device not on its protocol's
+default (443 for EW-DX, 45 for Digital 6000; 53212 is fixed for G3/G4).
 
 The EW-DX model sets how many channels are subscribed: 2 for the EM 2 models,
 4 for the EM 4. That is item C.
@@ -188,16 +196,15 @@ lists each model's `supports`.
 
 ## Port 53212
 
-The core binds UDP 53212 for G3/G4 telemetry, with the same `reuseAddr` and
-buffer sizes as `McpBus`. Discovery's `McpBus` still binds it too. With
-`reuseAddr` both can bind, but they compete for unicast replies. The OS
-delivers each datagram to one socket, and which one is not defined.
+**Corrected 2026-09-29, review item K.** An earlier version of this section
+suggested both the core and `McpBus` bind 53212, with `McpBus` limited to
+discovery. That cannot work: a unicast datagram reaches one of the bound
+sockets and the OS chooses which.
 
-For the proof of concept, the safest arrangement is to stop `McpBus` receiving
-telemetry for devices the core has open: keep it for discovery probes only.
-If discovery and core sessions interfere on the rig, record it in
-`INTEGRATIONS_CORE_REVIEW.md`. Moving discovery into the core would remove the
-problem, and is the likely next step.
+The core owns 53212 entirely, MCP discovery included. G3/G4 migrates together
+with that discovery, and `McpBus` and the MCP half of `DiscoveryService` are
+deleted in the same change. Until then, G3/G4 stays on the old client. Digital
+6000 and EW-DX do not use 53212 and migrate first.
 
 ## Behaviour that changes
 

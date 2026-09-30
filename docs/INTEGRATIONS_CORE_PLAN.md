@@ -155,3 +155,17 @@ tests move to the core's suite; the adapter keeps its own.
   pacing, sweep-versus-telemetry ordering and the transition coverage in
   `g3g4Lifecycle.test.ts` are the four that cost real deploys here, and a
   paragraph describing them is not the same as a test that fails without them.
+  **Raised as item N**, with each of the four stated and the reason it is
+  invisible in review.
+
+Two of RFDeck's own faults are recorded there as well, because the core is about
+to own the same code and neither is a wrong reading:
+
+- **Item O** — a refused password was presented up to twenty times a second,
+  indefinitely, because the probe walks five candidate URLs on a 250 ms tick. It
+  made an EW-DX need re-adopting in Control Cockpit, which cannot be done
+  remotely. Now backed off to once a minute with a single `auth-failed`.
+- **Item P** — a G3/G4 off-link has no readable MAC, ever: the neighbour table
+  holds directly-attached addresses only. RFDeck had gated its name fallback on
+  having one, so on a routed rig nothing could be recognised. Whatever identity
+  scheme the core ships for this family cannot depend on a MAC.

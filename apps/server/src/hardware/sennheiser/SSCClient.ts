@@ -58,6 +58,30 @@ export class SSCClient extends EventEmitter {
   private fieldsFromSse = new Set<string>();
   private transportReportTimer: NodeJS.Timeout | null = null;
 
+  /**
+   * When the device last told us the credential was wrong, and how long to wait.
+   *
+   * A rejected password does not become correct by being retried. It becomes
+   * correct when a person changes one, which is a rare, deliberate act — and
+   * `updateTrackedDevice` builds a fresh client when they do, so nothing here has
+   * to poll for it.
+   *
+   * Scoped to the probe path, which is the one that floods: with `activeUrl` null
+   * the poll tick probes on every pass. An SSE 401 is left alone — `ssePermFailed`
+   * already stops that being retried, and some firmware refuses the subscription
+   * while serving `/api/ssc/state` directly, where throttling the poll loop would
+   * cut working telemetry to once a minute.
+   *
+   * Without this the client probed every 250 ms, walking five candidate URLs, each
+   * carrying the rejected password: up to twenty failed authentications a second,
+   * for as long as the device stayed on the network. Embedded hardware does not
+   * expect that. It is the most likely explanation for an EW-DX that had to be
+   * re-adopted in Control Cockpit after RFDeck had been pointed at it with the
+   * wrong credential, and it is not behaviour any monitoring tool should have.
+   */
+  private authRejectedAt = 0;
+  private static readonly AUTH_RETRY_MS = 60_000;
+
   // Liveness, as distinct from data.
   //
   // SSE pushes a value only when it changes, so a receiver whose mic is on but
@@ -158,6 +182,7 @@ export class SSCClient extends EventEmitter {
     this.sseStarting       = false;
     this.sseSessionId      = null;
     this.ssePermFailed     = false;
+    this.authRejectedAt    = 0;
     this.sseSubscribePaths = null;
     this.isConnected = false;
     this.activeUrl = null;
@@ -216,6 +241,7 @@ export class SSCClient extends EventEmitter {
           : (err.code ?? err.message ?? 'unknown');
         log.debug(`[SSCClient] Probe ${url}: ${detail}`);
         if (err.response?.status === 401) {
+          this.noteAuthRejected();
           const challenge = err.response.headers?.['www-authenticate'] ?? '(none)';
           const sentAuth  = (this.httpsClient.defaults.headers as any)?.['Authorization']
                          ?? (this.httpsClient.defaults.headers as any)?.common?.['Authorization']
@@ -1116,8 +1142,39 @@ export class SSCClient extends EventEmitter {
     }
   }
 
+  /**
+   * The device refused the credential. Say so once, and slow down.
+   *
+   * `auth-failed` already exists on `HardwareClient` and reaches the operator, so
+   * this is visible rather than a device that is quietly offline forever.
+   */
+  private noteAuthRejected(): void {
+    const first = this.authRejectedAt === 0;
+    this.authRejectedAt = Date.now();
+    if (first) {
+      log.warn(
+        `[SSCClient] ${this.ip} refused the stored password. Retrying once every ` +
+        `${SSCClient.AUTH_RETRY_MS / 1000}s instead of every poll — repeatedly presenting a ` +
+        `rejected credential is what puts a receiver into a state that needs re-adopting. ` +
+        `Correct the password in Inventory and it is retried immediately.`,
+      );
+      this.emit('auth-failed', { reason: 'The device refused the stored password.' });
+    }
+  }
+
   private async poll() {
     if (this.polling) return;
+
+    // Stop presenting a credential the device has already refused.
+    //
+    // Retrying cannot succeed — the password is wrong until somebody changes it —
+    // and at the polling rate this client runs at, it is a sustained
+    // authentication flood against somebody's receiver. Once a minute is enough
+    // to notice a device that was fixed by other means.
+    if (this.authRejectedAt && Date.now() - this.authRejectedAt < SSCClient.AUTH_RETRY_MS) {
+      return;
+    }
+
     this.polling = true;
     try {
       let data: any;
@@ -1225,6 +1282,11 @@ export class SSCClient extends EventEmitter {
 
       this.failCount = 0;
       this.disconnectSignaled = false;
+      if (this.authRejectedAt) {
+        this.authRejectedAt = 0;
+        log.info(`[SSCClient] ${this.ip} accepted the credential — back to normal polling`);
+        this.emit('auth-ok');
+      }
       if (!this.isConnected) {
         this.isConnected = true;
         this.emit('connected');

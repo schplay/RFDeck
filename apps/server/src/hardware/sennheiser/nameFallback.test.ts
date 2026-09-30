@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chooseByName } from './DeviceManagerService';
+import { chooseByName, identityPlan } from './DeviceManagerService';
 
 // Recognising a G3/G4 by the name it reports.
 //
@@ -83,5 +83,42 @@ describe('the bounds that make it safe', () => {
     ]) {
       expect(out.reason).toBeTruthy();
     }
+  });
+});
+
+// ── Whether the fallback is reached at all ───────────────────────────────────
+//
+// Every rule above was correct and none of it ran. `tryAutoReconcile` would only
+// consider a name when it had also read a MAC for the new address, and a MAC for
+// an off-link address cannot be read: the neighbour table holds directly-attached
+// addresses only, and the kernel resolves the next hop for everything else. A rig
+// with control on one subnet and receivers on another — an ordinary layout — got
+// one symptom per receiver, forever: "found at <ip> but could not be matched to
+// any offline device", with the correct name printed in the alert.
+//
+// `identityPlan` is that gate, pulled out of a method that needs a database and so
+// was never covered.
+
+describe('whether the name fallback is reached', () => {
+  it('runs when no MAC could be read, which is the routed case', () => {
+    expect(identityPlan(null, false).matchByName).toBe(true);
+  });
+
+  it('runs when a MAC was read but matched no row', () => {
+    expect(identityPlan(null, true).matchByName).toBe(true);
+  });
+
+  it('is skipped when a stored hardware address already identified the device', () => {
+    // Stored evidence is stronger than a name and must never be second-guessed
+    // by one — that is the whole reason the bounds above exist.
+    expect(identityPlan({ id: 'row-1' }, true).matchByName).toBe(false);
+    expect(identityPlan({ id: 'row-1' }, false).matchByName).toBe(false);
+  });
+
+  it('records the MAC only when there is one', () => {
+    // Writing null would claim an identity had been stored when none had, and the
+    // next move would silently fall back to the name again with no note of why.
+    expect(identityPlan(null, true).recordMac).toBe(true);
+    expect(identityPlan(null, false).recordMac).toBe(false);
   });
 });

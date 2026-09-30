@@ -116,6 +116,36 @@ export function chooseByName<T extends { name: string | null; ip: string; port: 
   return { match: offline[0] };
 }
 
+/**
+ * Whether the name fallback should run, and whether a MAC should be recorded.
+ *
+ * Two lines of logic, pulled out because both of them have been wrong in ways
+ * that could not be seen from the outside, and because `tryAutoReconcile` needs a
+ * database to reach and so was never covered.
+ *
+ * The rule that matters: **a readable MAC is not a precondition for matching by
+ * name.** The neighbour table only holds directly-attached addresses. For an
+ * off-link device the kernel resolves the next hop instead, so `ip neigh show`
+ * prints nothing and no MAC for that device will ever be readable from this host.
+ * A rig with control on one subnet and receivers on another — an ordinary layout —
+ * therefore produced a single symptom for every receiver, forever: "found at <ip>
+ * but could not be matched to any offline device", with the correct name sitting
+ * in the alert text. The name is the only identity a routed G3/G4 has.
+ *
+ * The MAC is an optimisation: recorded when it is there, so the weaker evidence is
+ * needed at most once per device; simply absent when it is not.
+ */
+export function identityPlan(
+  storedMatch: unknown | null,
+  macReadable: boolean,
+): { matchByName: boolean; recordMac: boolean } {
+  return {
+    // Stored evidence wins and needs no name; otherwise try the name, MAC or not.
+    matchByName: !storedMatch,
+    recordMac: macReadable,
+  };
+}
+
 export class DeviceManagerService extends EventEmitter {
   private discovery: DiscoveryService;
   private io: Server;
@@ -1439,17 +1469,32 @@ export class DeviceManagerService extends EventEmitter {
       //
       //   • only a row that has never been identified (`mac: null`), so no
       //     stored evidence is ever overridden;
-      //   • only when the newcomer's MAC is readable and claimed by nobody,
-      //     so it can be recorded here and never needed again;
+      //   • when the newcomer's MAC is readable, it is recorded in the same
+      //     breath, so this weaker evidence is used once and never again;
       //   • only when exactly one offline row carries that name — two devices
       //     called "Vocal 1" is a question for the operator, not a coin toss;
       //   • never a discovery placeholder, which is just the address in
       //     disguise and would make every unnamed receiver look identical.
       //
-      // The MAC is written in the same breath, so this weaker evidence is used
-      // at most once per device and never again.
+      // It deliberately does NOT require a readable MAC.
+      //
+      // Requiring one made the whole path dead across a router. The neighbour
+      // table only holds directly-attached addresses: for anything off-link the
+      // kernel resolves the next hop instead, so `ip neigh show` prints nothing
+      // and no MAC for that device will ever be readable from this host. A rig
+      // whose receivers sit on a different subgroup from the server — control on
+      // 10.2.3.x, receivers on 10.2.5.x, which is an ordinary layout — therefore
+      // got no MAC, skipped name matching entirely, and produced exactly one
+      // symptom: "found at <ip> but could not be matched to any offline device",
+      // for every receiver, forever, with a correct name sitting in the alert.
+      //
+      // So the MAC is an optimisation here, not a precondition. When it is
+      // readable this runs at most once per device; when it is not, it runs on
+      // each move, which is the only mechanism a routed G3/G4 has at all. Every
+      // other bound above still holds, and those are what make it safe.
       let matched = stale;
-      if (!matched && mac) {
+      const plan = identityPlan(stale, !!mac);
+      if (plan.matchByName) {
         const candidates = await prisma.inventoryDevice.findMany({
           where: { port: 53212, active: true, mac: null, NOT: { ip } },
         });
@@ -1459,11 +1504,19 @@ export class DeviceManagerService extends EventEmitter {
 
         if (decision.match) {
           matched = decision.match;
-          log.info(
-            `[DeviceManager] "${matched.name}" recognised at ${ip} by the name it reports ` +
-            `(was ${matched.ip}); recording MAC ${mac} so this never depends on a name again`,
-          );
-          await prisma.inventoryDevice.update({ where: { id: matched.id }, data: { mac } });
+          if (plan.recordMac && mac) {
+            log.info(
+              `[DeviceManager] "${matched.name}" recognised at ${ip} by the name it reports ` +
+              `(was ${matched.ip}); recording MAC ${mac} so this never depends on a name again`,
+            );
+            await prisma.inventoryDevice.update({ where: { id: matched.id }, data: { mac } });
+          } else {
+            log.info(
+              `[DeviceManager] "${matched.name}" recognised at ${ip} by the name it reports ` +
+              `(was ${matched.ip}). No MAC is readable for that address — it is not on a ` +
+              `directly-attached subnet — so the name stays the only key for this device`,
+            );
+          }
         } else if (decision.reason) {
           log.info(`[DeviceManager] ${ip} not recognised by name: ${decision.reason}`);
         }
@@ -1498,7 +1551,9 @@ export class DeviceManagerService extends EventEmitter {
           `[DeviceManager] tryAutoReconcile: nothing matches ${ip} ` +
           `(label="${discoveredName ?? ''}", mac=${mac ?? 'none'}); ` +
           `${unreachable.length} G3/G4 row(s) known, ${nullMacs} of them with no recorded MAC` +
-          (mac ? '' : ' — and no MAC could be read for this address, so nothing could be compared'),
+          (mac ? '' : ' — and no MAC could be read for this address, so only the name it ' +
+            'reports could be compared (an address off any directly-attached subnet has no ' +
+            'neighbour entry to read)'),
         );
         return;
       }
@@ -1614,7 +1669,11 @@ export class DeviceManagerService extends EventEmitter {
     // been identified. Held to the same conditions, for the same reason: a name
     // is the operator's and can be duplicated, so it may only ever recover an
     // identity that was never captured, never override one that was.
-    if (!matched && mac) {
+    //
+    // And, as there, it does not require a readable MAC: off-link devices have no
+    // neighbour entry, and gating on one meant the fallback did nothing in exactly
+    // the case it was written for.
+    if (identityPlan(matched, !!mac).matchByName) {
       const candidates = await prisma.inventoryDevice.findMany({
         where: { port, active: true, mac: null, NOT: { ip } },
       });
@@ -1622,11 +1681,22 @@ export class DeviceManagerService extends EventEmitter {
         !!this.clients.get(`${d.ip}:${d.port}`)?.isConnected);
       if (decision.match) {
         matched = decision.match;
-        log.info(
-          `[DeviceManager] "${matched.name}" recognised at ${ip} by the name it reports ` +
-          `(was ${matched.ip}); recording MAC ${mac}`,
-        );
-        await prisma.inventoryDevice.update({ where: { id: matched.id }, data: { mac } });
+        if (mac) {
+          log.info(
+            `[DeviceManager] "${matched.name}" recognised at ${ip} by the name it reports ` +
+            `(was ${matched.ip}); recording MAC ${mac}`,
+          );
+          await prisma.inventoryDevice.update({ where: { id: matched.id }, data: { mac } });
+        } else {
+          // Nothing to record: there is no neighbour entry for an off-link
+          // address. Writing null here would only claim, in the log, to have
+          // stored an identity that does not exist.
+          log.info(
+            `[DeviceManager] "${matched.name}" recognised at ${ip} by the name it reports ` +
+            `(was ${matched.ip}). No hardware address is readable for that address, so the ` +
+            `name stays the only key for this device`,
+          );
+        }
       }
     }
 
