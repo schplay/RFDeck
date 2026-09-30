@@ -506,7 +506,39 @@ socket? If not, which of 2 or 3 do you want for the proof of concept?
 **RFDeck will not start the G3/G4 migration until this is settled.** EW-DX and
 Digital 6000 have no contention on this port and can proceed regardless.
 
-**Core answer:**
+**Core answer (2026-09-29):** **You are right, and the hand-off was wrong.** With
+`SO_REUSEADDR` and no `SO_REUSEPORT`, a unicast datagram reaches one socket and
+the OS chooses which; "keep `McpBus` for probes only" is not enforceable. The
+hand-off's port section is corrected.
+
+**The core takes option 2: it owns 53212 entirely, discovery included, and
+`McpBus` goes.** Option 1 was considered seriously and declined, for the reason
+you give for preferring it: this socket has had the worst faults this month, and
+they were all socket policy (buffer sizes, send pacing, probes starved by other
+work). Kept in RFDeck, that policy is exactly what the next product to use MCP
+would write again, differently. Fixing it once is the point of the core.
+
+To answer your concern about evidence ending up behind an FFI boundary:
+
+- Every 53212 fault class you list becomes a reported event, not a silent
+  symptom: the receive and send buffer sizes the OS actually granted, datagrams
+  dropped on a full queue, and probe batches deferred for pacing. These arrive
+  as `log` events and in a per-core diagnostics snapshot.
+- The discovery sweep and live telemetry share the socket inside one runtime.
+  Probes are paced, and telemetry routing never waits behind a sweep.
+- Sans-IO still holds: the MCP module is tested without a network, as the core's
+  suite already does for G3/G4.
+
+What moves into the core in this step is MCP discovery: the broadcast `Push`/`Name`
+probe, the paced unicast sweep over address ranges RFDeck supplies, and the
+passive listener. Bonjour and the HTTPS sweep use no contested port and stay in
+RFDeck for now.
+
+**Sequencing:** Digital 6000 and EW-DX go first, as your plan says. The core
+builds MCP discovery now, and G3/G4 migrates together with it, when `McpBus` and
+the MCP half of `DiscoveryService` are deleted in the same change. No
+dual-binding period (option 3) is needed.
+
 
 ---
 
@@ -547,7 +579,34 @@ So "RFDeck decides the model" quietly assumes RFDeck always can, and it cannot.
 spec should say that model identification is explicitly the host's problem, so
 the next product to adopt it does not discover this the way RFDeck did.
 
-**Core answer:**
+**Core answer (2026-09-29):** **Option 3 is in scope, and it is being built with
+discovery (item K),** since discovery that finds a device and cannot say what it
+is would only move this problem. Identification is protocol knowledge, and the
+hand-off should never have assumed RFDeck can always supply a model.
+
+The shape: discovery results, and `open` with the model omitted, carry the
+family and model the core identified, with how it knows:
+
+- **EW-DX:** `/api/ssc/version` identifies SSCv2; the product label in
+  `/api/device/identity` gives the model. That is the value that read
+  `EWDX2CHDS`. The core matches on documented product labels rather than on a
+  pattern, and an unrecognised label is reported as such rather than guessed.
+- **Digital 6000:** `/device/identity/product` over SSC UDP 45.
+- **G3/G4:** MCP has no model string, so the core reports the family, and
+  receiver or IEM transmitter from the shape of the cyclic attributes (`AF`
+  versus `Af`, and the `States` layout). **G3 versus G4 cannot be told apart over
+  MCP**; the core says so rather than picking one, and the operator's choice
+  stands.
+
+A device the core cannot identify is reported unidentified, with what it
+answered, and is never handed a client on a guess. Your fallback exists because
+a guessed client could not connect; identification replaces the guess.
+
+For the proof of concept, take option 1: keep the old clients for unclassified
+devices until identification ships. The core's API documentation will state that
+a host supplying `model` owns that choice, so the next adopter does not
+rediscover this.
+
 
 ---
 
@@ -575,4 +634,16 @@ C.4 of its migration plan, and record the result here.
 the answer lands where the core can read it, since it decides whether change 8 is
 safe.
 
-**Core answer:**
+**Core answer (2026-09-29):** **Agreed, and thank you for measuring rather than
+arguing it.** Change 8 stands only if the measurement supports it. If any
+resource arrives only over UDP, the core adds the SSCv1 UDP path. That path is
+fully documented (EW-DX SSC, 03/2023, including subscription lifetimes and the
+percent battery gauge), so it can be added from the document rather than
+reconstructed.
+
+A related case the core covers either way: an EW-DX whose third-party access is
+set to the legacy protocol, or firmware older than SSCv2, speaks only SSCv1 over
+UDP 45. That is a separate way of reaching the same receivers, and the core will
+support it as its own mode, so RFDeck's `/osc/` fall-through does not need to be
+reproduced by guesswork.
+

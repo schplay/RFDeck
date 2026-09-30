@@ -40,6 +40,24 @@ export class SSCClient extends EventEmitter {
   // SSCv2 SSE subscription state (per the Sennheiser 3rd-party API spec)
   private sseActive = false;              // SSE stream is open and delivering data
 
+  /**
+   * Which telemetry fields arrived over which transport, for item M of
+   * `docs/INTEGRATIONS_CORE_REVIEW.md`.
+   *
+   * The integrations core intends to drop the SSCv1 UDP path and serve EW-DX from
+   * SSE alone. Whether that is safe depends on a fact nobody has: does any EW-DX
+   * deliver something over UDP that SSE does not? The `/osc/` fallback and the
+   * UDP receiver exist because of firmware variation that was never catalogued,
+   * so the honest answer is a measurement rather than a reading of the document.
+   *
+   * Recorded here because this client is the only place that sees both transports
+   * for the same device. Reported once, at `info`, so it survives a deployed
+   * server's log level — a measurement nobody can read is not a measurement.
+   */
+  private fieldsFromUdp = new Set<string>();
+  private fieldsFromSse = new Set<string>();
+  private transportReportTimer: NodeJS.Timeout | null = null;
+
   // Liveness, as distinct from data.
   //
   // SSE pushes a value only when it changes, so a receiver whose mic is on but
@@ -124,6 +142,12 @@ export class SSCClient extends EventEmitter {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
+    }
+    // The transport survey belongs to a live session; a stopped client reporting
+    // what it saw a minute ago is noise at best and misleading at worst.
+    if (this.transportReportTimer) {
+      clearTimeout(this.transportReportTimer);
+      this.transportReportTimer = null;
     }
     // Close any active SSE connection
     if (this.sseSocket) {
@@ -256,7 +280,55 @@ export class SSCClient extends EventEmitter {
 
   // Accumulate per-channel state for EW-DX OpenAPI 1.7 devices where real-time data
   // arrives as separate SSE events from multiple sub-paths (/signalQualityIndicator, /level, etc.)
+  /**
+   * Say, once, what each transport actually delivered.
+   *
+   * Sixty seconds after the first telemetry of either kind, which is long enough
+   * for a device to have sent everything it sends periodically and short enough
+   * that an operator with the rig up will still see it.
+   */
+  private scheduleTransportReport(): void {
+    if (this.transportReportTimer) return;
+    this.transportReportTimer = setTimeout(() => {
+      this.transportReportTimer = null;
+      const udp = [...this.fieldsFromUdp].sort();
+      const sse = [...this.fieldsFromSse].sort();
+      if (udp.length === 0 && sse.length === 0) return;
+
+      const udpOnly = udp.filter(f => !this.fieldsFromSse.has(f));
+      const sseOnly = sse.filter(f => !this.fieldsFromUdp.has(f));
+
+      log.info(
+        `[SSCClient] ${this.ip} transport survey (integrations core, item M): ` +
+        `SSE ${this.sseActive ? 'active' : 'INACTIVE'} [${sse.join(', ') || 'nothing'}]; ` +
+        `UDP ${this.udpDataActive ? 'active' : 'inactive'} [${udp.join(', ') || 'nothing'}]; ` +
+        `UDP-only: ${udpOnly.join(', ') || 'none'}; SSE-only: ${sseOnly.join(', ') || 'none'}`,
+      );
+
+      // The finding that would block the core's change 8, said as a conclusion
+      // rather than left for somebody to work out from two lists.
+      if (udpOnly.length > 0) {
+        log.warn(
+          `[SSCClient] ${this.ip} delivers ${udpOnly.join(', ')} over SSCv1 UDP and not over SSE — ` +
+          `dropping the UDP path would lose ${udpOnly.length === 1 ? 'this field' : 'these fields'} ` +
+          `for this device. Record it in docs/INTEGRATIONS_CORE_REVIEW.md item M.`,
+        );
+      } else if (!this.sseActive && this.udpDataActive) {
+        log.warn(
+          `[SSCClient] ${this.ip} is served entirely by SSCv1 UDP — SSE never delivered. ` +
+          `Dropping the UDP path would lose this device. Record it in ` +
+          `docs/INTEGRATIONS_CORE_REVIEW.md item M.`,
+        );
+      }
+    }, 60_000);
+    this.transportReportTimer.unref?.();
+  }
+
   private mergeEwdxState(chId: number, update: Record<string, any>): void {
+    for (const [k, v] of Object.entries(update)) {
+      if (v !== undefined && v !== null) this.fieldsFromSse.add(k);
+    }
+    this.scheduleTransportReport();
     const current = this.ewdxChannelCache.get(chId) ?? {};
     const merged  = { ...current };
     for (const [k, v] of Object.entries(update)) {
@@ -796,6 +868,12 @@ export class SSCClient extends EventEmitter {
       if (norm) rxData[rxKey] = norm;
     }
     if (Object.keys(rxData).length === 0) return;
+    for (const rx of Object.values(rxData)) {
+      for (const [k, v] of Object.entries(rx as Record<string, any>)) {
+        if (v !== undefined && v !== null) this.fieldsFromUdp.add(k);
+      }
+    }
+    this.scheduleTransportReport();
     this.udpDataActive = true;
     this.markAlive();
     this.failCount = 0;

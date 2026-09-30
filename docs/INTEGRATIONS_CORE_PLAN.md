@@ -12,77 +12,73 @@ projection, alerts and the socket surface Manifold depends on all stay put.
 That is also what makes the migration reversible per protocol: the adapter can
 back one family while the old client backs another.
 
-## Three risks worth settling before code
+## Three risks — raised as K, L and M, and all three answered
 
-**Raised with the core as items K, L and M in `INTEGRATIONS_CORE_REVIEW.md`**,
-which is the channel the hand-off asks for and is where their answers will land.
-That copy is canonical; what follows is the same three with RFDeck's own
-sequencing attached.
+Raised with the core in `INTEGRATIONS_CORE_REVIEW.md`, which is canonical. All
+three came back on 2026-09-29 and two of them changed this plan:
 
-### 1. Port 53212 — two sockets cannot share unicast, and this one is fragile
+| | Outcome |
+|---|---|
+| **K** — 53212 | The core agreed the split was unenforceable and **took the whole port, discovery included**. `McpBus` and the MCP half of `DiscoveryService` are deleted in the same change that migrates G3/G4. Socket-policy faults become reported events rather than silent symptoms |
+| **L** — model identification | **Option 3 is in scope** — the core will identify devices itself, shipping with discovery. For the proof of concept RFDeck takes option 1: old clients keep unclassified devices. Note their finding that **G3 and G4 cannot be told apart over MCP**, so the operator's choice stands |
+| **M** — EW-DX UDP | Agreed it is RFDeck's to measure, and change 8 stands only if the measurement supports it. They will add an SSCv1 UDP mode either way, from the document |
 
-The hand-off suggests keeping `McpBus` for discovery probes only while the core
-binds 53212 for telemetry. **That does not work the way it reads.** With
-`SO_REUSEADDR` and no `SO_REUSEPORT`, a unicast datagram is delivered to exactly
-one socket and which one is not defined. "Keep it for probes only" is not
-something either side can enforce: a G3 answering a discovery probe and a G3
-streaming telemetry are the same datagrams from the same port.
+What that changes here: **C.5 is no longer "blocked", it is bigger.** G3/G4 now
+moves together with MCP discovery, and `McpBus` goes with it — the socket whose
+behaviour cost most of this month is handed over whole rather than shared. That
+is the right call and it is also the riskiest single step in the migration, so it
+goes last and gets a show-length session before the old code is deleted.
 
-This is not theoretical for RFDeck. That socket has been the cause of a long run
-of faults this month — probes starved by a concurrent sweep, telemetry dropped
-because the receive buffer was at the OS default, receivers reported offline
-because *other* devices were being found. Splitting ownership of it between two
-runtimes would put every one of those back, with the added difficulty that the
-evidence would be on the far side of an FFI boundary.
+### 1. Port 53212 — settled: the core takes it
 
-**Preference, in order:**
+The hand-off's arrangement could not be implemented by either side, and the core
+agreed. It now owns 53212 outright, including the broadcast probe, the paced
+unicast sweep over ranges RFDeck supplies, and the passive listener.
 
-1. **The core does not bind.** RFDeck keeps `McpBus` as the sole owner of 53212
-   and feeds the core received datagrams, taking its outbound datagrams back. A
-   byte-level transport injection — `core.feed(id, bytes, fromAddr)` and an
-   outbound `send` callback — keeps one socket, one buffer policy, one place to
-   debug. This also makes the core testable without a network, which its own
-   suite would benefit from.
-2. **The core owns 53212 entirely**, including the MCP discovery probe and the
-   passive listener, and `McpBus` is deleted. Clean, but it means discovery moves
-   in the same step rather than later, which is a bigger PoC.
-3. **Both bind.** Only as a knowingly temporary arrangement, with the acceptance
-   that intermittent missing telemetry is expected and not a bug to chase.
+RFDeck's concern was that the fault classes this socket produced would become
+harder to see across an FFI boundary. Their answer is that buffer sizes granted,
+datagrams dropped on a full queue and probes deferred for pacing all become
+reported events. **That is a better position than RFDeck is in today** — those
+three facts were exactly what was missing while they were being diagnosed here,
+and each had to be inferred.
 
-I would not start the G3/G4 migration until this is decided. EW-DX and Digital
-6000 have no such contention and can go first regardless.
+What RFDeck keeps: Bonjour, the HTTPS sweep, and the decision about which address
+ranges are worth sweeping. What RFDeck loses: `McpBus`, and with it the buffer
+sizing and pacing added this month. Those lessons need to arrive in the core as
+tests, not as prose — see "What RFDeck should report back".
 
-### 2. Losing the SSC → MCP fallback removes a safety net that is load-bearing
+### 2. Model identification — settled: the core will do it, later
 
-The core takes spec and model as given. RFDeck today does not have to be right
-up front: an SSC client that fails falls through to an MCP client, which is how a
-G3 with a missing or placeholder model string is recognised at all.
+For the proof of concept RFDeck keeps the old clients as the path for
+unclassified devices, and opens a core session only when the model is known. That
+preserves the fallback exactly as it is today, so nothing regresses while the
+core's identification is built.
 
-That net is currently catching real cases. A receiver reporting itself as
-`EWDX2CHDS` was classified as not-SSC until a fix this month, and a device added
-with no model is stored as `"Sennheiser Device"` until it connects and says
-otherwise — which it cannot do if it never connects.
+One thing from their answer that RFDeck should act on independently: **G3 and G4
+cannot be distinguished over MCP.** RFDeck's `isLegacyMcpModel` treats them as one
+family already, which is right, but anywhere the UI claims to know which
+generation a device is, it is claiming more than the protocol supports.
 
-So the migration has to include a decision for **"model unknown"**, and the honest
-options are:
+### 3. EW-DX SSCv1 UDP — measurement built, waiting on the rig
 
-- keep the old clients as the path for unclassified devices, and use the core
-  only once a model is known; or
-- have RFDeck probe once to classify, then open a core session; or
-- have the core accept `model: null` and identify the device itself.
+`SSCClient` now records which telemetry fields arrived over SSE and which over
+SSCv1 UDP, and reports the difference once, sixty seconds after the first
+telemetry of either kind. At `info`, so a deployed server prints it.
 
-The third is the best outcome and the most work for the core. The first is the
-cheapest and is what I would do for the PoC.
+It states the conclusion rather than leaving two lists to compare:
 
-### 3. EW-DX SSCv1 UDP is being removed, and nobody knows what depends on it
+- fields that arrived **only** over UDP are named in a `warn`, because those are
+  what change 8 would lose;
+- a device served entirely by UDP, where SSE never delivered, gets its own `warn`.
 
-Change 8 drops the UDP telemetry receiver, the `/osc/` fallback and the
-14-family path discovery. Those exist because of firmware variation nobody has
-catalogued, and the rig is one rig.
+**To collect it:** bring the rig up with EW-DX receivers connected and, a couple
+of minutes later:
 
-`SSCClient` sets `udpDataActive` when UDP telemetry arrives, so **RFDeck can
-answer this question without guessing**: log when that flag is set and which
-resources arrive only that way. Worth doing before removal rather than after.
+```bash
+sudo journalctl -u rfdeck --since "-5 min" --no-pager | grep "transport survey"
+```
+
+One line per EW-DX. Paste them into item M and the core can act on them.
 
 ## Phases
 
@@ -127,9 +123,21 @@ The UI offers those. They must become visibly unavailable rather than silently
 failing — which is what they do today, so this is an improvement to state
 plainly rather than a regression to hide.
 
-### C.5 — G3/G4 — **M**, blocked on risk 1
+### C.5 — G3/G4 and MCP discovery together — **L**
 
-Last, and only once 53212 ownership is settled.
+No longer merely last: this is now the largest step. The core takes 53212,
+`McpBus` is deleted, and the MCP half of `DiscoveryService` — the broadcast probe,
+the paced sweep and the passive listener — goes with it. RFDeck keeps Bonjour and
+the HTTPS sweep, and supplies the address ranges to sweep.
+
+Everything learned about that socket this month has to arrive in the core as
+tests rather than as advice: the buffer sizing, the send pacing, the ordering that
+keeps a sweep from starving telemetry, and a device being reported offline because
+another was found. RFDeck's `g3g4Lifecycle.test.ts` is the shape of what should
+move — a sequence through connect, loss, backoff, recovery and loss again, since
+every fault in that file lived in a transition.
+
+Needs a show-length session on the rig before C.6 deletes anything.
 
 ### C.6 — Retire the old clients — **S**
 
@@ -139,7 +147,11 @@ tests move to the core's suite; the adapter keeps its own.
 ## What RFDeck should report back
 
 - The item A and item E rig readings, which close two review items.
-- Whether EW-DX UDP carries anything SSE does not (risk 3).
-- Whether discovery and core sessions interfere on 53212, if option 3 is taken.
+- The transport survey lines, which close item M.
 - The `af − 100` shift checked against the core's percentage, which the hand-off
-  and my own answer to the units section both flag and neither has verified.
+  and RFDeck's answer to the units section both flag and neither has verified.
+- **The 53212 lessons, as tests rather than prose.** The core is taking that
+  socket on the strength of having read about its faults. Buffer sizing, send
+  pacing, sweep-versus-telemetry ordering and the transition coverage in
+  `g3g4Lifecycle.test.ts` are the four that cost real deploys here, and a
+  paragraph describing them is not the same as a test that fails without them.
