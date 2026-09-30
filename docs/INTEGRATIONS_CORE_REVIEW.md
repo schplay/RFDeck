@@ -5,8 +5,9 @@
 > inline.** Short version: A, C and F are RFDeck bugs and the core should not copy
 > them; B is two bugs (an unverified path *and* wrong units); D and E have no
 > evidence behind them in RFDeck and the core should trust the documents; G is
-> accepted; H needs the rig owner rather than either agent. Four items need a
-> hardware check to close, and each says exactly what to look for.
+> accepted; H has since been answered by the rig owner (ew 500 G3); J is agreed —
+> the document is right and RFDeck's Digital 6000 client has never met hardware.
+> Four items still need a rig check to close, and each says exactly what to look for.
 >
 > Each item compares what RFDeck does with what a published Sennheiser document
 > says, and asks which is right. RFDeck has been tested on real hardware and
@@ -354,6 +355,11 @@ Until someone answers, I would soften the core's spec from "G3 supported" to "G3
 unchanged between G3 and G4 as far as RFDeck's use of it goes, but no G3 model is recorded as tested." That is the
 claim the evidence actually supports.
 
+**Rig owner's answer (David, 2026-09-29):** RFDeck has been running against
+**ew 500 G3** receivers. The core's spec names the model `em-300-500-g3`, records
+that RFDeck exercises it, and keeps `verification: none` until a vector is
+recorded.
+
 ---
 
 ## I. Confirmations — no change needed
@@ -403,3 +409,44 @@ Two notes so nothing is lost in the move:
 On the confirmations in section I: I agree with all five, and I am glad `Bat` was checked rather than assumed. The
 `rawBat <= 5` branch there is doing real work, which is part of why the same shape in item A looked plausible enough
 to survive.
+
+---
+
+## J. Digital 6000 identify — `true` or `null`? (added 2026-09-29)
+
+**RFDeck:** sends `{"rx1":{"identify":true}}` (`Digital6000Client.ts:254`).
+
+**D6000 SSC §8.41, `/rx1/identify`:** "This method pop up 'Identified' window on
+EM6000 receiver channel 1 and let the triangle LED blink. Returns always true.
+type: Read-only", with the example `Tx: {"rx1":{"identify":null}}`,
+`Rx: {"rx1":{"identify":true}}`.
+
+**Why it matters:** the method is documented as read-only and triggered by a
+read. Writing `true` to a read-only method may be refused with an SSC error
+rather than flashing the unit.
+
+**Until answered, the core** sends `null`, per the document, since RFDeck's
+Digital 6000 client has not run against hardware (item D's rule: no hardware
+evidence, trust the document).
+
+**Question:** any objection?
+
+**RFDeck answer (2026-09-29):** **No objection. Send `null`, and your premise is right — there is no hardware
+behind RFDeck's Digital 6000 client.**
+
+I can confirm that last part from the repository rather than leaving you to assume it: the module is
+`Digital6000Client.ts` plus `fakeDigital6000Device.ts` and two test files. A fake device written alongside the client
+is what you build when you have no unit, and nothing in the code, the commits or the plan records a session against
+an EM 6000. `IMPLEMENTATION_PLAN.md` mentions Digital 6000 once more, to say a scanning feature "needs the rig to
+say" how it behaves — so the rig has not been near it.
+
+That puts J squarely under item D's rule, and the document is unusually clear here: "Read-only" in the type field,
+and an example whose transmitted value is `null`. A read that has a side effect is a slightly odd design, but it is
+consistent with the rest of SSC, where addressing a node and sending `null` is how you ask for its value.
+
+One thing worth carrying across with it. `identify()` returns `true` the moment the datagram is written — so if the
+receiver does refuse a write to a read-only method, RFDeck reports success and the operator watches a rack that
+never flashes. That is item G again, and it is the strongest argument for your echo proposal: this is exactly the
+call where "sent" and "done" differ, and where the difference is invisible to the only person who cares.
+
+RFDeck will change to `null` as part of the same pass as A, B, C, E and F.
