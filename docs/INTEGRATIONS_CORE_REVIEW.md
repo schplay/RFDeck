@@ -9,6 +9,11 @@
 > the document is right and RFDeck's Digital 6000 client has never met hardware.
 > Four items still need a rig check to close, and each says exactly what to look for.
 >
+> **RFDeck has raised K, L and M** against the migration hand-off: the 53212
+> ownership split cannot be enforced, the core taking `model` as given removes a
+> fallback RFDeck depends on, and the EW-DX UDP removal is measurable before it
+> happens rather than after.
+>
 > Each item compares what RFDeck does with what a published Sennheiser document
 > says, and asks which is right. RFDeck has been tested on real hardware and
 > documents have been wrong before (see `SHURE_PROTOCOL.md`), so a disagreement
@@ -362,6 +367,7 @@ recorded.
 
 ---
 
+
 ## I. Confirmations — no change needed
 
 - **G3/G4 `Bat`:** TI 1254 p. 31 gives battery as a percentage from
@@ -450,3 +456,123 @@ never flashes. That is item G again, and it is the strongest argument for your e
 call where "sent" and "done" differ, and where the difference is invisible to the only person who cares.
 
 RFDeck will change to `null` as part of the same pass as A, B, C, E and F.
+
+---
+
+## K. Port 53212 — the proposed split cannot be enforced (raised by RFDeck, 2026-09-29)
+
+**The hand-off says:** the core binds UDP 53212 for G3/G4 telemetry with the same
+`reuseAddr` and buffer sizes as `McpBus`; `McpBus` still binds it too; "the
+safest arrangement is to stop `McpBus` receiving telemetry for devices the core
+has open: keep it for discovery probes only."
+
+**Why that does not hold:** with `SO_REUSEADDR` and no `SO_REUSEPORT`, a unicast
+datagram is delivered to **exactly one** of the bound sockets, and which one is
+not defined. Neither side can implement "keep it for probes only", because the
+distinction does not exist on the wire: a G3 answering a discovery probe and a
+G3 streaming telemetry are the same datagrams, from the same source port, to the
+same destination port. Whichever socket the OS picks gets both.
+
+**Why RFDeck is pressing on this rather than trying it:** that socket has been
+the single largest source of faults here this month, and all of them were hard to
+see from outside —
+
+- MCP probes starved by a concurrent HTTPS sweep, so devices were never asked;
+- telemetry dropped because the receive buffer was at the OS default, so healthy
+  receivers were reported offline *because other devices were being found*;
+- probes sent faster than the send buffer could drain, so most never reached the
+  wire.
+
+Each presented as "discovery is broken" or "the state machine is broken" and took
+a deploy cycle to disprove. Splitting ownership of that socket across two
+runtimes would reintroduce the same class of fault with the evidence now on the
+far side of an FFI boundary.
+
+**RFDeck's preference, in order:**
+
+1. **The core does not bind 53212.** RFDeck keeps `McpBus` as sole owner and
+   feeds the core datagrams — something like `core.feed(id, bytes, fromAddr)`
+   with an outbound send callback. One socket, one buffer policy, one place to
+   debug. It would also let the core's own suite drive MCP without a network.
+2. **The core takes 53212 completely**, including the MCP broadcast probe and the
+   passive listener, and `McpBus` is deleted. Clean, but discovery moves in the
+   same step, which is a larger proof of concept than the one proposed.
+3. **Both bind**, accepted as knowingly temporary, with intermittent missing
+   telemetry understood as expected rather than a bug to chase.
+
+**Question:** can the core take datagrams from the host rather than owning the
+socket? If not, which of 2 or 3 do you want for the proof of concept?
+
+**RFDeck will not start the G3/G4 migration until this is settled.** EW-DX and
+Digital 6000 have no contention on this port and can proceed regardless.
+
+**Core answer:**
+
+---
+
+## L. The core takes model as given, and RFDeck cannot always supply one (raised by RFDeck, 2026-09-29)
+
+**The hand-off says:** deciding which spec and model a device is stays in RFDeck
+(`isSscModel`, `isLegacyMcpModel`, `isDigital6000`), and the core takes the spec
+and model as given.
+
+**What that removes:** RFDeck does not have to be right today. An SSC client that
+fails to connect falls through to an MCP client, and that fallback is how a G3
+with a missing or wrong model string is recognised at all.
+
+**That net is catching real cases now, not hypothetically:**
+
+- A receiver reporting itself as `EWDX2CHDS` was classified as *not* SSC until a
+  fix this month — the pattern required a word boundary after `DX` and a digit is
+  not one. Before the fix it was handed an MCP client it could never answer, and
+  the fallback was what kept it reachable at all.
+- A device added by IP with no model is stored as `"Sennheiser Device"`, and is
+  corrected only when it connects and reports its own model — which it cannot do
+  if the wrong client means it never connects.
+
+So "RFDeck decides the model" quietly assumes RFDeck always can, and it cannot.
+
+**Three ways out, from cheapest to best:**
+
+1. RFDeck keeps the old clients as the path for unclassified devices and opens a
+   core session only once a model is known. Cheapest, and what RFDeck would do
+   for the proof of concept.
+2. RFDeck probes once to classify, then opens a core session. Duplicates in
+   RFDeck the identification the core is otherwise doing.
+3. **The core accepts `model: null` and identifies the device itself** from what
+   it answers. Best outcome — identification is protocol knowledge, which is what
+   the core is for — and the most work.
+
+**Question:** is 3 in scope at any point? If not, RFDeck takes 1 and the core's
+spec should say that model identification is explicitly the host's problem, so
+the next product to adopt it does not discover this the way RFDeck did.
+
+**Core answer:**
+
+---
+
+## M. Removing EW-DX SSCv1 UDP — measurable before it is removed (raised by RFDeck, 2026-09-29)
+
+**The hand-off says** (change 8) the core is SSCv2-only: no SSCv1 UDP telemetry
+receiver, no `/osc/` fallback, no 14-family path discovery, no fall-through — and
+asks RFDeck to say if a rig EW-DX shows readings over UDP that SSE does not.
+
+**RFDeck can answer that with a measurement rather than an opinion.**
+`SSCClient` already sets `udpDataActive` the moment UDP telemetry carrying rx
+data arrives (`SSCClient.ts:799`), and clears it on reconnect. So the question
+"does any EW-DX here depend on the UDP path" is a log line away, not a guess.
+
+**Why it is worth doing before removal rather than after:** those paths exist
+because of firmware variation nobody has catalogued, and the evidence for them is
+one rig. If a device turns out to need UDP, discovering it after the SSCv1 code
+is deleted means reconstructing it from the document — and the review has already
+found three places where the document and this code disagree.
+
+**RFDeck will:** log which resources arrive only over UDP, on the rig, before
+C.4 of its migration plan, and record the result here.
+
+**No question for the core** — this is RFDeck's to measure. Raised as an item so
+the answer lands where the core can read it, since it decides whether change 8 is
+safe.
+
+**Core answer:**

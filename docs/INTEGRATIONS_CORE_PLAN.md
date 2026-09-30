@@ -14,6 +14,11 @@ back one family while the old client backs another.
 
 ## Three risks worth settling before code
 
+**Raised with the core as items K, L and M in `INTEGRATIONS_CORE_REVIEW.md`**,
+which is the channel the hand-off asks for and is where their answers will land.
+That copy is canonical; what follows is the same three with RFDeck's own
+sequencing attached.
+
 ### 1. Port 53212 — two sockets cannot share unicast, and this one is fragile
 
 The hand-off suggests keeping `McpBus` for discovery probes only while the core
