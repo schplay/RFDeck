@@ -1309,9 +1309,17 @@ export class DeviceManagerService extends EventEmitter {
       this.suppressDiscovered(device.ip, device.port);
       return;
     }
-    this.discoveredCache.set(`${device.ip}:${device.port}`, device);
-    // Something is appearing on the network: worth looking again soon.
-    this.resetAutoScanGap();
+    const discoveryKey = `${device.ip}:${device.port}`;
+    const alreadyKnown = this.discoveredCache.has(discoveryKey);
+    this.discoveredCache.set(discoveryKey, device);
+    // Something *new* is appearing on the network: worth looking again soon.
+    //
+    // This used to reset on every discovery, including the same hosts the previous
+    // sweep found. A sweep of any real network always rediscovers something, so the
+    // gap was reset every time and the doubling never happened: RFDeck swept every
+    // twenty seconds, indefinitely, whenever one device was switched off. The
+    // backoff was written to stop exactly that and was disarmed by this line.
+    if (!alreadyKnown) this.resetAutoScanGap();
     this.emit('device:discovered', device);
     // If this IP isn't already tracked, check whether it's a known inventory
     // device that changed IP (e.g. DHCP re-assignment after power cycle).

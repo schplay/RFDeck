@@ -94,14 +94,56 @@ describe('subnets where devices were last seen', () => {
 });
 
 describe('a flat /16, which is a perfectly ordinary show network', () => {
-  it('is swept in full rather than reduced to the local /24', () => {
+  // This block used to assert the opposite: that a /16 is "swept in full rather
+  // than reduced to the local /24", with `expect(all.length).toBeGreaterThan(65_000)`.
+  //
+  // That test was wrong, and being green made it worse — it held the behaviour in
+  // place and made the flood look like a requirement. 65,534 addresses is 131,068
+  // datagrams and as many TCP connects, repeated every twenty seconds for as long
+  // as one device was switched off. The packets were not even the worst of it: a
+  // unicast datagram to an address where nothing lives makes the router ARP for
+  // it, and ARP is broadcast, so the sweep became tens of thousands of broadcasts
+  // reaching every port on the network. It degraded every device on a real rig
+  // and stopped the instant the process was killed.
+  //
+  // What should have been asserted is the rule that makes a sweep affordable:
+  // broadcast finds hardware nobody has told RFDeck about, and unicast is only for
+  // addresses there is a reason to probe. So the cost scales with the rig, not
+  // with the address space.
+
+  it('does not walk the whole /16 — that is what the broadcast probe is for', () => {
     ifaces.push({ address: '10.2.3.10', netmask: '255.255.0.0' });
     const all = targets();
-    // Both ends, and an address in a different third octet from the server's.
-    expect(all).toContain('10.2.0.1');
+    expect(all.length).toBeLessThan(1_000);
+    expect(all).not.toContain('10.2.255.254');
+  });
+
+  it('still covers the server own /24, where a receiver usually is', () => {
+    ifaces.push({ address: '10.2.3.10', netmask: '255.255.0.0' });
+    const all = targets();
+    expect(all).toContain('10.2.3.1');
     expect(all).toContain('10.2.3.234');
-    expect(all).toContain('10.2.255.254');
-    expect(all.length).toBeGreaterThan(65_000);
+  });
+
+  it('covers another /24 of the same /16 once a device is known to be there', () => {
+    // The rig this was found on: server on 10.2.3.x, receivers on 10.2.5.x. The
+    // inventory is what makes that second subnet worth walking — not the netmask.
+    ifaces.push({ address: '10.2.3.10', netmask: '255.255.0.0' });
+    service.setSearchHints(['10.2.5.6']);
+    const all = targets();
+    expect(all).toContain('10.2.5.6');
+    expect(all).toContain('10.2.5.200');
+    expect(all).not.toContain('10.2.9.1');
+  });
+
+  it('has a ceiling, so no inventory can turn the sweep back into a flood', () => {
+    ifaces.push({ address: '10.2.3.10', netmask: '255.255.0.0' });
+    service.setSearchHints(
+      Array.from({ length: 40 }, (_, i) => `10.2.${i + 10}.5`),
+    );
+    const all = targets();
+    // Eight /24s of 254, and not one address more however many subnets are named.
+    expect(all.length).toBeLessThanOrEqual(8 * 254);
   });
 
   it('gets a guard long enough to finish, so nothing is cut off unprobed', async () => {

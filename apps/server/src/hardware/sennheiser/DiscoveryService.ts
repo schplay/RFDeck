@@ -43,15 +43,24 @@ export interface DiscoveredDevice {
  */
 export function resolveDiscoveryDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.RFDECK_DISABLE_DISCOVERY !== '1') return false;
-  if (env.NODE_ENV === 'production') {
-    log.error(
-      '[Discovery] RFDECK_DISABLE_DISCOVERY is set on a production server and ' +
-      'is being IGNORED. It exists for the test harness. Discovery stays on — ' +
-      'a deployment that cannot find receivers is not something to switch on by accident.',
-    );
-    return false;
-  }
-  log.warn('[Discovery] Disabled for testing — no devices will be found');
+  // Honoured in production, on purpose.
+  //
+  // This used to be refused here, on the reasoning that a silent global off-switch
+  // for the product's core function is not a feature. That reasoning was right
+  // about silence and wrong about the switch. Discovery sends traffic to addresses
+  // that are not RFDeck's, and when it goes wrong it goes wrong on somebody's
+  // production network — which it did: a sweep sized to the netmask instead of to
+  // the rig degraded a venue's entire network, and because this was refused in
+  // production the only way to stop it was to kill the service.
+  //
+  // An operator whose network is suffering needs a lever that is not "stop
+  // monitoring the show". Loud, not silent, is the part worth keeping.
+  log.warn(
+    '[Discovery] RFDECK_DISABLE_DISCOVERY=1 — discovery is OFF. Devices already in ' +
+    'Inventory are still polled at their recorded addresses, but nothing new will be ' +
+    'found and a device that changes address will not be followed. Unset it and ' +
+    'restart to turn discovery back on.',
+  );
   return true;
 }
 
@@ -85,7 +94,11 @@ const HOST_PROBE_TIMEOUT_MS = 400;
 // 256 halves the peak connection pressure against the measured figure and still
 // walks a /16 well inside its guard. The repetition was always the larger part of
 // the problem, and that is fixed where it belongs, in how often a sweep runs.
-const HOST_PROBE_CONCURRENCY = 256;
+// 256 was sized to get through tens of thousands of addresses. With the sweep
+// bounded to the rig's own /24s there is nothing to rush, and 256 simultaneous
+// connection attempts is a lot to point at a network full of equipment that is not
+// a receiver — the lighting gear on this rig locked up under it.
+const HOST_PROBE_CONCURRENCY = 64;
 
 // Upper bound on one sweep, so a scan can never hang forever — derived from the
 // size of the sweep rather than fixed.
@@ -118,8 +131,16 @@ const MCP_PROBE = 'Push 5 500 3';
 // Without a pause a large sweep overflows the socket and most probes are
 // discarded before reaching the wire, which reads as a network with no receivers
 // on it.
-const UDP_PROBE_BATCH = 256;
-const UDP_PROBE_PAUSE_MS = 20;
+// 32 addresses is 64 datagrams, so this is about 1,300 packets a second. The old
+// 256/20 ms was 25,600 — chosen to make a /16 sweep finish, which is a goal that
+// should never have existed. With the sweep now bounded to the rig's own /24s, the
+// slower rate costs a second or two and leaves the network alone.
+const UDP_PROBE_BATCH = 32;
+const UDP_PROBE_PAUSE_MS = 50;
+
+// How many /24s the unicast sweep will walk. Each is 254 addresses, so this is a
+// ceiling of ~2,032 datagrams per sweep however large the network is.
+const SWEEP_MAX_SUBNETS = 8;
 
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
@@ -236,25 +257,71 @@ export class DiscoveryService extends EventEmitter {
    * Every address worth sweeping: the interfaces' own subnets, plus the /24 around
    * each place a device was last seen that those subnets do not already reach.
    */
+  /**
+   * Which addresses the unicast sweep should actually walk.
+   *
+   * **This is the change that stopped RFDeck degrading a venue's network.** It used
+   * to walk the whole of every interface's subnet. On a flat /16 — which is what
+   * "devices on 10.2.3.x and 10.2.5.x" means — that is 65,534 addresses, 131,068
+   * datagrams, repeated every twenty seconds for as long as any device was
+   * missing. The arithmetic nobody did: at the old pacing that is 25,600 packets a
+   * second for five seconds out of every twenty.
+   *
+   * And the packet count was the smaller half. A unicast datagram to an address
+   * where nothing lives makes the router ARP for it, and ARP is broadcast — so the
+   * sweep turned into tens of thousands of broadcasts reaching every port on the
+   * network, twice a minute. That is why unrelated equipment suffered and why
+   * stopping the process fixed it instantly.
+   *
+   * The split that replaces it:
+   *
+   * - **Broadcast finds hardware nobody has told RFDeck about.** One datagram per
+   *   interface reaches every device in the L2 domain, including a receiver on a
+   *   different /24 of the same /16. That is `broadcastMcpProbe`, and it is what
+   *   makes a newly powered rig appear.
+   * - **Unicast is for addresses there is a reason to probe**: the /24 around each
+   *   server interface, and the /24 around every address the inventory has ever
+   *   recorded. A device that moved is overwhelmingly on the same /24 it was, and
+   *   one that is not will still answer the broadcast.
+   *
+   * So the sweep scales with the size of the rig rather than the size of the
+   * address space, and a bigger network no longer means more traffic.
+   */
   private sweepTargets(): Array<{ label: string; addresses: string[] }> {
     const targets: Array<{ label: string; addresses: string[] }> = [];
-    const covered = new Set<string>();
+    const seenBase = new Set<string>();
+
+    const slash24 = (ip: string): string[] => {
+      const base = ip.split('.').slice(0, 3).join('.');
+      return Array.from({ length: 254 }, (_, i) => `${base}.${i + 1}`);
+    };
+
+    const add = (ip: string, label: string): void => {
+      const base = ip.split('.').slice(0, 3).join('.');
+      if (seenBase.has(base)) return;
+      seenBase.add(base);
+      targets.push({ label, addresses: slash24(ip) });
+    };
 
     for (const iface of mcpBus.getActiveInterfaces()) {
-      const addresses = this.subnetAddresses(iface);
-      for (const a of addresses) covered.add(a);
-      targets.push({ label: `interface ${iface.address}`, addresses });
+      add(iface.address, `${iface.address.split('.').slice(0, 3).join('.')}.0/24, this server's own`);
+    }
+    for (const hint of this.searchHints) {
+      add(hint, `${hint.split('.').slice(0, 3).join('.')}.0/24, where a device was last seen`);
     }
 
-    const extra = new Map<string, string[]>();
-    for (const hint of this.searchHints) {
-      if (covered.has(hint)) continue;           // already in an interface subnet
-      const base = hint.split('.').slice(0, 3).join('.');
-      if (extra.has(base)) continue;
-      extra.set(base, Array.from({ length: 254 }, (_, i) => `${base}.${i + 1}`));
-    }
-    for (const [base, addresses] of extra) {
-      targets.push({ label: `${base}.0/24, where a device was last seen`, addresses });
+    // A rig spread over more /24s than this is not something to discover by
+    // walking; it is something to add by address. Said out loud rather than
+    // silently truncated, because a device that is never swept is a device an
+    // operator will be looking for.
+    if (targets.length > SWEEP_MAX_SUBNETS) {
+      const dropped = targets.splice(SWEEP_MAX_SUBNETS);
+      log.warn(
+        `[Discovery] ${targets.length + dropped.length} /24s have devices on them; ` +
+        `sweeping the first ${SWEEP_MAX_SUBNETS} and leaving ` +
+        `${dropped.map(t => t.label.split(',')[0]).join(', ')}. Broadcast discovery still ` +
+        `covers those, and anything it misses can be added by IP.`,
+      );
     }
     return targets;
   }

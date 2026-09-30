@@ -10,7 +10,7 @@ const MCP_PORT = 53212;
 
 type MsgHandler = (raw: string, fromIp: string) => void;
 
-class McpBus {
+export class McpBus {
   private sock: dgram.Socket | null = null;
   private ipHandlers  = new Map<string, Set<MsgHandler>>();
   private anyHandlers = new Set<MsgHandler>();
@@ -97,7 +97,57 @@ class McpBus {
     });
   }
 
+  /**
+   * A hard ceiling on outbound datagrams, independent of whoever is sending them.
+   *
+   * Every fix above this line addresses a *reason* the bus was over-used, and each
+   * was correct when written. A sweep sized to the netmask rather than to the rig
+   * still put 25,600 packets a second onto a venue's network, in bursts, for as long
+   * as any device was switched off — and the only thing that stopped it was killing
+   * the process. The lesson is not that the sweep needed different constants; it is
+   * that nothing downstream of this method was ever bounded, so any mistake in
+   * target selection became a network outage.
+   *
+   * So the bound lives here, where all MCP traffic passes, and it holds whatever
+   * future code does. It sits far above what correct operation needs: a rig of a few
+   * dozen receivers renewing subscriptions every eight seconds is single digits per
+   * second, and a bounded sweep is about 1,300. Nothing legitimate comes close, so
+   * anything that trips this is a bug, and it says so.
+   */
+  private static readonly MAX_SENDS_PER_SEC = 4_000;
+  private sendWindowStart = 0;
+  private sendsThisWindow = 0;
+  private droppedThisWindow = 0;
+
+  /** True if this datagram is within the ceiling. Counts, and reports overruns. */
+  private withinSendBudget(): boolean {
+    const now = Date.now();
+    if (now - this.sendWindowStart >= 1000) {
+      if (this.droppedThisWindow > 0) {
+        // `error`, not `warn`: reaching this means RFDeck tried to put more than
+        // 4,000 datagrams a second onto somebody's network. That is never correct.
+        log.error(
+          `[McpBus] Outbound MCP ceiling hit — sent ${this.sendsThisWindow}, ` +
+          `DROPPED ${this.droppedThisWindow} datagram(s) in the last second. This is a ` +
+          `bug in whatever is sending: no correct operation approaches this rate. ` +
+          `Discovery can be turned off with RFDECK_DISABLE_DISCOVERY=1 while it is ` +
+          `investigated.`,
+        );
+      }
+      this.sendWindowStart = now;
+      this.sendsThisWindow = 0;
+      this.droppedThisWindow = 0;
+    }
+    if (this.sendsThisWindow >= McpBus.MAX_SENDS_PER_SEC) {
+      this.droppedThisWindow++;
+      return false;
+    }
+    this.sendsThisWindow++;
+    return true;
+  }
+
   sendTo(ip: string, command: string): void {
+    if (!this.withinSendBudget()) return;
     const buf = Buffer.from(command.endsWith('\r') ? command : command + '\r', 'ascii');
     if (this.ready && this.sock) {
       this.sock.send(buf, 0, buf.length, MCP_PORT, ip, (err) => {

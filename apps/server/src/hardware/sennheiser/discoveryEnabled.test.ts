@@ -19,15 +19,21 @@ describe('the discovery kill switch', () => {
     expect(resolveDiscoveryDisabled({ RFDECK_DISABLE_DISCOVERY: '1' })).toBe(true);
   });
 
-  it('is refused on a production server, however it got set', () => {
-    // Inherited from a parent process, copied into a service file, exported in
-    // a shell while debugging something else — it does not matter which. A
-    // deployment that cannot find receivers is not a state reachable by
-    // accident.
+  it('is honoured on a production server, because that is where it is needed', () => {
+    // This asserted the opposite, and the reasoning was that a deployment which
+    // cannot find receivers is not a state reachable by accident. True, and beside
+    // the point: discovery sends traffic to addresses that are not RFDeck's, and
+    // when it went wrong it degraded a venue's entire network. Because this was
+    // refused in production, the only way to stop it was to kill the service —
+    // which also stopped monitoring the show.
+    //
+    // An operator needs a lever between "my network is unusable" and "I have no
+    // monitoring". The protection that matters is that it is loud, not that it is
+    // unavailable.
     expect(resolveDiscoveryDisabled({
       RFDECK_DISABLE_DISCOVERY: '1',
       NODE_ENV: 'production',
-    })).toBe(false);
+    })).toBe(true);
   });
 
   it('ignores any value other than an exact opt-in', () => {
