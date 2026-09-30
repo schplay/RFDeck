@@ -181,3 +181,41 @@ describe('with no interfaces at all', () => {
     expect(targets()).toContain('10.2.0.4');
   });
 });
+
+describe('what a sweep costs the network', () => {
+  // The number nobody worked out. Every constant was individually defensible and
+  // their product took a venue's network down, so it is asserted here rather than
+  // left to be multiplied out again by whoever changes one of them next.
+
+  it('a worst-case sweep stays small enough to be unremarkable', async () => {
+    const { sweepCost } = await import('./DiscoveryService');
+    ifaces.push({ address: '10.2.3.10', netmask: '255.255.0.0' });
+    service.setSearchHints(Array.from({ length: 40 }, (_, i) => `10.2.${i + 10}.5`));
+
+    const cost = sweepCost(targets().length);
+
+    // For comparison, the behaviour this replaced: 131,068 datagrams at 25,600
+    // packets a second, and 65,534 ARP broadcasts, every twenty seconds.
+    expect(cost.datagrams).toBeLessThan(5_000);
+    expect(cost.peakPacketsPerSecond).toBeLessThan(2_000);
+    expect(cost.arpRequests).toBeLessThan(2_500);
+    // And it finishes, so nothing is tempted to speed it up again.
+    expect(cost.seconds).toBeLessThan(10);
+  });
+
+  it('cannot be made unbounded by the netmask, which is what happened before', async () => {
+    const { sweepCost } = await import('./DiscoveryService');
+    // A /8. The old code walked whatever the mask described.
+    ifaces.push({ address: '10.2.3.10', netmask: '255.0.0.0' });
+    expect(sweepCost(targets().length).datagrams).toBeLessThan(5_000);
+  });
+
+  it('cannot be made unbounded by the size of the inventory either', async () => {
+    const { sweepCost } = await import('./DiscoveryService');
+    ifaces.push({ address: '10.2.3.10', netmask: '255.255.255.0' });
+    service.setSearchHints(
+      Array.from({ length: 500 }, (_, i) => `172.${(i >> 8) & 255}.${i & 255}.7`),
+    );
+    expect(sweepCost(targets().length).datagrams).toBeLessThan(5_000);
+  });
+});

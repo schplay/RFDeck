@@ -129,9 +129,7 @@ export class McpBus {
         log.error(
           `[McpBus] Outbound MCP ceiling hit — sent ${this.sendsThisWindow}, ` +
           `DROPPED ${this.droppedThisWindow} datagram(s) in the last second. This is a ` +
-          `bug in whatever is sending: no correct operation approaches this rate. ` +
-          `Discovery can be turned off with RFDECK_DISABLE_DISCOVERY=1 while it is ` +
-          `investigated.`,
+          `bug in whatever is sending: no correct operation approaches this rate.`,
         );
       }
       this.sendWindowStart = now;

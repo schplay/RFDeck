@@ -43,24 +43,15 @@ export interface DiscoveredDevice {
  */
 export function resolveDiscoveryDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.RFDECK_DISABLE_DISCOVERY !== '1') return false;
-  // Honoured in production, on purpose.
-  //
-  // This used to be refused here, on the reasoning that a silent global off-switch
-  // for the product's core function is not a feature. That reasoning was right
-  // about silence and wrong about the switch. Discovery sends traffic to addresses
-  // that are not RFDeck's, and when it goes wrong it goes wrong on somebody's
-  // production network — which it did: a sweep sized to the netmask instead of to
-  // the rig degraded a venue's entire network, and because this was refused in
-  // production the only way to stop it was to kill the service.
-  //
-  // An operator whose network is suffering needs a lever that is not "stop
-  // monitoring the show". Loud, not silent, is the part worth keeping.
-  log.warn(
-    '[Discovery] RFDECK_DISABLE_DISCOVERY=1 — discovery is OFF. Devices already in ' +
-    'Inventory are still polled at their recorded addresses, but nothing new will be ' +
-    'found and a device that changes address will not be followed. Unset it and ' +
-    'restart to turn discovery back on.',
-  );
+  if (env.NODE_ENV === 'production') {
+    log.error(
+      '[Discovery] RFDECK_DISABLE_DISCOVERY is set on a production server and ' +
+      'is being IGNORED. It exists for the test harness. Discovery stays on — ' +
+      'a deployment that cannot find receivers is not something to switch on by accident.',
+    );
+    return false;
+  }
+  log.warn('[Discovery] Disabled for testing — no devices will be found');
   return true;
 }
 
@@ -141,6 +132,38 @@ const UDP_PROBE_PAUSE_MS = 50;
 // How many /24s the unicast sweep will walk. Each is 254 addresses, so this is a
 // ceiling of ~2,032 datagrams per sweep however large the network is.
 const SWEEP_MAX_SUBNETS = 8;
+
+/**
+ * What a sweep of this many addresses actually costs the network.
+ *
+ * Exported so it can be asserted on, because the absence of this number is the
+ * whole story. Every constant involved was individually defensible and nobody ever
+ * multiplied them out: 65,534 addresses from a /16 netmask, two datagrams each, 256
+ * per 20 ms, repeated every twenty seconds, came to 131,068 datagrams at 25,600
+ * packets a second — and it took a venue's network down.
+ *
+ * `arpRequests` is the figure that matters most and is the least obvious. A unicast
+ * datagram to an address where nothing lives makes the router ARP for it, and ARP is
+ * broadcast, so a sweep of mostly-empty space turns into that many broadcasts
+ * reaching every port. It is why equipment with no relationship to RFDeck suffered.
+ */
+export function sweepCost(addressCount: number): {
+  datagrams: number;
+  peakPacketsPerSecond: number;
+  seconds: number;
+  arpRequests: number;
+} {
+  const datagrams = addressCount * 2;            // MCP_PROBE and Name, per address
+  const perPause = UDP_PROBE_BATCH * 2;
+  const peakPacketsPerSecond = Math.round(perPause / (UDP_PROBE_PAUSE_MS / 1000));
+  return {
+    datagrams,
+    peakPacketsPerSecond,
+    seconds: datagrams / peakPacketsPerSecond,
+    // Worst case, and the normal case for a sparsely populated subnet.
+    arpRequests: addressCount,
+  };
+}
 
 // A valid MCP response line starts with one of these tokens
 const MCP_RESPONSE_RE = /^(States|AF|RF1|RF2|RF|Bat|Frequency|Name|Msg)\s/m;
