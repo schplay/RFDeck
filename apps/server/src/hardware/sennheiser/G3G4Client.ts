@@ -204,8 +204,11 @@ export class G3G4Client extends EventEmitter {
   }
 
   private handleData(raw: string) {
+    // Reachability and telemetry are not the same thing, and this ordering is
+    // the difference. An error reply proves the device is there, so the silence
+    // timer is right to reset — but it carries no readings, so the device is
+    // still not delivering and its loss is still outstanding.
     this.resetOfflineTimer();
-    this.disconnectSignaled = false;
 
     // MCP error responses ("1020: Value out of range [...]") mean the device
     // is reachable but rejected the command. Don't treat as valid data.
@@ -213,6 +216,14 @@ export class G3G4Client extends EventEmitter {
       log.warn(`[G3G4Client] MCP error from ${this.ip}: ${raw.trim()}`);
       return;
     }
+
+    // Only telemetry clears the loss. Clearing it before the error check meant
+    // an error reply from a receiver already counted offline reset the flag, and
+    // the next silent cycle reported `disconnected` a second time for the same
+    // outage — two dropout alerts and two cloud events for one receiver that
+    // went off once and stayed off. Found by the integrations core, whose own
+    // transition test caught the same bug in their MCP implementation (item N).
+    this.disconnectSignaled = false;
 
     // Every packet, not only the first.
     //

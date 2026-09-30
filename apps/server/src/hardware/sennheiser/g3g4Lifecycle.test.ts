@@ -110,6 +110,45 @@ describe('the full life of a receiver', () => {
     expect(disconnects).toHaveLength(1);
   });
 
+  it('does not report the same loss twice because the device answered an error', () => {
+    // An MCP error reply ("1020: Value out of range [...]") proves the device is
+    // reachable and carries no readings at all. Treating it as contact cleared the
+    // outstanding-loss flag, so the next silent cycle reported `disconnected` a
+    // second time for one outage: two dropout alerts and two cloud events for a
+    // receiver that had gone off once and stayed off.
+    //
+    // Found by the integrations core, whose own transition test caught the same
+    // bug in their MCP implementation (review item N). Worth having from both
+    // sides: this is a state that only exists between two events.
+    client.startPolling();
+    packet();
+    expect(client.isConnected).toBe(true);
+
+    elapse(40);
+    expect(disconnects).toHaveLength(1);
+
+    // The receiver rejects something we asked for. It is there; it is not talking.
+    client.handleData('1020: Value out of range [Frequency]\r');
+    expect(client.isConnected).toBe(false);
+
+    elapse(40);
+    expect(disconnects).toHaveLength(1);
+  });
+
+  it('still treats an error reply as proof the device is reachable', () => {
+    // The other half of the same rule. An error reply must reset the silence
+    // timer — the device answered — so a receiver rejecting one command is not
+    // also reported as having vanished.
+    client.startPolling();
+    packet();
+
+    // OFFLINE_MS is 15 s, so each leg is well inside it and the total is not.
+    elapse(10);
+    client.handleData('1020: Value out of range [Frequency]\r');
+    elapse(10);                        // 20 s in all, 10 s of it silent
+    expect(disconnects).toHaveLength(0);
+  });
+
   it('starts clean when the same client is restarted', () => {
     // untrack/retrack against one instance must not carry state across.
     client.startPolling();

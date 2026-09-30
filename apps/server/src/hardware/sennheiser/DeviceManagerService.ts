@@ -8,7 +8,7 @@ import { EventEmitter } from 'events';
 import { Server } from 'socket.io';
 import { Device, Channel } from '@rfdeck/shared-types';
 import { prisma } from '../../db';
-import { getMacByIp } from '../../utils/arp';
+import { getMacByIp, isDirectlyAttached } from '../../utils/arp';
 import {
   evaluateSample, confirmDropout, DEFAULT_RF_THRESHOLDS,
   RfState, RfThresholds,
@@ -209,6 +209,23 @@ export class DeviceManagerService extends EventEmitter {
   // Unmatched-discovery alerts already raised, so one orphan does not repeat
   // into the event log on every scan.
   private orphanAlerted = new Set<string>();
+  /**
+   * How many times an address has been seen and not matched to a row.
+   *
+   * The first sighting is not evidence of anything. A receiver found by its reply
+   * to a broadcast probe has no neighbour entry yet, so its hardware address is
+   * unreadable on that pass and becomes readable on a later one — RFDeck now
+   * causes that rather than waiting for it (see `resolveHardwareAddress`), but the
+   * ordering is still a race it does not control.
+   *
+   * Alerting on the first pass told the operator that eleven receivers could not
+   * be matched and that they should correct each address by hand, and then every
+   * one of them synced on its own a few minutes later. An alert that is retracted
+   * by events is worse than no alert: it spends the operator's trust on work that
+   * did not need doing. So the claim waits for a second sighting, by which point
+   * RFDeck has definitely sent to the address and a readable entry should exist.
+   */
+  private orphanSightings = new Map<string, number>();
   // Low-battery readings awaiting a second consecutive sample. One reading is
   // not evidence: transmitters report garbage during a re-sync, and a single
   // bad sample used to raise a CRITICAL alert on a full pack.
@@ -794,6 +811,7 @@ export class DeviceManagerService extends EventEmitter {
     }
     this.genuinelyOnlineIps.delete(ip);
     this.orphanAlerted.delete(ip);
+    this.orphanSightings.delete(ip);
     // A fresh client will re-evaluate the password; do not carry the verdict.
     if (this.authFailed.delete(id)) {
       this.io.emit('device:auth', { ip, port, failed: false, reason: null });
@@ -1422,14 +1440,8 @@ export class DeviceManagerService extends EventEmitter {
         `be re-linked automatically.`,
       );
     } else if (port === 53212) {
-      // G3/G4 MCP device: ARP cache is populated once we send a UDP probe to this IP.
-      // On Windows, the cache entry can take a moment to appear — retry a few times.
-      let mac: string | null = null;
-      for (let attempt = 0; attempt < 4; attempt++) {
-        mac = await getMacByIp(ip);
-        if (mac) break;
-        await new Promise<void>(r => setTimeout(r, 400));
-      }
+      // G3/G4 MCP device. The neighbour entry has to be caused, not waited for.
+      const mac = await this.resolveHardwareAddress(ip, () => mcpBus.sendTo(ip, 'Name'));
       if (mac) {
         // Store MAC against any inventory record that already sits at this IP but
         // hasn't had its MAC recorded yet (e.g. device added manually then reconnected).
@@ -1533,13 +1545,18 @@ export class DeviceManagerService extends EventEmitter {
         const anyDown = unreachable.some(d =>
           !this.clients.get(`${d.ip}:${d.port}`)?.isConnected &&
           !this.clients.get(`${d.ip}:${d.port}-legacy`)?.isConnected);
-        if (anyDown && !this.orphanAlerted.has(ip)) {
+        const sightings = (this.orphanSightings.get(ip) ?? 0) + 1;
+        this.orphanSightings.set(ip, sightings);
+        if (anyDown && sightings > 1 && !this.orphanAlerted.has(ip)) {
           this.orphanAlerted.add(ip);
           this.emitAlert({
             severity: 'WARNING',
             type: 'DEVICE_UNMATCHED',
             message: `A G3/G4 named "${discoveredName ?? ip}" was found at ${ip} but could not be matched to any offline device`,
-            detail: 'If this is one of the offline devices, update that device\'s IP in Inventory (or re-add it from Discovery). Its identity will be recorded so this never needs doing again.',
+            detail: 'RFDeck will keep trying on each scan, so this may resolve on its own. '
+              + 'If it does not, set that device\'s address to this one in Inventory (or '
+              + 're-add it from Discovery), and its identity will be recorded so it is not '
+              + 'needed again.',
             deviceId: `${ip}:${port}`,
           });
         }
@@ -1551,9 +1568,8 @@ export class DeviceManagerService extends EventEmitter {
           `[DeviceManager] tryAutoReconcile: nothing matches ${ip} ` +
           `(label="${discoveredName ?? ''}", mac=${mac ?? 'none'}); ` +
           `${unreachable.length} G3/G4 row(s) known, ${nullMacs} of them with no recorded MAC` +
-          (mac ? '' : ' — and no MAC could be read for this address, so only the name it ' +
-            'reports could be compared (an address off any directly-attached subnet has no ' +
-            'neighbour entry to read)'),
+          (mac ? '' : ' — a probe was sent to this address and it still has no neighbour ' +
+            'table entry, so only the name it reports could be compared'),
         );
         return;
       }
@@ -1643,12 +1659,11 @@ export class DeviceManagerService extends EventEmitter {
   private async reconcileByHardwareAddress(
     ip: string, port: number, discoveredName?: string,
   ): Promise<void> {
-    let mac: string | null = null;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      mac = await getMacByIp(ip);
-      if (mac) break;
-      await new Promise<void>(r => setTimeout(r, 400));
-    }
+    // No assumption about transport here, so there is nothing to nudge with: the
+    // caller reached this address somehow, and if that left no neighbour entry
+    // there is nothing further this can do. Said plainly rather than retried in
+    // hope. See resolveHardwareAddress.
+    const mac = await this.resolveHardwareAddress(ip);
 
     if (mac) {
       // Record it against a row already at this address, so the next move is
@@ -1703,7 +1718,9 @@ export class DeviceManagerService extends EventEmitter {
     if (!matched) {
       const rows = await prisma.inventoryDevice.findMany({ where: { port, active: true } });
       const anyDown = rows.some(d => !this.clients.get(`${d.ip}:${d.port}`)?.isConnected);
-      if (anyDown && !this.orphanAlerted.has(ip)) {
+      const sightings = (this.orphanSightings.get(ip) ?? 0) + 1;
+      this.orphanSightings.set(ip, sightings);
+      if (anyDown && sightings > 1 && !this.orphanAlerted.has(ip)) {
         this.orphanAlerted.add(ip);
         this.emitAlert({
           severity: 'WARNING',
@@ -1729,6 +1746,53 @@ export class DeviceManagerService extends EventEmitter {
     await this.migrateDeviceIp(matched, ip, port);
   }
 
+  /**
+   * Read the device's hardware address, having first given the kernel a reason to
+   * know it.
+   *
+   * The neighbour table is not a directory. An entry exists because this host
+   * needed to *send* to that address and resolved it; inbound traffic alone does
+   * not reliably create one. So a receiver discovered by its reply to a broadcast
+   * probe — which is how a G3/G4 that has just powered on is normally found — has
+   * no entry, and no amount of waiting produces one.
+   *
+   * The previous version read the table four times, 400 ms apart, with a comment
+   * saying the entry appears "once we send a UDP probe to this IP" while sending
+   * nothing. When the lookup came up empty the device was declared unmatchable and
+   * the operator was told to correct its address by hand. It then recovered on its
+   * own some minutes later, on a later scan that happened to have sent to it: the
+   * alert had been describing a gap in RFDeck's own knowledge as a fault in the rig.
+   *
+   * So: send first, then look. `nudge` is one datagram on a protocol the caller
+   * knows the device speaks. The retries afterwards are waiting on something that
+   * was actually set in motion.
+   */
+  private async resolveHardwareAddress(
+    ip: string,
+    nudge?: () => void,
+  ): Promise<string | null> {
+    // Off-link: there is nothing to cause and nothing to wait for. Say so once,
+    // rather than sending a probe and polling a table that cannot answer.
+    if (!isDirectlyAttached(ip, mcpBus.getActiveInterfaces())) {
+      this.reportSuppressed(
+        ip,
+        'is not on a subnet this server is attached to, so its hardware address ' +
+        'cannot be read here and identity has to rest on the name it reports',
+      );
+      return null;
+    }
+
+    if (nudge) {
+      try { nudge(); } catch { /* a probe that cannot be sent is not fatal here */ }
+    }
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const mac = await getMacByIp(ip);
+      if (mac) return mac;
+      await new Promise<void>(r => setTimeout(r, 400));
+    }
+    return null;
+  }
+
   private async migrateDeviceIp(
     dev: { id: string; name: string; ip: string; port: number },
     newIp: string,
@@ -1751,6 +1815,27 @@ export class DeviceManagerService extends EventEmitter {
     this.io.emit('device:ip-changed', {
       id: dev.id, oldIp, newIp, port: newPort, name: dev.name,
     });
+
+    // An unmatched warning about this address, if one was raised, is now false.
+    //
+    // It was keyed on the address the device turned up at, and `untrackDevice`
+    // above clears the one it *left* — so the warning outlived the problem
+    // indefinitely. The operator was left holding a WARNING telling them to
+    // correct an address by hand, for a device that was already synced and
+    // working. Saying so costs one INFO and is the difference between an alert
+    // log that can be trusted and one that has to be second-guessed.
+    this.orphanSightings.delete(newIp);
+    if (this.orphanAlerted.delete(newIp)) {
+      this.emitAlert({
+        severity: 'INFO',
+        type: 'DEVICE_UNMATCHED',
+        message: `"${dev.name}" was recognised at ${newIp} after all — no action is needed`,
+        detail: `It had been reported as found but unmatchable. It has been linked to its `
+          + `inventory record automatically and moved from ${oldIp} to ${newIp}.`,
+        deviceId: `${newIp}:${newPort}`,
+        deviceName: dev.name,
+      });
+    }
   }
 
   // Remove a discovered entry that turned out to be a secondary interface of an

@@ -18,10 +18,9 @@
 **Not replaced yet, and staying in RFDeck for now:**
 
 - **`DiscoveryService.ts`**: Bonjour, the MCP multicast listener and the subnet
-  sweep. The core has no discovery yet. Note that `McpBus` is shared by
-  discovery and by `G3G4Client`. After the migration, discovery keeps its own
-  53212 listener and the core binds 53212 separately (see
-  [Port 53212](#port-53212)).
+  sweep. The core has no discovery yet. `McpBus` is shared by discovery and by
+  `G3G4Client`, so G3/G4 stays on the old client until the core's MCP discovery
+  ships, and then both move together (see [Port 53212](#port-53212)).
 - **Deciding which spec and model a device is**, from its model string:
   `isSscModel`, `isLegacyMcpModel`, `isDigital6000`, `inferDeviceRole`. The core
   takes the spec and model as given.
@@ -171,8 +170,8 @@ Carrier limits, which RFDeck reads from `/osc/limits` today, are now a command:
 |---|---|
 | `connection` → `connected` | `connected` |
 | `connection` → `disconnected` | `disconnected(reason)` |
-| `connection` → `unauthorized` | `auth-failed({ reason })` |
-| the first `connected` after `unauthorized` | `auth-ok` |
+| `connection` → `unauthorized` | `auth-failed({ reason })`. Terminal for that session: nothing more is sent (review item O) |
+| the first `connected` after re-opening a device whose last session ended `unauthorized` | `auth-ok` |
 | `alive` | `alive` |
 | `state` | merge the patch into a per-device copy, then emit `state` with the mapped tree. The core has already merged it into `snapshot(id).state`, so re-reading the snapshot works too |
 
@@ -228,8 +227,13 @@ Also different, and not previously raised:
    or the fall-through to G3/G4. Everything RFDeck shows for EW-DX comes from the
    SSE resources proven on the rig. **If a rig EW-DX shows readings over UDP that
    SSE doesn't deliver, say so**: that would argue for adding the UDP path back.
-9. **EW-DX 401** is reported as `unauthorized`, and the core retries every 30 s,
-   so a password corrected on the device recovers without a restart.
+9. **A refused EW-DX password is terminal** (review item O). A 401 or 403 on any
+   request reports `unauthorized` once. After that the core sends nothing and
+   commands fail with `auth`. To try a corrected password, `close` the device
+   and `open` it again with the new `settings.password`. Do this only when a
+   person changes the password, never on a timer. That is the path RFDeck
+   already takes when a password is edited. Drop the 60 s auth backoff for
+   migrated devices, because the core never retries.
 10. **Digital 6000 writes carry `/osc/xid`** (TI 1109 §8.131), so a reply is
     matched to its command exactly. A device that ignores the xid still works:
     the reply is matched by path.

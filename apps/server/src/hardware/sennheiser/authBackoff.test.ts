@@ -87,6 +87,25 @@ describe('a device that refused the stored password', () => {
     expect(probe).toHaveBeenCalledTimes(3);
   });
 
+  it('does not throttle a device that is being polled successfully', () => {
+    // The gate is on the connection state, not on which call saw the 401. A device
+    // with a live activeUrl is delivering telemetry on it; firmware that refuses the
+    // SSE subscription while still serving /api/ssc/state must not have its readings
+    // cut to once a minute because of a refusal somewhere else.
+    const { client } = makeClient();
+    (client as any).activeUrl = 'https://192.0.2.50/api/ssc/state';
+    reject(client);
+    expect((client as any).authRejectedAt).toBeGreaterThan(0);
+
+    // The throttle does not apply, so the poll proceeds to the connected branch.
+    (client as any).isSSCv2 = false;
+    const pollOsc = vi.fn().mockResolvedValue({});
+    (client as any).pollOsc = pollOsc;
+    return (client as any).poll().then(() => {
+      expect(pollOsc).toHaveBeenCalled();
+    });
+  });
+
   it('forgets the rejection when the client is restarted, so a saved password is tried at once', () => {
     const { client } = makeClient();
     reject(client);

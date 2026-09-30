@@ -66,11 +66,12 @@ export class SSCClient extends EventEmitter {
    * `updateTrackedDevice` builds a fresh client when they do, so nothing here has
    * to poll for it.
    *
-   * Scoped to the probe path, which is the one that floods: with `activeUrl` null
-   * the poll tick probes on every pass. An SSE 401 is left alone — `ssePermFailed`
-   * already stops that being retried, and some firmware refuses the subscription
-   * while serving `/api/ssc/state` directly, where throttling the poll loop would
-   * cut working telemetry to once a minute.
+   * Scoped to the unconnected case, which is the one that floods: with `activeUrl`
+   * null the poll tick probes on every pass, five URLs at a time. A device that has
+   * an `activeUrl` is being polled successfully on it, and nothing here touches
+   * that — so a 401 from somewhere else, such as a refused SSE subscription on
+   * firmware that still serves `/api/ssc/state`, cannot throttle telemetry that is
+   * working. The condition is the connection state, not which call saw the 401.
    *
    * Without this the client probed every 250 ms, walking five candidate URLs, each
    * carrying the rejected password: up to twenty failed authentications a second,
@@ -1171,7 +1172,11 @@ export class SSCClient extends EventEmitter {
     // and at the polling rate this client runs at, it is a sustained
     // authentication flood against somebody's receiver. Once a minute is enough
     // to notice a device that was fixed by other means.
-    if (this.authRejectedAt && Date.now() - this.authRejectedAt < SSCClient.AUTH_RETRY_MS) {
+    if (
+      this.activeUrl === null &&
+      this.authRejectedAt &&
+      Date.now() - this.authRejectedAt < SSCClient.AUTH_RETRY_MS
+    ) {
       return;
     }
 

@@ -21,7 +21,22 @@
 > wrong reading — O made a receiver need re-adopting in Control Cockpit by
 > presenting a refused password twenty times a second, and P is a hardware
 > identity that does not exist across a router, which no amount of care in either
-> codebase can conjure.
+> codebase can conjure. **P carries a correction dated 2026-09-30:** the rig
+> symptom originally attributed to it had a different cause — a neighbour entry
+> that was waited for instead of caused — and both are now written up there.
+>
+> **All three are answered, and RFDeck has replied to each (2026-09-30).** N's
+> transition test found a bug in the core *and* the same bug in RFDeck, now fixed
+> and pinned here. O's question about RFDeck's SSE exemption was a fair hit: there
+> was no evidence for it, and the fix is better without it. P's distinction between
+> "no entry yet" and "no entry possible" is implemented on RFDeck's side, where the
+> core rightly said it belongs. **All three are now answered by the core.**
+>
+> - **O is fixed and tested.** A refused credential is terminal: exactly one
+>   failed authentication per open.
+> - **N has its tests in place** for the lifecycle, buffer sizing and the single
+>   socket. Pacing tests follow with discovery.
+> - **P is accepted.** There is no MAC in the core's identity.
 >
 > Each item compares what RFDeck does with what a published Sennheiser document
 > says, and asks which is right. RFDeck has been tested on real hardware and
@@ -708,6 +723,75 @@ RFDeck is in today; all three had to be inferred while they were being diagnosed
 of scope, say which, so RFDeck knows to keep watching for that symptom rather
 than assuming it is handled.
 
+**Core answer (2026-09-29):** **Agreed: tests, not prose.** Where each one stands,
+in `meros-co/integrations`:
+
+1. **Receive buffer sizing: in, tested.** The shared socket asks for 8 MB
+   receive and 4 MB send. If the OS refuses outright, as macOS does above
+   `kern.ipc.maxsockbuf` rather than clamping, it halves the request and asks
+   again, down to a 256 KB floor. **The granted size is read back and reported**
+   as a log event when the port is bound. The event is a warning when the
+   receive buffer is short of the request, and it names `net.core.rmem_max`.
+   Test: `udp::tests::buffers_are_enlarged_and_the_granted_size_is_read_back`
+   asserts the granted size is larger than an unconfigured socket's, and that
+   the reported value is the OS's own read-back. It fails if the sizing is
+   removed. It runs on Linux, macOS and Windows CI.
+2. **Send pacing: arrives with discovery.** Today the core sends only the
+   subscriptions of the devices it has open, with no sweep, so there is nothing
+   to pace yet. The unicast sweep lands with its pacing (batches of 256 with a
+   20 ms pause, as yours), the "probes deferred for pacing" event, and a test
+   that a sweep cannot delay a subscription renewal past its interval. It will
+   not land without that test.
+3. **One socket: in, tested.** Every session on 53212 registers a route on one
+   socket, keyed by source address. A second registration binds nothing, and a
+   second session for the same address is refused.
+   Test: `udp::tests::every_session_on_a_port_shares_one_socket`. Discovery
+   will register on the same socket rather than open its own.
+4. **Transition coverage: in, tested, and it found a bug.**
+   `sennheiser_mcp::tests::connect_loss_backoff_recovery_and_loss_again` walks
+   connect → loss → four retries → backoff → slow probe → recovery, **twice**,
+   as one sequence. It asserts:
+   - one disconnect per loss;
+   - the silence timer re-armed on every retry;
+   - backoff reached again in the second round;
+   - recovery in both rounds.
+
+   As you did, I reintroduced each of your three bugs, plus a counter that is
+   never reset, to confirm the test fails without each fix. All four were caught.
+
+   The bug it found: a device error reply (`1020: … [ … ]`) from a receiver
+   still counted offline cleared the "disconnect reported" flag, so the next
+   silent cycle reported a second `disconnected`. An error reply proves
+   reachability but carries no telemetry. Now only telemetry clears the flag,
+   and the same test covers it.
+
+**RFDeck answer (2026-09-30): RFDeck had that bug, and your test found it here
+too. Fixed.**
+
+`G3G4Client.handleData` cleared `disconnectSignaled` on its second line, *before*
+the error-reply check three lines below. So an error reply from a receiver already
+counted offline reset the flag, and the next silent cycle emitted a second
+`disconnected` for the same outage — two dropout alerts and two cloud events for
+one receiver that went off once and stayed off. `resetOfflineTimer()` stays above
+the check, because an error reply does prove reachability; only the flag moved
+below it.
+
+Pinned in `g3g4Lifecycle.test.ts` as two tests, one for each half of the rule:
+that the loss is not re-reported, and that an error reply still counts as contact
+so a receiver rejecting one command is not also reported as vanished. Verified by
+reverting the fix — two `timeout` disconnects instead of one.
+
+This is the clearest argument in the review for the exchange being worth having in
+both directions. Neither side found this by reading the other's code; both found it
+by walking the same transition.
+
+**Not yet covered: datagrams dropped on a full queue.** Kernel drops cannot be
+counted portably. The core's own drop point, the per-session inbound queue,
+drops silently today. It will be counted and reported with the discovery work,
+alongside pacing. Until then, treat "receivers drop offline during a scan" as
+unhandled. That is moot until G3/G4 migrates, because the core does not sweep.
+
+
 ---
 
 ## O. Do not present a refused credential more than once (raised by RFDeck, 2026-09-29)
@@ -747,6 +831,104 @@ terminal until the credential changes. Please say what the core's behaviour is
 here — it is the one class of fault in this review that damages the device rather
 than the reading.
 
+**Core answer (2026-09-29):** **The core had the same class of bug, milder but
+still wrong, and it is fixed.**
+
+**Before the fix:**
+- A 401 on the probe marked the device `unauthorized` and retried the password
+  every 30 s.
+- A 401 or 403 on the SSE stream did the same.
+- A 401 on the liveness check (`GET /api/ssc/version` after 3 s of quiet) was
+  counted as proof of life, so the stream was kept alive on a refused
+  credential.
+
+**The core's behaviour now, for EW-DX and for any spec-engine device with
+`auth: basic`:**
+
+- **A 401 or 403 on any request is terminal.** That covers the probe, SSE,
+  liveness check, subscribe, initial fetch, identity request and mute. The
+  connection reports `unauthorized` once and every timer is cancelled. **Nothing
+  more is sent** until the host opens the device again. There is no retry on any
+  schedule, fast or slow.
+- **Commands after a refusal fail with `auth`**, without touching the network,
+  and so does a command whose own request was refused.
+- **Responses already in flight when the refusal lands are dropped silently.**
+- **One URL, one attempt.** The core probes a single URL, `/api/ssc/version`, so
+  nothing multiplies the attempt. The end-to-end test over TLS counts the
+  simulated receiver's refused requests after 2.5 s with a wrong password: it is
+  **exactly 1**. A password changed on the device mid-session can still be
+  refused by each request already in flight when it changes, at most one
+  subscription batch plus the initial fetches. That happens once, never on a
+  cadence.
+
+Tests:
+- `a_rejected_password_is_terminal`
+- `a_refusal_on_the_stream_is_terminal` (401 and 403)
+- `a_refused_liveness_check_is_not_proof_of_life`
+- `a_refused_subscription_or_fetch_is_terminal`
+- `a_mute_refused_mid_session_fails_with_auth_and_stops`
+- `ewdx_wrong_password_is_unauthorized_and_never_retried` (end to end)
+- the spec engine's `a_refused_credential_stops_probing_and_fails_commands`
+
+`SPEC.md` and the EW-DX spec's quirk now say it.
+
+**Where this differs from RFDeck's fix, and why:** RFDeck holds off for 60 s and
+then tries again. The core never tries again. As you wrote, a wrong password
+becomes right only when a person changes it, and that re-tracks the device and
+builds a new client. In the core, "a new client" is `close` followed by `open`
+with the new `settings.password`. That is the whole recovery path, so a timer
+adds only risk. **Hand-off change 9 is corrected to match:** `auth-ok` now means
+the first `connected` after a re-open. Previously it was the first `connected`
+after `unauthorized` on the same session, which can no longer happen.
+
+**One question back, about your SSE exemption.** You note that some firmware
+refuses the subscription while serving `/api/ssc/state` directly. The core has no
+polling path. For it, a refused stream means no telemetry either way, so it makes
+the stream refusal terminal as well. If you know which firmware does this, and
+whether the refusal is a 401 or a 403, please record it here. That would argue for
+an SSCv2 polling mode (a 403 on the stream with a working credential) rather than
+for retrying.
+
+**RFDeck answer (2026-09-30): there is no such firmware on record, and the
+exemption should not have been written as though there were.**
+
+I have no device, no version and no status code for it. The claim came from a
+comment in RFDeck's own SSE 401 handler saying `poll()` would keep the device
+online and use `pollSSCv2Direct()` as a fallback — a design decision about what to
+do if it happened, which I then restated as an observation that it does. That is
+the same fault this review criticises in items D and E, and it is worse coming
+from the side that raised them.
+
+What RFDeck's behaviour actually needed was a narrower condition, and the question
+produced it. The backoff is now gated on **`activeUrl === null`** rather than on
+which call saw the 401:
+
+- no connection yet → the probe loop is the flood, and it is throttled;
+- a live `activeUrl` → the device is being polled successfully on it, and nothing
+  throttles that, whatever refused elsewhere.
+
+So RFDeck no longer has an SSE exemption to defend. If such firmware exists the
+new condition covers it without anyone needing to know, because a device being
+polled successfully is never throttled; and if it does not exist, nothing is being
+protected that should not be. Pinned as `does not throttle a device that is being
+polled successfully` in `authBackoff.test.ts`.
+
+**On the remaining difference — 60 s versus never.** The core is right that the
+recovery path is close-then-open and a timer only adds risk. RFDeck keeps the
+retry for a reason specific to it rather than to the protocol:
+`updateTrackedDevice` rebuilds the client on a password save, but a device can
+also be fixed *at the device* — re-adopted in Control Cockpit and set back to the
+password RFDeck already holds — and nothing tells RFDeck that happened. Once a
+minute notices that without being a flood. **If the core's host API gains an
+explicit "try this device again" call, RFDeck would use it and drop the timer.**
+That is the better design; the timer is standing in for it.
+
+**One correction to the count.** RFDeck probes five candidate URLs, not one, and
+that multiplication is what turned a 250 ms tick into twenty authentications a
+second. The core's single-URL probe removes the multiplier at the source, which is
+the stronger of the two fixes.
+
+
 ---
 
 ## P. A G3/G4 on the far side of a router has no hardware identity at all (raised by RFDeck, 2026-09-29)
@@ -768,13 +950,41 @@ control on one subnet and receivers on another is an ordinary layout, and in it
 successful connection.
 
 RFDeck had made a readable MAC a precondition for its bounded name fallback, so
-in that layout the fallback never ran. The symptom was one alert per receiver,
-repeating: `A G3/G4 named "Vocal 3" was found at 10.2.5.6 but could not be
-matched to any offline device` — with the correct name sitting in the alert text.
-Now fixed: the MAC is recorded when it is readable and simply absent when it is
-not, and the name match runs either way, under the bounds in item L's discussion
-(only a row that has never been identified, exactly one offline row with that
-exact name, never a discovery placeholder).
+in that layout the fallback could never run at all. Fixed: the MAC is recorded
+when it is readable and simply absent when it is not, and the name match runs
+either way, under the bounds in item L's discussion (only a row that has never
+been identified, exactly one offline row with that exact name, never a discovery
+placeholder).
+
+**Correction, 2026-09-30.** This item was first written with a rig symptom
+attached to it — `A G3/G4 named "Vocal 3" was found at 10.2.5.6 but could not be
+matched to any offline device`, repeating for every receiver — and claimed the
+routed-subnet limit as its cause. **That attribution was wrong.** The rig owner
+reports that those receivers all synced on their own some minutes later, which
+means a MAC did eventually become readable and those devices are on-link. The
+limit above is real and still applies to routed deployments; it was not what
+happened here.
+
+What actually happened is a separate defect, and a more interesting one. **The
+neighbour table is not a directory: an entry exists because the host needed to
+send to that address and resolved it.** Inbound traffic alone does not reliably
+create one. A G3/G4 that has just powered on is normally found by its *reply to a
+broadcast probe*, so nothing was ever sent to its unicast address and no entry
+existed. RFDeck read the table four times, 400 ms apart, with a comment asserting
+that the entry appears "once we send a UDP probe to this IP" — while sending
+nothing. The lookup came up empty, the device was declared unmatchable, and it
+recovered minutes later on a scan that happened to have sent to it.
+
+Now: send one datagram to the address, *then* read the table. The waiting is on
+something that was actually set in motion.
+
+**For the core, this is the more important half of the item.** If it resolves
+hardware addresses for identification, it must cause the resolution rather than
+poll and hope, and it must distinguish three outcomes that are not alike: an
+entry exists; no entry exists after the host has sent to the address and had time
+to resolve; and no entry can ever exist because the address is off-link. The
+second is transient and the third is permanent, and treating them alike is what
+produced eleven false alerts here.
 
 **For the core:** if it identifies G3/G4 devices, the MAC cannot be part of that
 contract — it is available for some deployments and not others, and which is
@@ -783,3 +993,27 @@ family has to work from the name the device reports, and say out loud that it is
 weaker evidence. Reporting "no hardware address is available for this address"
 distinctly from "the lookup failed" would be worth having, because the first is
 permanent and the second is not.
+
+**Core answer (2026-09-29):** **Accepted in full. The MAC is not part of the
+core's identity for G3/G4, or for anything else.** The core will not read the
+host's neighbour table. That table is a property of the host's operating system
+and its position on the network, not of the device or its protocol, and the
+lookup would need a different mechanism on each platform, some of which you
+found missing on headless Ubuntu.
+
+What the core reports when it identifies a G3/G4, per item L:
+- the family;
+- the role (receiver or IEM transmitter);
+- **the name the device reports, marked as weak evidence**, since it is set by an
+  operator, need not be unique, and changes;
+- that G3 and G4 cannot be told apart.
+
+Each identification result will say what it rests on, so a host can tell a
+serial-backed EW-DX or Digital 6000 identity from a name-backed G3/G4 one without
+knowing the families.
+
+**Matching a discovered device to a row in an inventory stays the host's
+decision.** That covers your bounded name fallback and whether to use a MAC where
+one is readable. The core supplies evidence and never merges records. So the
+"no hardware address for this address" versus "lookup failed" distinction,
+which is worth having, belongs in RFDeck's lookup rather than the core's.

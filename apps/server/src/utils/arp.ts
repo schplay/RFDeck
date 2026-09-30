@@ -43,3 +43,43 @@ export async function getMacByIp(ip: string): Promise<string | null> {
   // iproute2 first; net-tools arp as a fallback for systems that have it.
   return (await tryCommand(`ip neigh show ${ip}`)) ?? tryCommand(`arp -n ${ip}`);
 }
+
+/**
+ * Is this address on a subnet this host is directly attached to?
+ *
+ * The distinction matters because it separates two outcomes that look identical
+ * and are not alike: a neighbour entry that is missing *for now*, and one that can
+ * never exist. The table is populated when this host resolves an address in order
+ * to send to it, and it only ever resolves addresses on its own links — for
+ * anything beyond a router the kernel resolves the next hop instead. So for an
+ * off-link device there is no entry, no retry will produce one, and no hardware
+ * address for it is obtainable from this machine at all.
+ *
+ * Reported rather than inferred, because RFDeck spent a rig session telling an
+ * operator that eleven receivers could not be matched and should be corrected by
+ * hand, when the real statement was "not yet" — and the two need different words.
+ */
+export function isDirectlyAttached(
+  ip: string,
+  interfaces: Array<{ address: string; netmask: string }>,
+): boolean {
+  const toInt = (addr: string): number | null => {
+    const parts = addr.split('.').map(Number);
+    if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) {
+      return null;
+    }
+    // >>> 0 so the result is unsigned: a mask of 255.255.255.0 is negative as a
+    // signed 32-bit int, and comparing the two would then never agree.
+    return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+  };
+
+  const target = toInt(ip);
+  if (target === null) return false;
+
+  return interfaces.some(iface => {
+    const addr = toInt(iface.address);
+    const mask = toInt(iface.netmask);
+    if (addr === null || mask === null) return false;
+    return ((target & mask) >>> 0) === ((addr & mask) >>> 0);
+  });
+}
