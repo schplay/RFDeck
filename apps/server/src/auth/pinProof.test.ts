@@ -107,3 +107,15 @@ describe('the PIN attempt throttle', () => {
     expect(pinRetryAfterMs('10.2.3.100')).toBe(0);
   });
 });
+
+describe('reaching the parameters at all', () => {
+  it('pin-params is exempt from the PIN gate', async () => {
+    // Load-bearing and easy to lose: a client cannot compute a proof without the
+    // salt, so gating this endpoint behind the PIN would make the whole
+    // certificate-bound login unreachable on exactly the installs that enable a
+    // PIN — and the symptom would be "Manifold cannot log in", not "a route is
+    // mis-listed".
+    const { OPEN_PATHS } = await import('../app');
+    expect(OPEN_PATHS.has('/api/auth/pin-params')).toBe(true);
+  });
+});

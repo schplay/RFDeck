@@ -10,8 +10,14 @@ import { loadTlsConfig } from './tls';
 
 // Endpoints reachable before authentication. Everything else is gated when the
 // admin has enabled a PIN; /auth/status is how a client discovers it needs one.
-const OPEN_PATHS = new Set([
+export const OPEN_PATHS = new Set([
   '/api/auth/status', '/api/auth/login', '/health',
+  // The salt and KDF parameters a client needs to build a certificate-bound PIN
+  // proof. It has to be reachable before authentication by definition - a client
+  // cannot compute the proof without it - and neither value is a secret: the salt
+  // only stops one precomputed table covering every install, and the fingerprint
+  // describes a certificate the caller has already been served.
+  '/api/auth/pin-params',
   // The Micboard display. A wall-mounted screen cannot type a PIN, and the PIN
   // exists to prevent unauthorised *changes* rather than to hide telemetry —
   // so reading is allowed without one. Scoped to what a display needs: this
