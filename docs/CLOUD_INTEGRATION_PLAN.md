@@ -22,6 +22,24 @@ repository, because the free cloud tier is free.
 > corrected on a second pass: there are two relays at Meros, and the one RFDeck
 > wants needs no new credential.
 >
+> **Third pass, 2026-10-03 — authority moved.** The canonical contract is now the
+> vault interface notes under `D:/Meros/Resources/Interfaces/`
+> ([[RFDeck ↔ Meros Cloud]], [[Meros Cloud Feature Services]],
+> [[Meros SSO and Identity]], [[Manifold ↔ Meros Cloud]]), with **meros.co as
+> source of truth for anything cloud-related** (David's decision). Where this
+> plan and those notes disagree, the notes win and this plan is stale.
+>
+> What that pass corrected here, all of it drift rather than disagreement —
+> RFDeck's *code* already matched: the entitlements response shape (a flat
+> `features` map, not a `features` array per entitlement); the flag names
+> (`rfdeck.spectrum`, not the never-issued `rfdeck.regional-data` or
+> `rfdeck.notify-relay`); the instance scope list (`events:write`,
+> `inventory:read`, `inventory:write`; never `alerts:send`); three OAuth clients
+> rather than two; gating being live server-side rather than deferred; the
+> inventory endpoint existing; document sync being free for the latest version
+> and paid for 100-version history; and the refresh grace window being
+> implemented rather than undecided.
+>
 > Sources, in the `meros` repository:
 >
 > - `docs/handoff/rfdeck-cloud-integration.md` — the authority for this plan
@@ -36,9 +54,9 @@ repository, because the free cloud tier is free.
 | A *rig* is linked to an *organisation*; `rigId` + `orgId` | An **instance** is linked to an **account** (a person *or* an org); `account_id`. There is no rig object, and nothing links to a site |
 | "Choose an OIDC provider — Auth0 / Clerk / WorkOS / Keycloak / Ory. Decision needed" | **meros.co is the provider.** Not our decision, and data residency is Meros's concern |
 | We define an entitlement document: `{ orgId, rigId, plan, features }` | Meros issues account-scoped entitlements in a fixed shape; we consume it |
-| Feature names `regional-data`, `notify-relay` | Namespaced: `rfdeck.regional-data`, `rfdeck.notify-relay` |
+| Feature names `regional-data`, `notify-relay` | **Both obsolete.** Regional TV occupancy is `rfdeck.spectrum`; there is no relay feature. The live catalogue is in `apps/server/src/cloud/features.ts` |
 | `packages/cloud-contract` as a shared, versioned contract package | Internal types only. Meros is the source of truth for shapes; a formal shared package is **not yet** |
-| Paid features gated on entitlement from day one | **Gating is deferred** (owner). Build the plumbing and the gate; grant liberally for testing; do not put up a paywall yet |
+| Paid features gated on entitlement from day one | **Correct after all, server-side.** Meros enforces inventory, entitled feed packs, RF history and reports, SMS and backup-history depth in its own controllers. Each product's client-side gating is finalised after Meros Cloud reaches production |
 
 Everything in **Principles** below survived the review unchanged, which is the
 part worth noting: the instincts were right, the cloud just already existed.
@@ -119,7 +137,7 @@ per OIDC Core §3.1.2.1 — send it, validate it, and leave the library's defaul
 behaviour alone. (An earlier version of the SSO doc said the opposite, and an
 earlier version of this plan repeated it. That was a Meros gap, now closed.)
 
-### Clients: two of them, both public
+### Clients: three of them, all public
 
 Meros provides a seeder that registers **three** public clients and prints their
 `client_id`s. All are **public with no secret**, with the device grant enabled and
@@ -206,7 +224,7 @@ Request only what a given link uses:
 | Link | Scopes |
 |---|---|
 | **Person** (browser, profile sync) | `openid profile email profiles:read profiles:write` — plus `offline_access` only if the browser keeps a refresh token |
-| **Instance** (server: show files, entitlements, alert relay) | `openid offline_access entitlements:read backups:read backups:write alerts:send` |
+| **Instance** (server: show files, entitlements, events, inventory) | `openid offline_access entitlements:read backups:read backups:write events:write inventory:read inventory:write` — `alerts:send` was retracted by Meros on 2026-09-25 and never existed; `INSTANCE_SCOPES` in `config.ts` is the live list |
 
 Data-pack feeds split by whether the pack is public. A **public** pack is read
 with no scope and no account at all; an **entitled** pack needs the bearer's
@@ -294,12 +312,14 @@ deliberately, as a breach response. Three consequences, all of which shape
    again, with the reason. Retrying cannot help, and a background retry loop
    would hide the one thing they need to know.
 
-Meros is *considering* a short rotation grace window — accepting the immediately
-previous refresh token for about 60 seconds, so a crash-before-commit heals
-itself — at the cost of slightly softer reuse detection. That call is the
-owner's and is not made. **Build for single-writer and re-link regardless:** it
-is correct either way, and a grace window would only turn a rare hard failure
-into a rare invisible recovery.
+The rotation grace window **is implemented**: `IDENTITY_REFRESH_GRACE_SECONDS`,
+60 seconds by default, during which the immediately previous refresh token is
+accepted once more so a crash-before-commit heals itself instead of revoking the
+family. Recorded as undecided here for longer than it was undecided.
+
+**Build for single-writer and re-link regardless.** The grace window turns a rare
+hard failure into a rare invisible recovery; it does not make a second writer
+safe, and nothing here should start depending on it.
 
 ### Alternative: device-signed activation, for appliances
 
@@ -382,10 +402,10 @@ Meros answers "what has this account paid for", account-scoped, two ways.
 token:
 
 ```json
-{ "account_id": "<uuid>", "issued_at": "…",
-  "entitlements": [ { "product": "rfdeck", "sku": "…", "kind": "subscription",
-                      "features": ["rfdeck.regional-data", "rfdeck.notify-relay"],
-                      "expires_at": "…" } ] }
+{ "product": "rfdeck", "account_id": "<uuid>",
+  "features": { "rfdeck.spectrum": true, "rfdeck.inventory": true, "tier": "pro" },
+  "entitlements": [ { "sku": "…", "kind": "subscription",
+                      "status": "active", "expires_at": "…" } ] }
 ```
 
 **Offline / appliance** — the device-signed activation path returns an
@@ -449,8 +469,15 @@ single constant. A future `rfdeck-2026b` is then a data change rather than an
 application update, which matters for a build sitting in a flight case. A pack or
 statement carrying an unknown `kid` is refused, and says which key it wanted.
 
-Feature names are namespaced `rfdeck.*` — `rfdeck.regional-data`,
-`rfdeck.notify-relay`, `rfdeck.battery-prediction`, `rfdeck.cross-venue-rf`.
+`features` is a **flat map** of enabled flags plus `tier` (`free` | `pro`) — not a
+`features` array per entitlement, which is what an earlier draft of this plan
+described. `entitlements` are ownership records. Account selection is the
+`account_id` *query parameter*; the `X-Meros-Account` header applies to `/v1/docs`
+and `/v1/inventory` but **not** to this route.
+
+Feature names are namespaced `rfdeck.*`, quoted verbatim in
+`apps/server/src/cloud/features.ts`. `rfdeck.regional-data` and
+`rfdeck.notify-relay` never existed; regional TV occupancy is `rfdeck.spectrum`.
 
 One module, `apps/server/src/cloud/entitlements.ts`, verifies, caches and
 answers `entitled(feature)`. The UI reads `/api/cloud/status` →
@@ -460,9 +487,14 @@ successful refresh, paid features switch off with a message saying exactly why.
 Clock skew, and a rig that has been in a flight case for two months, are the
 cases this is designed for.
 
-**Gating is deferred.** Build `entitled()` and `useEntitled` now; expect
-features to be granted liberally while testing. A gated control, when gating
-does arrive, is shown disabled with the reason — never hidden. The operator
+**Gating is live on Meros's side.** Inventory, entitled feed packs, RF history
+and reports, SMS and backup-history depth are enforced in Meros's own
+controllers, which answer `403 not_entitled`. So `entitled()` is not a rehearsal:
+it decides what RFDeck *offers*, while Meros decides what it *serves*, and a gap
+between the two shows up as a control that appears available and then fails.
+
+RFDeck's own client-side gating is finalised once Meros Cloud is in production. A
+gated control is shown disabled with the reason — never hidden. The operator
 should know the feature exists and why it is off.
 
 ## Our features → Meros shared services
@@ -479,11 +511,12 @@ a service rather than getting a bespoke backend
 | **Events**, and the alerts configured over them | **Events ingest + cloud alert rules** | `POST /v1/events` on the instance link with `events:write` — one envelope or a batch of 500 at most, `202 { accepted, duplicates, rejected, errors }`, deduped on `(source.instance, id)`. Free-tier. Alerts are rules the user configures in the cloud *over* the stream, so there is nothing to post and nothing to gate. A local **Imperio** speaks the same binding, so it is one emitter with a list of collectors |
 | Multi-instance dashboard, account-wide show libraries | **Roll-up** + document sync | Already the direction; largely free once the above exist |
 
-**Do not write clients against §8.2, §8.3 or §8.5 yet.** Those bodies are
-landing, not frozen, and Phase 8 is still marked *design*. Build against the
-fake-cloud harness to the shapes above and pin when Meros confirms them. The
-**instance link, the person link and entitlements are stable** — start there,
-and note that §8.5's *auth* is settled even though its body is not.
+**Those shapes are now settled and built against.** This paragraph used to say
+"do not write clients against §8.2, §8.3 or §8.5 yet", which stopped being true
+once document sync, the feed packs and the inventory endpoint shipped and RFDeck
+wired up all three. The canonical descriptions are the vault interface notes
+(`D:/Meros/Resources/Interfaces/`), with meros.co as source of truth; the
+fake-cloud harness in `apps/server/src/cloud/fakeMeros.ts` follows them.
 
 Not writing clients against guessed contracts is the same call that saved a
 rework on the event envelope, and it is the right one here too.
@@ -691,7 +724,8 @@ dropout that takes the dashboard down with it.
 ### Regional data
 
 Two signed data packs the server fetches, verifies and caches. Both are gated by
-`entitled('rfdeck.regional-data')`; without it the coordinator works exactly as
+`entitled(FEATURES.SPECTRUM)` — `rfdeck.spectrum`, and Meros enforces the same
+flag on the feed and the live query; without it the coordinator works exactly as
 it does today, against the shipped tables and whatever scans the operator has.
 
 #### TV/DTV occupancy — and the computation is ours
@@ -900,7 +934,7 @@ RFDeck**: the stream now carries the transitions and the boundaries to build bot
 
 | Phase | What | Note |
 |---|---|---|
-| D.8 | **Online inventory listing** | The one genuinely new thing. Needs a cloud endpoint to push the current listing to, which does not exist yet. Meanwhile the *changes* travel as events, so the history will already be there when the listing arrives rather than starting from whenever it was built |
+| D.8 | **Online inventory listing** | **The endpoint exists** — `GET`/`PUT /v1/inventory/rfdeck`, gated on `rfdeck.inventory`, full-set upsert where devices absent from the body are deleted. Built against it in `inventorySync.ts`. The *changes* also travel as events, so the history predates the listing |
 
 And three more that belong to **RFDeck Pro** and are deferred with it: one-click
 remote restore and provisioning, remote UI and control, and attributed change
@@ -1004,10 +1038,10 @@ looks like this.
 
 | We asked | Answer |
 |---|---|
-| Client registration — how many, confidential or public? | **Two, both public, no secret**: RFDeck Server and RFDeck Desktop, from a seeder, per environment. Device grant enabled, loopback also allowed. **Staging ids obtained 2026-09-25** — see Identity |
+| Client registration — how many, confidential or public? | **Three, all public, no secret**: RFDeck Server, RFDeck Desktop and RFDeck Browser, from a seeder, per environment. Device grant enabled, loopback also allowed. Separate clients keep `(user, client)` refresh families from revoking each other. **Staging ids obtained 2026-09-25** — see Identity |
 | Redirect URIs for a browser at a DHCP venue address | **Use the device grant for the person link too**, browser-side — and Meros has now CORS-enabled the device, token, userinfo, revoke, discovery and `v1/*` endpoints so that it works from any origin |
 | Scope vocabulary | Given in full; see the table under Identity. Public packs need no scope and no account, but **regional data is an entitled pack** and does need both |
-| Refresh-token policy | **Rotates, with reuse-detection family revocation.** Single-writer; commit the rotated token before using the new access token; `invalid_grant` means re-link. A ~60s grace window is under consideration but not decided |
+| Refresh-token policy | **Rotates, with reuse-detection family revocation.** Single-writer; commit the rotated token before using the new access token; `invalid_grant` means re-link. The 60 s grace window is **implemented** (`IDENTITY_REFRESH_GRACE_SECONDS`) |
 | Which public key verifies entitlements and packs | **One key**, the active `rfdeck` Ed25519 key, kid `rfdeck-2026a`, per environment. Rotation is additive — key the verifier by `kid` |
 | The relay's auth | **The instance link's own OAuth access token** — no separate credential (corrected 2026-09-25; the first answer described the unrelated Phase 4 remote-access relay). Only the account's recipient rules and SMS config remain to be built, on Meros's side |
 | Which tier is document sync in? | **Ungated as built** — it works for any account, as does profile sync. The free-versus-paid line is a deferred pricing decision the owner owns |
@@ -1018,9 +1052,12 @@ link is a device grant rather than a redirect flow, and `nonce` validation stays
 
 ### The tier question, and how to write about it
 
-Document sync and profile sync are both ungated today, so `docs/EDITIONS.md`
-promising show files and profiles in the free tier is consistent with what is
-live. But the formal line is deliberately deferred, which has a consequence for
+Profile sync is free. Document sync is **free for the latest version and paid for
+depth** — `rfdeck.backup.history`, 100 versions FIFO, per document — so
+`docs/EDITIONS.md` promising show files and profiles in the free tier is right
+about the free tier and must not imply unlimited history. Config and show file
+are separate documents, each with its own quota. The formal line on the rest is
+deliberately deferred, which has a consequence for
 copy rather than for code: **"included today, pricing to be decided" is the
 honest framing, and "free forever" is not.** EDITIONS says so now.
 
@@ -1052,7 +1089,7 @@ and tested** on Meros's side. What is left is short:
   being built around a *list* of collectors rather than one cloud URL, so adding
   an Imperio later is configuration rather than a rewrite. The details to settle
   when it returns are discovery and what token a local one takes.
-- Whether the **rotation grace window** lands. Changes nothing we build.
+- ~~Whether the **rotation grace window** lands.~~ **Landed**, 60 s, as above.
 
 Nothing further on regional data: source settled, sharding answers the sizing
 question, the index-and-cells contract is fully specified, and the signature
