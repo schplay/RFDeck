@@ -139,6 +139,42 @@ export function isTokenValid(token: string | undefined): boolean {
   return true;
 }
 
+/**
+ * Per-address throttle on PIN attempts.
+ *
+ * A four-digit PIN is 10,000 candidates. Without this, an unthrottled endpoint on
+ * a venue network is the cheapest way into a rig there is - a few seconds of
+ * requests, not a cryptographic attack. The PIN length is a deliberate product
+ * choice, which makes the throttle the thing carrying that choice.
+ *
+ * Counts failures only, so a client with the right PIN is never delayed, and
+ * clears on success so one fat-fingered operator does not lock themselves out for
+ * the evening. Keyed per address: one misconfigured console cannot lock out the
+ * booth. In memory, like the token table, so a restart forgives - acceptable
+ * because a restart is not something an attacker on the network can cause.
+ */
+const FAIL_WINDOW_MS = 60_000;
+const FAIL_LIMIT = 10;
+const failures = new Map<string, number[]>();
+
+/** How long this address must wait, or 0 if it may try now. */
+export function pinRetryAfterMs(ip: string | undefined): number {
+  const recent = (failures.get(ip ?? '') ?? []).filter(t => Date.now() - t < FAIL_WINDOW_MS);
+  if (recent.length < FAIL_LIMIT) return 0;
+  return FAIL_WINDOW_MS - (Date.now() - recent[0]);
+}
+
+export function notePinFailure(ip: string | undefined): void {
+  const key = ip ?? '';
+  const recent = (failures.get(key) ?? []).filter(t => Date.now() - t < FAIL_WINDOW_MS);
+  recent.push(Date.now());
+  failures.set(key, recent);
+}
+
+export function clearPinFailures(ip: string | undefined): void {
+  failures.delete(ip ?? '');
+}
+
 export function revokeAllTokens(): void {
   tokens.clear();
 }

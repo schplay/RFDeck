@@ -3,6 +3,7 @@ import { prisma } from '../db';
 import {
   getAuthState, isLoopback, issueToken, isTokenValid,
   makePinHash, verifyPin, revokeAllTokens, pinSalt, verifyPinProof,
+  pinRetryAfterMs, notePinFailure, clearPinFailures,
 } from '../auth/pinAuth';
 import { log } from '../logger';
 
@@ -85,6 +86,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       return { authenticated: true, token: null };
     }
 
+    const waitMs = pinRetryAfterMs(request.ip);
+    if (waitMs > 0) {
+      return reply.code(429)
+        .header('Retry-After', String(Math.ceil(waitMs / 1000)))
+        .send({ error: 'Too many incorrect PINs. Try again shortly.' });
+    }
+
     const fingerprint = (fastify as any).tlsFingerprint as string;
 
     // The certificate-bound proof is the real mechanism. See verifyPinProof.
@@ -113,8 +121,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     if (!byProof && !byPin) {
+      notePinFailure(request.ip);
       return reply.code(401).send({ error: 'Incorrect PIN' });
     }
+    clearPinFailures(request.ip);
 
     return {
       authenticated: true,
