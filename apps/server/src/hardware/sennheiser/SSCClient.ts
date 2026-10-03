@@ -141,10 +141,19 @@ export class SSCClient extends EventEmitter {
 
     log.debug(`[SSCClient] ${ip}:${port} — password ${password ? `SET (len=${password.length})` : 'NOT SET'}`);
 
-    // Allow self-signed certs and legacy TLS (TLS 1.0/1.1) used by older Sennheiser firmware.
-    // Node.js 24 (OpenSSL 3.x) disables TLS 1.0/1.1 by default; we re-enable it at the
-    // server process level via --tls-min-v1.0 (set in desktop/main.ts) and here via minVersion.
-    // SECLEVEL=0 allows weak cipher suites that older embedded firmware may require.
+    // Allow self-signed certs and legacy TLS (TLS 1.0/1.1) used by older Sennheiser
+    // firmware. Node (OpenSSL 3.x) disables TLS 1.0/1.1 by default; `minVersion` and
+    // SECLEVEL=0 re-enable them for *this agent only*.
+    //
+    // Per-agent is the whole point. The desktop build used to pass --tls-min-v1.0 to
+    // the sidecar as well, which lowered the floor for the entire process - including
+    // the HTTPS server RFDeck itself now runs, so a desktop install accepted TLS 1.0
+    // from any client on the network. The flag is gone; this is the only place the
+    // exception lives.
+    //
+    // Whether EW-DX needs it at all is unverified - integrations-core review item D
+    // found no evidence for it in any Sennheiser document. If a rig confirms the
+    // receivers negotiate TLS 1.2, these two lines should go too.
     this.httpsClient = axios.create({
       timeout: 2000,
       headers: authHeader,

@@ -143,7 +143,18 @@ function startServer() {
   // Run the sidecar with Electron's own bundled Node rather than spawning
   // `node`, which a target machine is not required to have installed.
   // ELECTRON_RUN_AS_NODE turns this same executable into a plain Node runtime.
-  serverProcess = spawn(process.execPath, ['--tls-min-v1.0', paths.serverJs], {
+  // No --tls-min-v1.0 here.
+  //
+  // It was set for EW-DX receivers whose firmware negotiates TLS 1.0, but it is a
+  // process-wide minimum - and the sidecar now serves HTTPS itself, so the flag
+  // also lowered the floor for every client connecting *to* RFDeck. A desktop
+  // install would have accepted TLS 1.0 inbound from anything on the venue
+  // network, which is the opposite of the point of serving HTTPS at all.
+  //
+  // Nothing is lost by removing it: the outbound exception is already scoped to
+  // the agents that need it, which set minVersion and the cipher level
+  // themselves (see SSCClient).
+  serverProcess = spawn(process.execPath, [paths.serverJs], {
     stdio: 'inherit',
     cwd: paths.serverDir,
     env: {
@@ -174,7 +185,7 @@ function startServer() {
       //
       // The flag cannot be moved to the argument list either — Electron builds
       // Node against BoringSSL, which has no OpenSSL provider concept, and
-      // rejects it as a bad option. Old TLS is handled by --tls-min-v1.0 above
+      // rejects it as a bad option. Old TLS is handled per-agent in SSCClient
       // and by the per-request agents in the SSC client.
       NODE_OPTIONS: process.env.NODE_OPTIONS ?? '',
     },
