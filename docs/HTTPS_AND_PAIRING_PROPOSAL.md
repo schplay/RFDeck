@@ -164,11 +164,14 @@ credential of this value.
   to avoid becoming "trust everything".
 - **`x-rfdeck-token` is unchanged**, and keeps working exactly as it does now. Only
   the scheme it crosses changes, plus the login call that issues it.
-- **`POST /auth/login` is a breaking change for Manifold**, since the bare PIN
-  becomes a channel-bound proof. Proposal: accept both forms for one release,
-  reject the bare PIN from non-loopback addresses once Manifold ships support, and
-  version the change in the RFDeck ↔ Manifold contract. RFDeck has not launched
-  and has no users, so the only coordination needed is with Manifold.
+- **`POST /auth/login` is unchanged.** It was going to become a channel-bound
+  proof, which would have been breaking for Manifold; that is withdrawn with the
+  proof. Manifold is instead to be issued its own credential at pairing, because
+  the PIN is a UI mechanism and a shared four-digit secret cannot be revoked for
+  one console or scoped to read-only. That change is not decided yet, so Manifold
+  keeps using the PIN in the meantime - which is what RFDeck's own handoff
+  document still tells it to do, and which should be revised when the credential
+  is settled.
 - **Micboard displays** connect without a PIN and are marked read-only
   (`apps/server/src/plugins/socket.ts`). They are unaffected beyond the scheme, and
   they do not pair, so they do not pin.
@@ -176,8 +179,10 @@ credential of this value.
 ## What this needs from others
 
 - **Manifold:** store a pin per RFDeck install, compare the SPKI fingerprint on
-  every connection, show the fingerprint at pairing, and send the channel-bound
-  proof. The display-and-confirm step needs UI.
+  every connection, and show the fingerprint at pairing for the operator to
+  confirm. The display-and-confirm step needs UI. No proof to send - that was
+  withdrawn; authentication stays the PIN token until a per-client credential is
+  decided.
 - **David:** confirm the pinning approach over the alternatives above, and whether
   the Meros-issued-certificate track for browser trust is worth opening
   separately. Also whether PINs should be allowed to be longer than they are now,
