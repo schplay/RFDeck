@@ -233,9 +233,9 @@ account to hold an active `rfdeck` entitlement and answers `401` or
 
 **Regional TV occupancy is an entitled pack**, so it needs the instance link and
 a live entitlement — an earlier draft of this plan had it the other way round.
-Whether the **device-profile** pack is public is not yet stated; it is not named
-in either list in §8.3. That decides whether D.7 needs a link at all, so it is
-worth one question rather than an assumption.
+There is **no device-profile pack**, and there will not be one (owner,
+2026-10-03): RFDeck's supported devices are built into RFDeck, and the cloud
+provides no device definitions. Regional TV occupancy is the only data pack.
 
 ### CORS, which the browser device flow depends on
 
@@ -507,7 +507,7 @@ a service rather than getting a bespoke backend
 |---|---|---|
 | **Show files** — push/pull, version history *(capped by tier: 1 on free, 100 FIFO on paid)* | **Document sync** (§8.2) — account-scoped, named, versioned JSON | `/v1/docs/rfdeck/shows/{key}` — PUT a new version carrying `base_version` (**409** if the head moved; never a silent overwrite), GET the head or `?version=`, GET `/versions`. Server-visible now. Small JSON only |
 | **Profiles** — layout, meters, shortcuts, solo groups | **Profile sync** (§8.1) — person-scoped, last-write-wins per key | `/v1/profiles/rfdeck` — GET/PUT. Follows the person between venues |
-| **Regional data** (TV/DTV occupancy) and **device-profile updates** | **Signed data-pack feed** (§8.3) | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement. Regional data is **entitled**, **sharded on a 2° grid** (an index plus the venue's cell and its eight neighbours), and carries station contours rather than answers: RFDeck runs the point-in-polygon locally |
+| **Regional data** (TV/DTV occupancy) | **Signed data-pack feed** | `/v1/feeds/rfdeck/{pack}` — signed, versioned, `ETag`. Verified offline with a shipped public key, exactly like an entitlement. Regional data is **entitled**, **sharded on a 2° grid** (an index plus the venue's cell and its eight neighbours), and carries station contours rather than answers: RFDeck runs the point-in-polygon locally |
 | **Events**, and the alerts configured over them | **Events ingest + cloud alert rules** | `POST /v1/events` on the instance link with `events:write` — one envelope or a batch of 500 at most, `202 { accepted, duplicates, rejected, errors }`, deduped on `(source.instance, id)`. Free-tier. Alerts are rules the user configures in the cloud *over* the stream, so there is nothing to post and nothing to gate. A local **Imperio** speaks the same binding, so it is one emitter with a list of collectors |
 | Multi-instance dashboard, account-wide show libraries | **Roll-up** + document sync | Already the direction; largely free once the above exist |
 
@@ -823,25 +823,18 @@ rather than loudly:
    client reports unreachability as a state, so this must not be routed through
    that path and shown to an operator as a problem.
 
-#### Device profiles
+#### Device profiles — withdrawn
 
-The band tables in `hardware/coordination/profiles.ts` become the *shipped
-baseline*; the pack delivers updates — a new band, a corrected range, an assumed
-figure verified — as data, applied without a release. The profile module already
-flags what is assumed versus read; the feed is where "read" comes from over
-time.
+Earlier drafts of this plan described a signed `device-profiles` pack delivering
+band-table corrections as data. **That feature does not exist and is not
+planned** (owner, 2026-10-03): RFDeck's supported devices are built into RFDeck,
+and the cloud provides no device definitions. `hardware/coordination/profiles.ts`
+is the only source of band tables, and a correction to one is a release.
 
-**Built as a public pack** (Meros's recommendation, and the right one): read with
-no scope and no account, so an **unlinked rig stays current on band tables**. It
-is a data-quality baseline, not a premium feature, and it is not in the paid list
-in `docs/EDITIONS.md`. The pack does not exist yet, and the free/paid line remains
-a deferred owner call — so build D.7 to read it as public, and if it is ever gated
-the only change on our side is attaching the instance link. Not a blocker either
-way.
-
-Note this means D.7 is the one cloud feature with **no dependency on the link at
-all**, which makes it the cheapest thing in Stage D to ship and the only one that
-does something useful for an operator who never signs in.
+`apps/server/src/cloud/deviceProfiles.ts` is live code built against the
+withdrawn pack — `service.ts` constructs it and calls `refresh()` on start — so
+it should be removed along with its test. Flagged for approval rather than
+deleted, since removing a wired-in module is a code change.
 
 ## Where it lands in the code
 
@@ -900,15 +893,15 @@ services wait for their shapes.
 | D.4 | Show files: build, apply, push, pull, version history, conflict resolution | ✅ **Built** |
 | D.5 | Events: the envelope, a persisted instance id and sequence, batching, a bounded queue, a collector list | ✅ **Built** |
 | D.6 | Regional TV occupancy: signed packs, per-cell cache, cell arithmetic, point-in-polygon, coordinator exclusions, the RF panel | ✅ **Built** |
-| D.7 | Device-profile feed, as a public pack with validated overrides | ✅ **Built** — waiting only on Meros publishing the pack |
+| D.7 | ~~Device-profile feed~~ | ❌ **Withdrawn** (owner, 2026-10-03) — the cloud provides no device definitions. `deviceProfiles.ts` is to be removed |
 | D.8 | The install snapshot: `config/app`, described before it restores | ✅ **Built** |
 | D.9 | The online inventory listing: one-way reconcile to `/v1/inventory/rfdeck` | ✅ **Built** |
 
-**Stage D is complete.** What remains is not RFDeck's: Meros has to publish the
-device-profile pack (D.7 reads it the moment it exists) and start issuing the
-`rfdeck.*` entitlement flags — the names are pinned and consumed, but only the
-spectrum flag is issued today, so with gating on the free-tier features read as
-unavailable until that ships.
+**Stage D is complete**, less D.7, which is withdrawn rather than outstanding.
+What remains is not RFDeck's: Meros has to start issuing the `rfdeck.*`
+entitlement flags — the names are pinned and consumed, but only the spectrum flag
+is issued today, so with gating on, the free-tier features read as unavailable
+until that ships. Nothing is in production yet; everything is on staging.
 
 ### What the finalized tiers added (2026-09-26)
 
@@ -1083,8 +1076,8 @@ and tested** on Meros's side. What is left is short:
 - **The `RFDeck Browser` `client_id`** — the seeder gained a third client on
   2026-09-25 and has to be re-run per environment. This is the only thing blocking
   D.2, and it is one command.
-- **The device-profile pack** — not published yet. D.7 is written to read it as a
-  public pack.
+- ~~**The device-profile pack**~~ — **withdrawn** (owner, 2026-10-03). Nothing is
+  owed here; `deviceProfiles.ts` is to be removed instead.
 - **Imperio — parked (owner, 2026-09-26).** Not a concern for now. The emitter is
   being built around a *list* of collectors rather than one cloud URL, so adding
   an Imperio later is configuration rather than a rewrite. The details to settle
