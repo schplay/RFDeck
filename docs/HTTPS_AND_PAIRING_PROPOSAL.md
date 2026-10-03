@@ -1,6 +1,6 @@
 # HTTPS everywhere, and how Manifold knows it is talking to the real RFDeck
 
-**Proposal, 2026-10-03. Nothing here is built.** Raised because the Manifold
+**Proposal, 2026-10-03. Decided and mostly built; see the status note below.** Raised because the Manifold
 cloud-login flow will carry a Meros **login token** over the RFDeck ↔ Manifold
 connection, and that token redeems into a **one-year refresh token** for the
 user's Meros account. David's instruction: *"we must address this and securely at
@@ -11,9 +11,17 @@ Three questions, answered in order: how every install serves HTTPS, how Manifold
 authenticates the server it reached, and what happens to the traffic that works
 today.
 
-## Where RFDeck stands now
+**Status.** All three are decided. The HTTPS work is built - certificates
+generated and persisted per install with a stable key, the desktop sidecar
+included, and Electron pinning its own. Manifold is building its side of the
+pinning. Two things in the first draft were proposed and then rejected and are
+kept here as rejected, because both are reasonable ideas somebody will have
+again: a certificate-bound PIN proof, and publicly trusted per-install
+certificates.
 
-| Deployment | Scheme today | Why |
+## Where RFDeck stood before this work
+
+| Deployment | Scheme before | Why |
 |---|---|---|
 | Scripted Ubuntu install | **HTTPS** | `scripts/install-ubuntu.sh:498` generates a self-signed certificate with SANs for every address the machine answers on, and sets `TLS_CERT`/`TLS_KEY` in the systemd unit. Port 80 serves 301s |
 | Appliance | **HTTPS** | Ships with Server pre-installed, so it inherits the above |
@@ -77,21 +85,22 @@ self-signed certificate is indistinguishable from accepting a man in the middle.
 - **Trusting any self-signed certificate.** This is the status quo for browsers
   and it is exactly what David is objecting to.
 
-### What would work for browsers, later
+### Publicly trusted certificates: ruled out (decided 2026-10-03)
 
-A **Meros-issued per-install certificate**: each linked install gets a name under
-a Meros-operated zone — `<install-id>.rfdeck.meros.co` — whose DNS record points
-at the install's private address, with the certificate issued by ACME **DNS-01**
-(which needs no inbound reachability) and delivered to the install over its
-existing cloud link. This is how Plex and Home Assistant solve the same problem,
-and it is the only approach that makes a browser show no warning.
+An earlier draft proposed a **Meros-issued per-install certificate** - a name under
+a Meros-operated zone resolving to the install private address, issued by ACME
+DNS-01, delivered over the cloud link - as a later track to make browsers show no
+warning. That is how Plex and Home Assistant solve the same problem.
 
-**It cannot be the mechanism for Manifold**, because it requires a cloud link and
-internet access at setup, and RFDeck must work fully unlinked — free RFDeck needs
-no cloud account at all. Recommend it as a **separate track for browser UX**, not
-as part of this.
+**Dropped.** These products run on customers' own local networks, not on Meros
+domains, so putting a Meros name in front of somebody's rig to satisfy a browser
+is the wrong shape. It also required a cloud link, which free RFDeck does not have
+at all. **Self-signed is the only option, and the browser warning stays.**
 
-### Recommended: pin the public key at pairing, with a human check
+That makes key pinning the whole of certificate identity here rather than a
+stopgap for machine clients while browsers waited for something better.
+
+### Decided: pin the public key, silently, on first connect
 
 Manifold is a program, not a browser, so it can do the thing browsers cannot:
 remember a specific key. Pinning is **stronger** than a CA here, not weaker — a
@@ -102,34 +111,31 @@ Pin the **SPKI SHA-256 fingerprint** (the public key), not the certificate.
 Certificate regeneration on an address change then keeps the pin valid, and only
 a genuine key change breaks it — which is the event that *should* break it.
 
-**Establishing the pin — open with David.** Both options below were approved at
-different points and neither is settled. The trade between them is the whole of
-the decision, so it is stated rather than summarised.
+**Establishing the pin — decided 2026-10-03: silently, on first connect.**
 
-**(a) The operator confirms a displayed fingerprint.** RFDeck shows a short form of
-its fingerprint in Settings, at startup and from the installer; Manifold shows the
-one it received; the operator confirms they match before Manifold pins it. Nothing
-is ever trusted blind, so an attacker in the middle at the first connection is
-caught. The cost is an approval step, and a Manifold instance pointed at a free
-RFDeck with no cloud connection no longer simply works - somebody has to be present
-and has to care.
+Manifold accepts RFDeck's certificate the first time it connects and pins the key
+with no prompt, no displayed code and no approval. If a different key ever appears
+it refuses the connection and warns. Nothing is shown in normal use.
 
-**(b) Manifold pins on first connect, with no prompt, and warns if it later
-changes.** Trust on first use, as SSH does for a host it has not seen, without the
-question. Nothing is imposed on the operator and the console just works. The cost
-is that **the first connection is trusted blind**: an attacker already in the
-middle at that moment is pinned instead of the real server, and nothing afterwards
-would notice. What it still buys is every connection after - a key that changes
-later is reported, which covers a server being impersonated on a network Manifold
-has used before.
+The alternative, considered and rejected, was for the operator to confirm a
+displayed fingerprint before Manifold pinned it. That catches an attacker who is in
+the middle at the very first connection, which silent pinning does not — but it is
+an approval step, and a Manifold instance pointed at a free RFDeck with no cloud
+connection has to simply work.
 
-A middle option neither of us has raised: pin silently on first connect **and**
-show the operator what was pinned afterwards, so there is a record to check
-without a gate to pass. It does not close the first-connection window, but it
-makes it auditable.
+**So the trade, stated once rather than buried:** the first connection is trusted
+blind. An attacker already in the middle at that moment is pinned instead of the
+real server, and nothing afterwards would notice. What pinning buys is every
+connection after it — a key that changes later is refused, which covers a server
+being impersonated on a network Manifold has used before. For a tool whose whole
+premise is a trusted show LAN, that is a reasonable place to draw the line, and it
+is drawn deliberately rather than by omission.
 
-Either way the fingerprint stays visible in RFDeck's Settings, at startup and from
-the installer, so anyone who wants to check can.
+The fingerprint stays visible in RFDeck's Settings, at startup and from the
+installer. It is not part of any flow and nobody is asked to look at it; it is
+there for an operator who wants to check, and for diagnosing a refusal after a key
+change.
+
 
 **A PIN binding was also built here, and removed.**
 
@@ -159,10 +165,9 @@ with, stands, and there is no higher-entropy secret in this system to key it wit
 instead. The mechanism is simply not needed.
 
 **Once pinned:** Manifold refuses any certificate whose SPKI does not match, and
-reports a mismatch as a security failure rather than a connection error. A key
-change is a real event - a reinstalled server, a new machine, or an attack - and
-recovering from it means accepting the new key deliberately, whatever the answer
-to the open question above turns out to be.
+reports the mismatch as a security failure rather than a connection error. A key
+change is a real event - a reinstalled server, a new machine, or an attack - so
+recovering from one means clearing the pin deliberately, not retrying.
 
 This also composes with the PKCE sequence meros.co has confirmed: with RFDeck
 holding the `code_verifier` and never transmitting it, an intercepted login token
@@ -197,11 +202,10 @@ credential of this value.
 
 ## What this needs from others
 
-- **Manifold:** compare RFDeck's SPKI fingerprint on every connection and warn if
-  it changes. Whether it is pinned silently on first connect or after the operator
-  confirms it is the open question above, and it decides whether Manifold needs any
-  pairing UI at all. Authentication is the PIN token either way, as it already is.
-- **David:** choose between (a) and (b) above, or the middle option. That is the
-  only thing still open here; the PIN, the gate and the HTTPS work are all
-  settled.
+- **Manifold:** pin the SPKI fingerprint on first connect, compare it on every
+  connection afterwards, and refuse with a warning if it changes. No pairing UI
+  and nothing shown in normal use. Authentication is the PIN token, as it already
+  is. Manifold is building this now.
+- **David:** nothing outstanding. The PIN, the gate, the certificate question and
+  the HTTPS work are all settled.
 - **meros.co:** nothing. This is below the cloud contract.
