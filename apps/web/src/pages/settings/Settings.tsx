@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Volume2, BellRing, Network, RefreshCw, ShieldCheck, Gauge, Cloud } from 'lucide-react';
 import { MeterSettings } from './MeterSettings';
 import { NotificationSettings } from './NotificationSettings';
-import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE, fetchPinParams, shortFingerprint } from '../../lib/api';
+import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE, shortFingerprint } from '../../lib/api';
 import { AudioPatchSettings } from './AudioPatch';
 import { AES67RoutingSettings } from './AES67Routing';
 import { RecordingSettings } from './RecordingSettings';
@@ -39,21 +39,15 @@ interface NetworkInterface {
  * This install's certificate fingerprint, for pairing a client.
  *
  * RFDeck generates its own certificate, so a client has no authority to check it
- * against. Manifold pins the key instead, and the operator confirming this value
- * matches what Manifold shows is the anchor of that trust - without it a client is
- * accepting whatever certificate it was handed, which is the same as accepting a
- * man in the middle.
+ * against. A client pins the key instead, and the operator confirming this value
+ * matches what that client shows is the anchor of that trust - without it a client
+ * is accepting whatever certificate it was handed, which is the same as accepting
+ * a man in the middle.
  *
- * Shown whether or not a PIN is set, because pairing happens either way and an
- * operator who needs this cannot be assumed to have found the server log.
+ * Takes the value from the status the parent already loaded rather than fetching
+ * it again: it arrives on /auth/status, which the app calls on load anyway.
  */
-function CertificateFingerprint() {
-  const [spki, setSpki] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchPinParams().then(p => setSpki(p.tlsFingerprint ?? null)).catch(() => setSpki(null));
-  }, []);
-
+function CertificateFingerprint({ spki }: { spki?: string }) {
   if (!spki) return null;
 
   return (
@@ -150,7 +144,7 @@ function RemoteAccessSettings() {
       </p>
 
       <div className="settings-form">
-        <CertificateFingerprint />
+        <CertificateFingerprint spki={status.tlsFingerprint} />
         <div className="form-group form-group-row">
           <div>
             <label>Require a PIN for remote devices</label>

@@ -101,6 +101,14 @@ export interface AuthStatus {
   canConfigure: boolean;
   reauthHours: number;
   authenticated: boolean;
+  /**
+   * This install's certificate fingerprint, for the operator to compare against
+   * what a client shows when pairing.
+   *
+   * Self-reported, so it is for display only - a man in the middle would serve
+   * its own value too. The check is a person comparing two screens.
+   */
+  tlsFingerprint?: string;
 }
 
 export async function fetchAuthStatus(): Promise<AuthStatus> {
@@ -109,20 +117,6 @@ export async function fetchAuthStatus(): Promise<AuthStatus> {
     headers: token ? { 'x-rfdeck-token': token } : {},
   });
   if (!res.ok) throw new ApiError('Could not reach the server', res.status);
-  return res.json();
-}
-
-/** What a client needs to build a certificate-bound PIN proof, plus the pin itself. */
-export interface PinParams {
-  pinEnabled: boolean;
-  salt: string | null;
-  tlsFingerprint: string;
-}
-
-export async function fetchPinParams(): Promise<PinParams> {
-  // Unauthenticated by design - a client cannot authenticate before it has these.
-  const res = await fetch(`${API_BASE}/auth/pin-params`);
-  if (!res.ok) throw new ApiError('Could not read the pairing details', res.status);
   return res.json();
 }
 
