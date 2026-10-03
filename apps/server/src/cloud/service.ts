@@ -14,8 +14,6 @@ import { Feeds } from './feeds';
 import { FEATURES } from './features';
 import { RegionalData, parseVenueLocation, OccupancyResult } from './regionalData';
 import { Events, EmitInput } from './events';
-import { DeviceProfiles } from './deviceProfiles';
-import { COORDINATION_FAMILIES } from '../hardware/coordination/profiles';
 import crypto from 'crypto';
 import { CloudStatus } from './types';
 
@@ -42,8 +40,6 @@ export class CloudService {
   readonly regional: RegionalData | null;
   /** The event stream. Always present, so callers never branch on the cloud. */
   readonly events: Events | null = null;
-  /** Device-profile overrides from the public pack. */
-  readonly deviceProfiles: DeviceProfiles | null = null;
   private refreshTimer: NodeJS.Timeout | null = null;
   private regionalTimer: NodeJS.Timeout | null = null;
 
@@ -70,7 +66,6 @@ export class CloudService {
     this.inventory = new InventorySync(this.client, this.link);
     const feeds = new Feeds(config, this.client, this.link);
     this.regional = new RegionalData(feeds);
-    this.deviceProfiles = new DeviceProfiles(feeds, COORDINATION_FAMILIES);
     this.events = new Events(
       this.client, this.link,
       // Replaced with the persisted id in start(); a placeholder until then so
@@ -101,8 +96,6 @@ export class CloudService {
     await this.entitlements.refresh();
     this.refreshTimer = setInterval(() => void this.entitlements!.refresh(), 60 * 60_000);
     void this.refreshRegional();
-    // Public pack, so this does not wait on the link or an entitlement.
-    void this.deviceProfiles?.refresh();
     // Meros republishes weekly, so daily is generous and costs one conditional
     // request per cell when nothing has changed.
     this.regionalTimer = setInterval(() => void this.refreshRegional(), 24 * 60 * 60_000);

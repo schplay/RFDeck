@@ -50,21 +50,12 @@ interface FamilyRules {
   assumed: Array<'step' | 'spacing'>;
 }
 
-/**
- * Every family this build can coordinate for.
- *
- * Exported so the device-profile feed can refuse an override for a family whose
- * rules are not here — a newer pack than the build, which is not an error in the
- * pack but cannot be applied either.
- */
-export function familyRuleKeys(): string[] {
-  return Object.keys(FAMILY_RULES);
-}
-
-export const COORDINATION_FAMILIES: ReadonlySet<string> = new Set([
-  'shure-ad', 'shure-ulxd', 'shure-qlxd', 'shure-slxd',
-  'senn-ewdx', 'senn-d6000', 'senn-g3g4',
-]);
+// `familyRuleKeys()` and `COORDINATION_FAMILIES` lived here so the device-profile
+// feed could refuse an override for a family this build has no rules for. That
+// feed is withdrawn - a device's frequencies and bands are immutable properties
+// of the hardware, so nothing updates these from the cloud - and with it goes the
+// second list of families that had to be kept in step with `FAMILY_RULES`. One
+// list cannot drift from itself.
 
 const FAMILY_RULES: Record<CoordinationFamily, FamilyRules> = {
   // AD4 user guide: 25 kHz step; 350 kHz standard, 125 kHz High Density.

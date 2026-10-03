@@ -183,14 +183,17 @@ describe('nothing unverified becomes data', () => {
 
 describe('public packs', () => {
   it('are readable without a link at all', async () => {
-    // The device-profile pack is public, so an unlinked rig should stay current on
-    // band tables. Nothing here may require a token.
+    // No public pack exists today - the device-profile pack this was written for is
+    // withdrawn, and regional TV occupancy is entitled. The mechanism stays tested
+    // because the distinction it draws is the one that matters: an entitled pack
+    // must carry a token and a public one must not, and getting that backwards
+    // either leaks a paid pack or makes a free one unreadable on an unlinked rig.
     const { fake, feeds } = await harness({ linked: false });
-    fake.publishPack('device-profiles', { profiles: [] }, { entitled: false });
+    fake.publishPack('example-public', { items: [] }, { entitled: false });
 
-    const got = await feeds.fetch<{ profiles: unknown[] }>('device-profiles');
-    expect(got.payload.profiles).toEqual([]);
-    const call = fake.requests.find(r => r.path === '/v1/feeds/rfdeck/device-profiles')!;
+    const got = await feeds.fetch<{ items: unknown[] }>('example-public');
+    expect(got.payload.items).toEqual([]);
+    const call = fake.requests.find(r => r.path === '/v1/feeds/rfdeck/example-public')!;
     expect(call.auth).toBeNull();
   });
 
