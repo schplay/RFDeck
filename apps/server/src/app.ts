@@ -12,12 +12,6 @@ import { loadTlsConfig } from './tls';
 // admin has enabled a PIN; /auth/status is how a client discovers it needs one.
 export const OPEN_PATHS = new Set([
   '/api/auth/status', '/api/auth/login', '/health',
-  // The salt and KDF parameters a client needs to build a certificate-bound PIN
-  // proof. It has to be reachable before authentication by definition - a client
-  // cannot compute the proof without it - and neither value is a secret: the salt
-  // only stops one precomputed table covering every install, and the fingerprint
-  // describes a certificate the caller has already been served.
-  '/api/auth/pin-params',
   // The Micboard display. A wall-mounted screen cannot type a PIN, and the PIN
   // exists to prevent unauthorised *changes* rather than to hide telemetry —
   // so reading is allowed without one. Scoped to what a display needs: this
@@ -45,10 +39,8 @@ function isOpenRead(method: string, path: string): boolean {
  *
  * Pulled out of the gate hook so it can be tested. Membership of `OPEN_PATHS` is
  * not the same claim as the gate honouring it, and the difference is not
- * academic: `/api/auth/pin-params` was added as a route and left out of that set,
- * which made certificate-bound login unreachable on exactly the installs that
- * enable a PIN - a client cannot compute a proof without the salt. The symptom
- * would have been "Manifold cannot log in", with nothing pointing at a gate.
+ * academic: a route was once added and left out of that set, which made the
+ * feature needing it unreachable on exactly the installs that enable a PIN.
  *
  * Takes the method as well as the path, because some exemptions are reads only.
  */

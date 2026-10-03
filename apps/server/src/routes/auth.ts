@@ -2,10 +2,9 @@ import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
 import {
   getAuthState, isLoopback, issueToken, isTokenValid,
-  makePinHash, verifyPin, revokeAllTokens, pinSalt, verifyPinProof,
+  makePinHash, verifyPin, revokeAllTokens,
   pinRetryAfterMs, notePinFailure, clearPinFailures,
 } from '../auth/pinAuth';
-import { log } from '../logger';
 
 // Who is allowed to change access settings?
 //
@@ -47,38 +46,35 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       // Whether THIS client may change access settings. A headless server has
       // no browser on the host, so this cannot simply mean "is local".
       canConfigure:  await mayConfigureAccess(request),
-    };
-  });
-
-  /**
-   * What a client needs to compute a certificate-bound PIN proof.
-   *
-   * Unauthenticated on purpose: a client cannot authenticate until it has these,
-   * and neither value is a secret. The salt stops one precomputed table covering
-   * every install; the fingerprint is what the client is about to prove it saw,
-   * and anyone who can reach this endpoint already received the certificate it
-   * describes.
-   *
-   * The fingerprint here is NOT a substitute for the operator confirming it. A
-   * man in the middle would serve its own value from this endpoint too. It is
-   * published so a client can show the operator what it is being asked to trust,
-   * and so a paired client can detect a change without a handshake.
-   */
-  fastify.get('/auth/pin-params', async () => {
-    const settings = await prisma.settings.findFirst();
-    return {
-      pinEnabled: settings?.authPinEnabled ?? false,
-      salt: pinSalt(settings?.authPinHash),
-      kdf: 'scrypt',
-      // scryptSync's defaults, named so a client does not have to guess them.
-      scrypt: { N: 16384, r: 8, p: 1, keyLength: 32 },
-      proof: 'HMAC-SHA256(scrypt(pin, salt), tlsFingerprint)',
+      // This install's certificate fingerprint, for the operator to compare with
+      // what a client shows when pairing. Served here because the UI already calls
+      // this on load, and published unauthenticated because anyone who reached it
+      // has already been handed the certificate it describes.
+      //
+      // Self-reported, so it is for display and never for a client to trust: a man
+      // in the middle would serve its own value from here too. What makes it worth
+      // anything is a person comparing it with what the other end shows.
       tlsFingerprint: (fastify as any).tlsFingerprint as string,
     };
   });
 
+  /**
+   * The PIN login, for browsers.
+   *
+   * The PIN is how RFDeck gates its *UI* without having user accounts: an operator
+   * sets one, and any other device opening the interface in a browser has to enter
+   * it. It was never meant for server-to-server callers, and a machine client
+   * should be issued its own credential instead - a shared four-digit secret cannot
+   * be revoked for one console, cannot be scoped to read-only, and is far too small
+   * to be a machine credential.
+   *
+   * A certificate-bound proof form of this endpoint existed briefly, for exactly
+   * that server-to-server case. It went away with its premise: browsers are the
+   * only PIN users, a browser cannot compute scrypt without a dependency, and
+   * unreachable code on an authentication path is worse than none.
+   */
   fastify.post('/auth/login', async (request, reply) => {
-    const { pin, proof } = request.body as { pin?: string; proof?: string };
+    const { pin } = request.body as { pin?: string };
     const settings = await prisma.settings.findFirst();
 
     if (!settings?.authPinEnabled) {
@@ -86,6 +82,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       return { authenticated: true, token: null };
     }
 
+    // Throttled because a four-digit PIN is 10,000 candidates: seconds of
+    // unthrottled requests rather than a cryptographic attack.
     const waitMs = pinRetryAfterMs(request.ip);
     if (waitMs > 0) {
       return reply.code(429)
@@ -93,34 +91,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .send({ error: 'Too many incorrect PINs. Try again shortly.' });
     }
 
-    const fingerprint = (fastify as any).tlsFingerprint as string;
-
-    // The certificate-bound proof is the real mechanism. See verifyPinProof.
-    const byProof = proof !== undefined
-      && verifyPinProof(proof, settings.authPinHash, fingerprint);
-
-    // The bare PIN still works, for one release.
-    //
-    // Manifold and the web UI both send it today, and breaking every client on
-    // the same commit that adds the replacement would mean nobody could log in
-    // to a server they had just updated. It is accepted, counted and warned
-    // about; it goes away once Manifold ships proof support, and the RFDeck
-    // contract version says which release that is.
-    const byPin = !byProof
-      && !!pin
-      && !!settings.authPinHash
-      && verifyPin(pin, settings.authPinHash);
-
-    if (byPin) {
-      log.warn(
-        `[auth] ${request.ip} logged in with a bare PIN rather than a ` +
-        'certificate-bound proof. This is accepted for one release only - the ' +
-        'PIN crossed the network in a form that can be replayed, and nothing ' +
-        'proved which server the client actually reached.',
-      );
-    }
-
-    if (!byProof && !byPin) {
+    if (!settings.authPinHash || !pin || !verifyPin(pin, settings.authPinHash)) {
       notePinFailure(request.ip);
       return reply.code(401).send({ error: 'Incorrect PIN' });
     }
@@ -129,10 +100,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     return {
       authenticated: true,
       token: issueToken(settings.authReauthHours ?? 0),
-      // So a client can pin without a second call, and can tell it is talking to
-      // the same install it paired with.
-      tlsFingerprint: fingerprint,
-      boundToCertificate: byProof,
     };
   });
 

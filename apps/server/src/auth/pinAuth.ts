@@ -44,69 +44,6 @@ export function verifyPin(pin: string, stored: string): boolean {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-/**
- * The salt a client needs in order to derive the same key the server stores.
- *
- * Salts are not secret - their job is to stop one precomputed table covering
- * every install, and publishing this one does not help against that. It is
- * handed out unauthenticated because a client has to have it *before* it can
- * authenticate, which is the whole point of the exchange below.
- */
-export function pinSalt(stored: string | null | undefined): string | null {
-  const salt = (stored ?? '').split(':')[0];
-  return salt || null;
-}
-
-/**
- * Verify a PIN proof that is bound to the TLS certificate the client reached.
- *
- * The problem this solves: RFDeck generates its own certificate, so a client has
- * no certificate authority to appeal to and accepting any self-signed
- * certificate is indistinguishable from accepting a man in the middle. Sending
- * the fingerprint the client observed alongside the PIN does not help - an
- * attacker who terminated TLS sees the request in plain text and can rewrite the
- * fingerprint to the real server's before forwarding it.
- *
- * So the fingerprint has to be *cryptographically bound* to knowledge of the
- * PIN:
- *
- *   k     = scrypt(PIN, salt)                 - the value the server already stores
- *   proof = HMAC-SHA256(k, fingerprint_seen)
- *
- * The server recomputes with the fingerprint of its *own* certificate. A man in
- * the middle presenting its own key makes the two differ, so the proof fails,
- * and it cannot forge one without `k`. The PIN also stops crossing the network
- * in a replayable form, which is worth having by itself.
- *
- * `k` is the stored hash rather than the PIN, so this needs no reversible secret
- * at rest - the server never has to know the PIN to check the binding.
- *
- * **The limit, stated because it is real:** a four-digit PIN is 10,000
- * candidates. An attacker who is actively in the middle at the one pairing
- * moment captures a proof, knows the salt and the fingerprint it presented, and
- * can search that space offline whatever the KDF costs. PIN length is a
- * deliberate product decision (speed and ease of use come first, and PINs are
- * not used in every scenario), so this is not the anchor of the trust model -
- * the operator confirming the fingerprint RFDeck displays is. This makes the
- * common case safe and the attack narrow; it does not make it impossible.
- */
-export function verifyPinProof(
-  proof: string | undefined,
-  stored: string | null | undefined,
-  fingerprint: string,
-): boolean {
-  if (!proof || !stored || !fingerprint) return false;
-  const [, key] = stored.split(':');
-  if (!key) return false;
-
-  const expected = crypto.createHmac('sha256', Buffer.from(key, 'hex'))
-    .update(fingerprint.toLowerCase())
-    .digest();
-  let given: Buffer;
-  try { given = Buffer.from(proof, 'hex'); } catch { return false; }
-  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
-}
-
 export async function getAuthState(): Promise<AuthState> {
   const settings = await prisma.settings.findFirst();
   return {
