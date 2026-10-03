@@ -102,44 +102,54 @@ Pin the **SPKI SHA-256 fingerprint** (the public key), not the certificate.
 Certificate regeneration on an address change then keeps the pin valid, and only
 a genuine key change breaks it — which is the event that *should* break it.
 
-**Establishing the pin — decided 2026-10-03: automatically, on first connect.**
+**Establishing the pin — open with David.** Both options below were approved at
+different points and neither is settled. The trade between them is the whole of
+the decision, so it is stated rather than summarised.
 
-Manifold records RFDeck's fingerprint the first time it connects, with no operator
-confirmation, and warns only if it later changes. Trust on first use, as SSH does
-when a host is new, without the prompt.
+**(a) The operator confirms a displayed fingerprint.** RFDeck shows a short form of
+its fingerprint in Settings, at startup and from the installer; Manifold shows the
+one it received; the operator confirms they match before Manifold pins it. Nothing
+is ever trusted blind, so an attacker in the middle at the first connection is
+caught. The cost is an approval step, and a Manifold instance pointed at a free
+RFDeck with no cloud connection no longer simply works - somebody has to be present
+and has to care.
 
-An earlier draft of this section made the anchor an **operator confirming a
-displayed fingerprint** at pairing, and called that the trust anchor because its
-security does not depend on PIN entropy. That was rejected: it is an approval step,
-and a Manifold instance pointed at a free RFDeck with no cloud connection should
-simply work. The trade is explicit — a first connection is trusted blind, so an
-attacker already in the middle *at that moment* is pinned instead of the real
-server, and nothing afterwards would notice. What the pin does buy is everything
-after: a key that changes later is reported, which is the case that covers a
-server being impersonated on a network Manifold has used before.
+**(b) Manifold pins on first connect, with no prompt, and warns if it later
+changes.** Trust on first use, as SSH does for a host it has not seen, without the
+question. Nothing is imposed on the operator and the console just works. The cost
+is that **the first connection is trusted blind**: an attacker already in the
+middle at that moment is pinned instead of the real server, and nothing afterwards
+would notice. What it still buys is every connection after - a key that changes
+later is reported, which covers a server being impersonated on a network Manifold
+has used before.
 
-The fingerprint is still shown in RFDeck's Settings, printed at startup and
-printed by the installer, so anyone who does want to check can. It is a check
-available to an operator who asks for it, not a step imposed on one who does not.
-**(b) was built and then removed. Superseded 2026-10-03.**
+A middle option neither of us has raised: pin silently on first connect **and**
+show the operator what was pinned afterwards, so there is a record to check
+without a gate to pass. It does not close the first-connection window, but it
+makes it auditable.
 
-It bound the PIN exchange to the certificate, so that an operator who clicked
-through (a) was still protected from anyone who did not know the PIN:
+Either way the fingerprint stays visible in RFDeck's Settings, at startup and from
+the installer, so anyone who wants to check can.
+
+**A PIN binding was also built here, and removed.**
+
+It bound the PIN exchange to the certificate, so that an operator who skipped the
+fingerprint check was still protected from anyone who did not know the PIN:
 `HMAC-SHA256(scrypt(pin, salt), fingerprint)`, keyed on the hash the server
 already stores, with the salt published at `/api/auth/pin-params`.
 
-It was removed because the premise was wrong, not because the mechanism was. **The
-PIN gates RFDeck's UI** - it is how an install with no user accounts stops a
-stranger's browser - and it was never meant for server-to-server callers. So (b)
-was built for Manifold, which should not be using the PIN at all. With browsers the
-only PIN users, and a browser unable to compute scrypt without a dependency since
-Web Crypto has none, it had no consumer left; unreachable code on an
-authentication path is worse than none.
+It was removed because it had no consumer, not because the mechanism was unsound.
+**The PIN is RFDeck's auth for every client** - a browser, a Manifold console,
+anything else reaching the API or the socket from another machine - and the bare
+PIN form of `POST /api/auth/login` is permanent, with no deprecation. So Manifold
+has no reason to send a proof, and a browser cannot compute one without a
+dependency, Web Crypto having no scrypt. Unreachable code on an authentication path
+is worse than none.
 
-What replaced it: nothing. **The PIN is the auth**, for browsers and for machine
-clients alike, and `POST /api/auth/login` taking a bare PIN is permanent with no
-deprecation. Manifold enters the PIN and keeps the token, as both products are
-already built. The throttle stays, because four digits is 10,000 candidates.
+(An earlier draft of this paragraph said the PIN "gates RFDeck's UI" and "was never
+meant for server-to-server callers". That was a premise under consideration for a
+day and rejected; it is recorded here only because it is the reason the commit that
+removed the proof is worded the way it is.)
 
 A per-device credential issued at pairing was proposed as the replacement and
 **rejected**: it is an approval step, and a console pointed at a free RFDeck with
@@ -148,10 +158,11 @@ move to - its objection, that a four-digit secret is too small to key a MAC
 with, stands, and there is no higher-entropy secret in this system to key it with
 instead. The mechanism is simply not needed.
 
-**After pairing:** Manifold refuses any certificate whose SPKI does not match the
-pin, and reports a mismatch as a security failure needing re-pairing rather than
-as a connection error. A pin change is a real event — a reinstalled server, a new
-machine, or an attack — and the operator has to be the one to accept it.
+**Once pinned:** Manifold refuses any certificate whose SPKI does not match, and
+reports a mismatch as a security failure rather than a connection error. A key
+change is a real event - a reinstalled server, a new machine, or an attack - and
+recovering from it means accepting the new key deliberately, whatever the answer
+to the open question above turns out to be.
 
 This also composes with the PKCE sequence meros.co has confirmed: with RFDeck
 holding the `code_verifier` and never transmitting it, an intercepted login token
@@ -166,14 +177,15 @@ credential of this value.
   API, no socket handshake, no upgrade. A redirect is correct for a browser and
   useless to an API client, which is the point — an API client should fail loudly
   rather than be silently downgraded.
-- **Loopback keeps plain HTTP**, because it never reaches a network interface. The
-  desktop window talks to its own sidecar this way and need not change. The
-  alternative — HTTPS on loopback with the window trusting its own fingerprint —
-  is available and marginally cleaner, but it buys nothing against any threat and
-  costs an Electron certificate-error handler that has to be scoped exactly right
-  to avoid becoming "trust everything".
-- **`x-rfdeck-token` is unchanged**, and keeps working exactly as it does now. Only
-  the scheme it crosses changes, plus the login call that issues it.
+- **Loopback is HTTPS too - built differently from this proposal.** The plan here
+  was to keep plain HTTP on loopback, leaving the desktop window untouched. It was
+  built as a single HTTPS listener instead, with Electron trusting the sidecar's
+  certificate pinned to its exact fingerprint, because a plaintext API listener is
+  reachable by any local process and the window does not need one once it trusts
+  its own certificate. The certificate-error handler is scoped to loopback and to
+  that one fingerprint, so it never becomes "trust everything".
+- **`x-rfdeck-token` is unchanged**, and keeps working exactly as it does now.
+  Only the scheme it crosses changes; the call that issues it is unchanged too.
 - **`POST /api/auth/login` is unchanged and permanent.** It was going to become a
   channel-bound proof, which would have been breaking for Manifold; that is
   withdrawn. A per-device credential was proposed instead and rejected. So the
@@ -185,11 +197,11 @@ credential of this value.
 
 ## What this needs from others
 
-- **Manifold:** record RFDeck's SPKI fingerprint on first connect, compare it on
-  every connection afterwards, and warn if it changes. No prompt on first use and
-  no proof to send; authentication is the PIN token, as it already is.
-- **David:** confirm the pinning approach over the alternatives above, and whether
-  the Meros-issued-certificate track for browser trust is worth opening
-  separately. Also whether PINs should be allowed to be longer than they are now,
-  which is the one cheap way to raise the floor under (b).
+- **Manifold:** compare RFDeck's SPKI fingerprint on every connection and warn if
+  it changes. Whether it is pinned silently on first connect or after the operator
+  confirms it is the open question above, and it decides whether Manifold needs any
+  pairing UI at all. Authentication is the PIN token either way, as it already is.
+- **David:** choose between (a) and (b) above, or the middle option. That is the
+  only thing still open here; the PIN, the gate and the HTTPS work are all
+  settled.
 - **meros.co:** nothing. This is below the cloud contract.
