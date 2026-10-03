@@ -112,6 +112,31 @@ export async function fetchAuthStatus(): Promise<AuthStatus> {
   return res.json();
 }
 
+/** What a client needs to build a certificate-bound PIN proof, plus the pin itself. */
+export interface PinParams {
+  pinEnabled: boolean;
+  salt: string | null;
+  tlsFingerprint: string;
+}
+
+export async function fetchPinParams(): Promise<PinParams> {
+  // Unauthenticated by design - a client cannot authenticate before it has these.
+  const res = await fetch(`${API_BASE}/auth/pin-params`);
+  if (!res.ok) throw new ApiError('Could not read the pairing details', res.status);
+  return res.json();
+}
+
+/**
+ * The fingerprint in the form an operator reads aloud.
+ *
+ * Must match `shortFingerprint` in `apps/server/src/tls.ts`: the operator is
+ * comparing this against what Manifold shows, so the two have to be formatted
+ * identically or the check is unusable.
+ */
+export function shortFingerprint(spki: string): string {
+  return (spki.match(/.{4}/g) ?? []).slice(0, 8).join('-').toUpperCase();
+}
+
 export async function submitPin(pin: string): Promise<boolean> {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',

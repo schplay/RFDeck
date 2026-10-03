@@ -465,3 +465,18 @@
   font-family: var(--font-mono);
   font-size: 11px;
 }
+
+/* The certificate fingerprint an operator reads out when pairing a client.
+   Monospaced and spaced out, because the whole value of it is that two people
+   looking at two screens can tell quickly whether they match. */
+.settings-fingerprint {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--surface-2, #1c1c1f);
+  border: 1px solid var(--border, #2e2e33);
+  user-select: all;
+}

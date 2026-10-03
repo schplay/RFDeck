@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Volume2, BellRing, Network, RefreshCw, ShieldCheck, Gauge, Cloud } from 'lucide-react';
 import { MeterSettings } from './MeterSettings';
 import { NotificationSettings } from './NotificationSettings';
-import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE } from '../../lib/api';
+import { apiFetch, fetchAuthStatus, AuthStatus, API_BASE, fetchPinParams, shortFingerprint } from '../../lib/api';
 import { AudioPatchSettings } from './AudioPatch';
 import { AES67RoutingSettings } from './AES67Routing';
 import { RecordingSettings } from './RecordingSettings';
@@ -35,6 +35,40 @@ interface NetworkInterface {
 // from remote clients and choose how often they must re-enter it. Configurable
 // only from the host machine — with no user accounts there is no other way to
 // tell an admin from any other client on the network.
+/**
+ * This install's certificate fingerprint, for pairing a client.
+ *
+ * RFDeck generates its own certificate, so a client has no authority to check it
+ * against. Manifold pins the key instead, and the operator confirming this value
+ * matches what Manifold shows is the anchor of that trust - without it a client is
+ * accepting whatever certificate it was handed, which is the same as accepting a
+ * man in the middle.
+ *
+ * Shown whether or not a PIN is set, because pairing happens either way and an
+ * operator who needs this cannot be assumed to have found the server log.
+ */
+function CertificateFingerprint() {
+  const [spki, setSpki] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchPinParams().then(p => setSpki(p.tlsFingerprint ?? null)).catch(() => setSpki(null));
+  }, []);
+
+  if (!spki) return null;
+
+  return (
+    <div className="form-group">
+      <label>This server&apos;s certificate fingerprint</label>
+      <p className="settings-desc settings-desc-tight">
+        When pairing Manifold or another client, check that it shows the same
+        value. If it shows something different you are not connected to this
+        server, and should not continue.
+      </p>
+      <code className="settings-fingerprint">{shortFingerprint(spki)}</code>
+    </div>
+  );
+}
+
 function RemoteAccessSettings() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [pinIsSet, setPinIsSet] = useState(false);
@@ -116,6 +150,7 @@ function RemoteAccessSettings() {
       </p>
 
       <div className="settings-form">
+        <CertificateFingerprint />
         <div className="form-group form-group-row">
           <div>
             <label>Require a PIN for remote devices</label>
