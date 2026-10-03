@@ -111,26 +111,32 @@ confirms they match, and Manifold pins it. This is SSH's model with the comparis
 made easy, and its security does not depend on PIN entropy at all. **This is the
 trust anchor.**
 
-**(b) Bind the PIN exchange to the certificate**, so that an operator who clicks
-through (a) is still protected against anyone who does not know the PIN. Today
-Manifold sends the PIN itself to `POST /auth/login`. Instead:
+**(b) was built and then removed. Superseded 2026-10-03.**
 
-```
-proof = scrypt(PIN, spki_fingerprint_Manifold_received)
-```
+It bound the PIN exchange to the certificate, so that an operator who clicked
+through (a) was still protected from anyone who did not know the PIN:
+`HMAC-SHA256(scrypt(pin, salt), fingerprint)`, keyed on the hash the server
+already stores, with the salt published at `/api/auth/pin-params`.
 
-RFDeck recomputes with the fingerprint of *its own* certificate and compares. A
-man in the middle terminating TLS with its own key causes the two fingerprints to
-differ, so the proof does not verify, and it cannot forge one without the PIN. The
-PIN also stops crossing the network in a replayable form, which is an improvement
-on its own — `scrypt` is already in `apps/server/src/auth/pinAuth.ts`.
+It was removed because the premise was wrong, not because the mechanism was. **The
+PIN gates RFDeck's UI** - it is how an install with no user accounts stops a
+stranger's browser - and it was never meant for server-to-server callers. So (b)
+was built for Manifold, which should not be using the PIN at all. With browsers the
+only PIN users, and a browser unable to compute scrypt without a dependency since
+Web Crypto has none, it had no consumer left; unreachable code on an
+authentication path is worse than none.
 
-**The limit of (b), stated plainly:** a PIN is low-entropy. An attacker who is
-actively in the middle *at the one pairing moment* captures a proof and can
-brute-force a 4-digit PIN offline regardless of the KDF cost. So (b) defeats
-passive interception and any active attacker who does not already know the PIN,
-and (a) is what defeats the rest. That is why both, and why (a) is the anchor
-rather than the belt-and-braces. It is also an argument for allowing longer PINs.
+What replaced it: nothing on the PIN path. The browser keeps the bare PIN over
+HTTPS, which the browser's own certificate handling already protects, now with a
+per-address throttle because four digits is 10,000 candidates. Manifold is to be
+issued its own credential at pairing, which is not decided yet.
+
+**The idea belongs in that pairing exchange, where the objection to it disappears.**
+A pairing code can be 128 bits, so the offline brute force that makes a four-digit
+PIN's binding weak is unavailable there. The mechanism was sound; it was attached
+to the wrong secret.
+
+(a), the fingerprint the operator confirms, stands unchanged and is the anchor.
 
 **After pairing:** Manifold refuses any certificate whose SPKI does not match the
 pin, and reports a mismatch as a security failure needing re-pairing rather than
