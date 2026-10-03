@@ -35,21 +35,27 @@ function isOpenRead(method: string, path: string): boolean {
 }
 
 export async function buildApp(): Promise<FastifyInstance> {
-  // Serve over HTTPS when a certificate is configured. Browsers only expose
-  // audio capture to secure contexts, so this is what makes audio monitoring
-  // possible for clients other than the machine running the server.
-  const tls = loadTlsConfig();
+  // Always HTTPS. A certificate is generated and kept when none is configured,
+  // so this is no longer a deployment choice - see tls.ts for why that changed.
+  // Browsers also expose audio capture only to secure contexts, which is what
+  // makes audio monitoring work for clients other than the one at the server.
+  const tls = await loadTlsConfig();
 
   // Fastify logs every request by default. Telemetry-driven UIs poll steadily,
   // so on a long-running service that is pure journal noise — enable it only
   // when someone has asked for debug output.
   const app = Fastify({
     logger: log.isDebug ? true : false,
-    ...(tls ? { https: { key: tls.key, cert: tls.cert } } : {}),
+    https: { key: tls.key, cert: tls.cert },
   });
 
-  // Let the rest of the process know which scheme is in play.
-  app.decorate('isSecure', !!tls);
+  // Always true now, and kept so every caller does not have to change. HTTPS is
+  // a property of RFDeck rather than of whether somebody configured a
+  // certificate: loadTlsConfig generates one when none is.
+  app.decorate('isSecure', true);
+  // The pin. Manifold compares this with what its TLS session presented, and the
+  // operator confirms the short form of it at pairing.
+  app.decorate('tlsFingerprint', tls.spki);
 
   await app.register(cors, { origin: true });
   await app.register(prismaPlugin);

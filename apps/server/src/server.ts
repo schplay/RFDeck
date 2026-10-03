@@ -5,6 +5,7 @@ import { loadLocalEnv } from './env';
 const envFile = loadLocalEnv();
 import { buildApp } from './app';
 import { log } from './logger';
+import { shortFingerprint } from './tls';
 import { backfillPerformers } from './performers/roster';
 import { announceBackend } from './audio/backends';
 
@@ -39,7 +40,7 @@ function startHttpRedirect(httpPort: number, httpsPort: number): void {
 
 async function start() {
   const app = await buildApp();
-  const secure = (app as any).isSecure as boolean;
+  const fingerprint = (app as any).tlsFingerprint as string;
 
   // Cast entries created before the performer roster existed are linked to it
   // by name. Idempotent, and must not stop the server from coming up.
@@ -51,14 +52,17 @@ async function start() {
 
   // Default to the conventional port for whichever scheme is in use, so the
   // address is just the server's IP with nothing to remember.
-  const port = parseInt(process.env.PORT || (secure ? '443' : '3000'), 10);
+  const port = parseInt(process.env.PORT || '443', 10);
   // 0.0.0.0 so clients elsewhere on the venue network can reach it — RFDeck is
   // a multi-client service in every deployment shape.
   const host = process.env.HOST || '0.0.0.0';
 
   try {
     await app.listen({ port, host });
-    log.info(`RFDeck server listening on ${secure ? 'https' : 'http'}://${host}:${port}`);
+    log.info(`RFDeck server listening on https://${host}:${port}`);
+    // Printed every start, not only when the certificate is made: an operator
+    // pairing Manifold next season needs it then, not in a log from install day.
+    log.info(`[TLS] Certificate fingerprint ${shortFingerprint(fingerprint)} - confirm this when pairing a client`);
     if (envFile) log.debug(`Local environment loaded from ${envFile}`);
     // Say which capture path this machine got, at startup rather than on the
     // first attempt to listen to a mic. The desktop build shipped with none at
@@ -70,7 +74,7 @@ async function start() {
     process.exit(1);
   }
 
-  if (secure) {
+  {
     const redirectPort = parseInt(process.env.HTTP_REDIRECT_PORT || '80', 10);
     // Guard against being told to redirect a port onto itself.
     if (redirectPort > 0 && redirectPort !== port) {

@@ -23,6 +23,7 @@
     "bonjour-service": "^1.4.0",
     "fastify": "^5.0.0",
     "fastify-plugin": "^5.1.0",
+    "selfsigned": "^5.5.0",
     "socket.io": "^4.0.0",
     "web-push": "^3.6.7"
   },
