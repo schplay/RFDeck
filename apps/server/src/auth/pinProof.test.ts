@@ -109,13 +109,45 @@ describe('the PIN attempt throttle', () => {
 });
 
 describe('reaching the parameters at all', () => {
-  it('pin-params is exempt from the PIN gate', async () => {
-    // Load-bearing and easy to lose: a client cannot compute a proof without the
-    // salt, so gating this endpoint behind the PIN would make the whole
-    // certificate-bound login unreachable on exactly the installs that enable a
-    // PIN — and the symptom would be "Manifold cannot log in", not "a route is
-    // mis-listed".
-    const { OPEN_PATHS } = await import('../app');
-    expect(OPEN_PATHS.has('/api/auth/pin-params')).toBe(true);
+  // The bug this guards against was shipped: `/api/auth/pin-params` was added as
+  // a route and left out of the gate's open set. A client cannot compute a proof
+  // without the salt, so on exactly the installs that enable a PIN, the whole
+  // certificate-bound login was unreachable - and the symptom would have been
+  // "Manifold cannot log in", with nothing pointing at a gate.
+  //
+  // Asserted through the gate's own decision rather than by checking set
+  // membership, because those are different claims: the set could be right while
+  // the hook consulted something else.
+
+  it('lets an unauthenticated client read the proof parameters', async () => {
+    const { needsNoPin } = await import('../app');
+    expect(needsNoPin('GET', '/api/auth/pin-params')).toBe(true);
+  });
+
+  it('lets an unauthenticated client reach status and login, as before', async () => {
+    const { needsNoPin } = await import('../app');
+    expect(needsNoPin('GET', '/api/auth/status')).toBe(true);
+    expect(needsNoPin('POST', '/api/auth/login')).toBe(true);
+  });
+
+  it('still gates everything else', async () => {
+    // The exemption must not have widened. A PIN that protects nothing is worse
+    // than no PIN, because the operator believes it is doing something.
+    const { needsNoPin } = await import('../app');
+    expect(needsNoPin('GET', '/api/inventory')).toBe(false);
+    expect(needsNoPin('PUT', '/api/auth/config')).toBe(false);
+    expect(needsNoPin('POST', '/api/auth/revoke-all')).toBe(false);
+    // Not a prefix match: a route merely starting with an open path is not open.
+    expect(needsNoPin('GET', '/api/auth/pin-params/../inventory')).toBe(false);
+    expect(needsNoPin('GET', '/api/auth/pin-paramsx')).toBe(false);
+  });
+
+  it('exempts the Micboard reads by method, not by path alone', async () => {
+    // /api/live answers POST and DELETE too, and listing it as a path would have
+    // let anyone on the network stand the rig down without a PIN.
+    const { needsNoPin } = await import('../app');
+    expect(needsNoPin('GET', '/api/live')).toBe(true);
+    expect(needsNoPin('POST', '/api/live')).toBe(false);
+    expect(needsNoPin('DELETE', '/api/live')).toBe(false);
   });
 });

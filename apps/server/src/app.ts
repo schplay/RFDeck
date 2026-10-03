@@ -40,6 +40,22 @@ function isOpenRead(method: string, path: string): boolean {
   return /^\/api\/performers\/[\w-]+\/photo$/.test(path);
 }
 
+/**
+ * Does this request reach the application without a PIN?
+ *
+ * Pulled out of the gate hook so it can be tested. Membership of `OPEN_PATHS` is
+ * not the same claim as the gate honouring it, and the difference is not
+ * academic: `/api/auth/pin-params` was added as a route and left out of that set,
+ * which made certificate-bound login unreachable on exactly the installs that
+ * enable a PIN - a client cannot compute a proof without the salt. The symptom
+ * would have been "Manifold cannot log in", with nothing pointing at a gate.
+ *
+ * Takes the method as well as the path, because some exemptions are reads only.
+ */
+export function needsNoPin(method: string, path: string): boolean {
+  return OPEN_PATHS.has(path) || isOpenRead(method, path);
+}
+
 export async function buildApp(): Promise<FastifyInstance> {
   // Always HTTPS. A certificate is generated and kept when none is configured,
   // so this is no longer a deployment choice - see tls.ts for why that changed.
@@ -70,8 +86,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Global PIN gate. No-op on the default open configuration.
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0];
-    if (OPEN_PATHS.has(path)) return;
-    if (isOpenRead(request.method, path)) return;
+    if (needsNoPin(request.method, path)) return;
 
     // The header is how the app authenticates. A plain navigation — opening
     // the printable show report in a new tab — cannot set headers, so a GET
