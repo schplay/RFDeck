@@ -1,14 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { pinRetryAfterMs, notePinFailure, clearPinFailures } from './pinAuth';
 
-// The PIN gates RFDeck's *UI*. It is how an install without user accounts stops a
-// stranger's browser, and nothing more than that: it was never meant for
-// server-to-server callers, and a machine client should hold its own credential
-// instead. A shared four-digit secret cannot be revoked for one console, cannot be
-// scoped to read-only, and is far too small to be a machine credential.
+// The PIN is the whole of RFDeck's access control, and deliberately so.
 //
-// A certificate-bound proof form of the login briefly existed for that
-// server-to-server case, with tests to match. Both went when the premise did.
+// There are no user accounts. When an operator enables a PIN it covers every
+// client from another machine - a browser, a Manifold console, anything on the
+// API or the socket - with loopback always exempt and a `micboard: true`
+// handshake allowed read-only. No pairing, no per-device credential, no approval:
+// a console pointed at a free RFDeck with no cloud connection should just work.
+//
+// A certificate-bound proof form of the login was built here and removed, as was
+// a plan to gate the UI alone and leave the API open. Both were rejected as
+// product decisions rather than oversights, so the tests below cover the PIN as
+// it is rather than as either of those would have had it.
 
 describe('the PIN attempt throttle', () => {
   const IP = '10.2.3.99';

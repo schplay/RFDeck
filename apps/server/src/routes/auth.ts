@@ -59,19 +59,26 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /**
-   * The PIN login, for browsers.
+   * The PIN login. The only credential RFDeck has, and deliberately so.
    *
-   * The PIN is how RFDeck gates its *UI* without having user accounts: an operator
-   * sets one, and any other device opening the interface in a browser has to enter
-   * it. It was never meant for server-to-server callers, and a machine client
-   * should be issued its own credential instead - a shared four-digit secret cannot
-   * be revoked for one console, cannot be scoped to read-only, and is far too small
-   * to be a machine credential.
+   * RFDeck has no user accounts. When an operator enables a PIN it is the auth for
+   * every client from another machine - a browser, a Manifold console, anything
+   * else on the API or the socket. They all call this once and keep the token
+   * (`x-rfdeck-token` on REST, `handshake.auth.token` on the Socket.IO connect).
+   * Loopback is always exempt, and a `micboard: true` handshake gets read-only
+   * telemetry without one.
    *
-   * A certificate-bound proof form of this endpoint existed briefly, for exactly
-   * that server-to-server case. It went away with its premise: browsers are the
-   * only PIN users, a browser cannot compute scrypt without a dependency, and
-   * unreachable code on an authentication path is worse than none.
+   * There is no pairing step, no per-device credential and no approval, on purpose:
+   * a Manifold instance pointed at a free RFDeck with no cloud connection should
+   * simply work. This endpoint is permanent and has no deprecation.
+   *
+   * Two things were built here and removed. A certificate-bound proof form, on the
+   * theory that a machine client should not be using a four-digit PIN - rejected,
+   * the PIN is the auth for machine clients too. And a plan to make the PIN gate
+   * the UI alone while leaving the API open - also rejected. Recorded because both
+   * are reasonable-sounding ideas that someone will have again, and the answer is
+   * a product decision rather than an oversight: RFDeck is a trusted-LAN tool, and
+   * the PIN is the whole of its access control.
    */
   fastify.post('/auth/login', async (request, reply) => {
     const { pin } = request.body as { pin?: string };
