@@ -102,15 +102,25 @@ Pin the **SPKI SHA-256 fingerprint** (the public key), not the certificate.
 Certificate regeneration on an address change then keeps the pin valid, and only
 a genuine key change breaks it — which is the event that *should* break it.
 
-**Establishing the pin — two mechanisms, both cheap, layered:**
+**Establishing the pin — decided 2026-10-03: automatically, on first connect.**
 
-**(a) Displayed fingerprint, confirmed by the operator.** At pairing, RFDeck shows
-a short form of its fingerprint in its own UI (and prints it at startup, and the
-installer prints it). Manifold shows the fingerprint it received. The operator
-confirms they match, and Manifold pins it. This is SSH's model with the comparison
-made easy, and its security does not depend on PIN entropy at all. **This is the
-trust anchor.**
+Manifold records RFDeck's fingerprint the first time it connects, with no operator
+confirmation, and warns only if it later changes. Trust on first use, as SSH does
+when a host is new, without the prompt.
 
+An earlier draft of this section made the anchor an **operator confirming a
+displayed fingerprint** at pairing, and called that the trust anchor because its
+security does not depend on PIN entropy. That was rejected: it is an approval step,
+and a Manifold instance pointed at a free RFDeck with no cloud connection should
+simply work. The trade is explicit — a first connection is trusted blind, so an
+attacker already in the middle *at that moment* is pinned instead of the real
+server, and nothing afterwards would notice. What the pin does buy is everything
+after: a key that changes later is reported, which is the case that covers a
+server being impersonated on a network Manifold has used before.
+
+The fingerprint is still shown in RFDeck's Settings, printed at startup and
+printed by the installer, so anyone who does want to check can. It is a check
+available to an operator who asks for it, not a step imposed on one who does not.
 **(b) was built and then removed. Superseded 2026-10-03.**
 
 It bound the PIN exchange to the certificate, so that an operator who clicked
@@ -126,17 +136,17 @@ only PIN users, and a browser unable to compute scrypt without a dependency sinc
 Web Crypto has none, it had no consumer left; unreachable code on an
 authentication path is worse than none.
 
-What replaced it: nothing on the PIN path. The browser keeps the bare PIN over
-HTTPS, which the browser's own certificate handling already protects, now with a
-per-address throttle because four digits is 10,000 candidates. Manifold is to be
-issued its own credential at pairing, which is not decided yet.
+What replaced it: nothing. **The PIN is the auth**, for browsers and for machine
+clients alike, and `POST /api/auth/login` taking a bare PIN is permanent with no
+deprecation. Manifold enters the PIN and keeps the token, as both products are
+already built. The throttle stays, because four digits is 10,000 candidates.
 
-**The idea belongs in that pairing exchange, where the objection to it disappears.**
-A pairing code can be 128 bits, so the offline brute force that makes a four-digit
-PIN's binding weak is unavailable there. The mechanism was sound; it was attached
-to the wrong secret.
-
-(a), the fingerprint the operator confirms, stands unchanged and is the anchor.
+A per-device credential issued at pairing was proposed as the replacement and
+**rejected**: it is an approval step, and a console pointed at a free RFDeck with
+no cloud connection should just work. So there is nowhere left for the binding to
+move to - its objection, that a four-digit secret is too small to key a MAC
+with, stands, and there is no higher-entropy secret in this system to key it with
+instead. The mechanism is simply not needed.
 
 **After pairing:** Manifold refuses any certificate whose SPKI does not match the
 pin, and reports a mismatch as a security failure needing re-pairing rather than
@@ -164,25 +174,20 @@ credential of this value.
   to avoid becoming "trust everything".
 - **`x-rfdeck-token` is unchanged**, and keeps working exactly as it does now. Only
   the scheme it crosses changes, plus the login call that issues it.
-- **`POST /auth/login` is unchanged.** It was going to become a channel-bound
-  proof, which would have been breaking for Manifold; that is withdrawn with the
-  proof. Manifold is instead to be issued its own credential at pairing, because
-  the PIN is a UI mechanism and a shared four-digit secret cannot be revoked for
-  one console or scoped to read-only. That change is not decided yet, so Manifold
-  keeps using the PIN in the meantime - which is what RFDeck's own handoff
-  document still tells it to do, and which should be revised when the credential
-  is settled.
+- **`POST /api/auth/login` is unchanged and permanent.** It was going to become a
+  channel-bound proof, which would have been breaking for Manifold; that is
+  withdrawn. A per-device credential was proposed instead and rejected. So the
+  Manifold contract does not change at all, and `docs/manifold handoff.md` is
+  correct as written.
 - **Micboard displays** connect without a PIN and are marked read-only
   (`apps/server/src/plugins/socket.ts`). They are unaffected beyond the scheme, and
   they do not pair, so they do not pin.
 
 ## What this needs from others
 
-- **Manifold:** store a pin per RFDeck install, compare the SPKI fingerprint on
-  every connection, and show the fingerprint at pairing for the operator to
-  confirm. The display-and-confirm step needs UI. No proof to send - that was
-  withdrawn; authentication stays the PIN token until a per-client credential is
-  decided.
+- **Manifold:** record RFDeck's SPKI fingerprint on first connect, compare it on
+  every connection afterwards, and warn if it changes. No prompt on first use and
+  no proof to send; authentication is the PIN token, as it already is.
 - **David:** confirm the pinning approach over the alternatives above, and whether
   the Meros-issued-certificate track for browser trust is worth opening
   separately. Also whether PINs should be allowed to be longer than they are now,
