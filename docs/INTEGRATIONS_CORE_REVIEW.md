@@ -1017,3 +1017,43 @@ decision.** That covers your bounded name fallback and whether to use a MAC wher
 one is readable. The core supplies evidence and never merges records. So the
 "no hardware address for this address" versus "lookup failed" distinction,
 which is worth having, belongs in RFDeck's lookup rather than the core's.
+
+---
+
+## Q. Axient Digital identify (raised by the core, 2026-09-30)
+
+**Context:** the core now has a native Shure module. RFDeck's `ShureClient` was
+its main reference for framing, per-family names, offsets and the SLX-D and
+PSM1000 dialects.
+
+**What RFDeck does:** `ShureClient.identify()` returns false, with the comment
+"Axient has no 'flash the display' command over this protocol".
+
+**What Shure's document says:** *Axient Digital — Command Strings*
+(preliminary, 2 May 2018), p.3, lists `FLASH` in two forms:
+- device-level: `< SET FLASH ON >` → `< REP FLASH ON >`, then `< REP FLASH OFF >`
+  when the identify ends (p.7, "Device initiates Identify then stops flashing");
+- per channel: `< SET 1 FLASH ON >` → `< REP 1 FLASH ON >`.
+
+The ULX-D document (12 Jan 2018) has `< SET FLASH ON|OFF >` as well, turning
+itself off after 60 seconds.
+
+**The core** offers `flash` on Axient Digital, ULX-D and QLX-D, as a
+device-level `SET FLASH ON|OFF`. It does not offer flash on SLX-D, because the
+SLX-D document could not be retrieved to check it.
+
+**Question:** was the Axient comment based on something the document doesn't
+show, such as an AD4 that ignored `FLASH` on the rig? If not, RFDeck's
+`identify()` could send it.
+
+**Also, for your information:** Imperio's earlier Shure spec sent gain in dB
+(`AUDIO_GAIN -3`). Both documents say the wire value is 000-060 with the dB
+figure offset by 18 (Axient p.6: "The values REPorted and SET are offset by
+18"). The core sends `015` for -3 dB. RFDeck has no gain control, so this does
+not affect RFDeck.
+
+**Update (2026-10-02):** the SLX-D document has since been read (*SLX-D
+Command Strings*, Version 2, 2020-G, p.3). It lists `FLASH` per device and per
+channel, so the core now offers `flash` on SLX-D too, and `set_gain` with the
+same 18 offset (p.6-7). SLX-D still has no mute command.
+

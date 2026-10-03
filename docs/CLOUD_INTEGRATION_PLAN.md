@@ -827,14 +827,14 @@ rather than loudly:
 
 Earlier drafts of this plan described a signed `device-profiles` pack delivering
 band-table corrections as data. **That feature does not exist and is not
-planned** (owner, 2026-10-03): RFDeck's supported devices are built into RFDeck,
-and the cloud provides no device definitions. `hardware/coordination/profiles.ts`
-is the only source of band tables, and a correction to one is a release.
+planned** (owner, 2026-10-03). A receiver's operating **band is fixed at
+manufacture** and cannot change, so band data has nothing to learn from the
+cloud; `hardware/coordination/profiles.ts` is the only source of band tables and
+a correction to one is a release. The frequency a device is tuned to *within*
+its band is programmable, and RFDeck's tuning and coordination are unaffected.
 
-`apps/server/src/cloud/deviceProfiles.ts` is live code built against the
-withdrawn pack — `service.ts` constructs it and calls `refresh()` on start — so
-it should be removed along with its test. Flagged for approval rather than
-deleted, since removing a wired-in module is a code change.
+`apps/server/src/cloud/deviceProfiles.ts`, its test, and the two unused exports
+that only fed it were deleted on 2026-10-03.
 
 ## Where it lands in the code
 
@@ -893,7 +893,7 @@ services wait for their shapes.
 | D.4 | Show files: build, apply, push, pull, version history, conflict resolution | ✅ **Built** |
 | D.5 | Events: the envelope, a persisted instance id and sequence, batching, a bounded queue, a collector list | ✅ **Built** |
 | D.6 | Regional TV occupancy: signed packs, per-cell cache, cell arithmetic, point-in-polygon, coordinator exclusions, the RF panel | ✅ **Built** |
-| D.7 | ~~Device-profile feed~~ | ❌ **Withdrawn** (owner, 2026-10-03) — the cloud provides no device definitions. `deviceProfiles.ts` is to be removed |
+| D.7 | ~~Device-profile feed~~ | ❌ **Withdrawn and deleted** (owner, 2026-10-03). A receiver's band is fixed at manufacture, so band data has nothing to learn from the cloud |
 | D.8 | The install snapshot: `config/app`, described before it restores | ✅ **Built** |
 | D.9 | The online inventory listing: one-way reconcile to `/v1/inventory/rfdeck` | ✅ **Built** |
 
@@ -1077,7 +1077,7 @@ and tested** on Meros's side. What is left is short:
   2026-09-25 and has to be re-run per environment. This is the only thing blocking
   D.2, and it is one command.
 - ~~**The device-profile pack**~~ — **withdrawn** (owner, 2026-10-03). Nothing is
-  owed here; `deviceProfiles.ts` is to be removed instead.
+  owed here; `deviceProfiles.ts` was deleted instead.
 - **Imperio — parked (owner, 2026-09-26).** Not a concern for now. The emitter is
   being built around a *list* of collectors rather than one cloud URL, so adding
   an Imperio later is configuration rather than a rewrite. The details to settle

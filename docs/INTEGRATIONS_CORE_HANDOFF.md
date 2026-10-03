@@ -6,6 +6,10 @@
 > changes in behaviour, so the migration can be done and tested on the rig.
 > Protocol decisions behind it are in `INTEGRATIONS_CORE_REVIEW.md`, which you
 > answered.
+>
+> **Updated 2026-10-02:** choosing which integrations the addon contains
+> ([Building only what RFDeck uses](#building-only-what-rfdeck-uses)), the
+> `devices` option, and a mapping for the Shure client ([Shure](#shure)).
 
 ## What this replaces
 
@@ -14,18 +18,22 @@
 | `hardware/sennheiser/SSCClient.ts` (EW-DX) | spec `sennheiser-ew-dx` |
 | `hardware/sennheiser/G3G4Client.ts` + `McpBus.ts` (telemetry and control) | spec `sennheiser-ew-g3-g4` |
 | `hardware/sennheiser/digital6000/*` | spec `sennheiser-digital-6000` |
+| `hardware/shure/ShureClient.ts` + `protocol.ts` (when RFDeck chooses; see [Shure](#shure)) | spec `shure-wireless` |
 
 **Not replaced yet, and staying in RFDeck for now:**
 
-- **`DiscoveryService.ts`**: Bonjour, the MCP multicast listener and the subnet
-  sweep. The core has no discovery yet. `McpBus` is shared by discovery and by
-  `G3G4Client`, so G3/G4 stays on the old client until the core's MCP discovery
-  ships, and then both move together (see [Port 53212](#port-53212)).
+- **The rest of `DiscoveryService.ts`**: Bonjour/mDNS for EW-DX, the Shure SLP
+  listener and the HTTP sweep. MCP discovery is now in the core (see
+  [Discovery](#discovery)), so `McpBus` and the MCP half of `DiscoveryService`
+  go when G3/G4 migrates.
 - **Deciding which spec and model a device is**, from its model string:
   `isSscModel`, `isLegacyMcpModel`, `isDigital6000`, `inferDeviceRole`. The core
-  takes the spec and model as given.
-- **The Shure client.** Shure is a spec-driven device, and the core's spec engine
-  isn't built yet.
+  takes the spec and model as given when opening. MCP discovery reports the
+  models a found device can be; see [Discovery](#discovery).
+- **Shure SLP discovery** (`slp.ts`) and `probe.ts`. The core has no SLP
+  discovery, so finding Shure receivers and deciding their model stay in
+  RFDeck. Moving the Shure client itself is a separate step from the
+  Sennheiser proof of concept; [Shure](#shure) maps it for when you do.
 - **Everything above the protocol:** normalisation into `ReceiverState`,
   `rfUnits.ts`, dropout detection, battery projection, alerts.
 
@@ -52,6 +60,28 @@ node scripts/build.mjs          # release build; writes meros-integrations.<plat
   no unpacking rule.
 - Prebuilt binaries per platform come later, from CI.
 
+### Building only what RFDeck uses
+
+Without a list, the addon contains every integration in the core (72 at the
+time of writing: consoles, cameras, switchers and so on). Name the ones RFDeck
+uses and nothing else is compiled in: no other spec, protocol code, discovery
+or dependency.
+
+```bash
+cd <path-to>/meros-device-spec/bindings/node
+MEROS_INTEGRATIONS=sennheiser-ew-dx,sennheiser-ew-g3-g4,sennheiser-digital-6000,shure-wireless node scripts/build.mjs
+# or: node scripts/build.mjs --integrations=vendor-sennheiser,shure-wireless
+```
+
+Names are spec ids, vendor groups (`vendor-sennheiser` is the three Sennheiser
+integrations) or `all`; the build fails on a name that isn't one. Leave out
+`shure-wireless` until RFDeck migrates Shure, if you prefer. Spec ids are listed
+in the core repo's `DEVICES.md`.
+
+The same choice can be narrowed at run time with `devices` (below). An
+integration that isn't built in can't be selected at run time: opening it
+throws `not_built`, naming the integration to build with.
+
 ## The API
 
 TypeScript types ship in `index.d.ts`. In short:
@@ -59,7 +89,8 @@ TypeScript types ship in `index.d.ts`. In short:
 ```ts
 import { Core, IntegrationsError } from '@meros/integrations';
 
-const core = new Core({ bindAddress });        // one per process; see below
+const core = new Core({ bindAddress,           // one per process; see below
+  devices: ['vendor-sennheiser'] });           // optional: only these, of those built in
 const id = core.open({
   device: 'sennheiser-ew-dx',                  // spec id
   model: 'em-2',                               // model id within the spec
@@ -86,6 +117,11 @@ core.dispose();                                // at shutdown, so the process ca
 interface every UDP socket binds to, for venues with separate control and
 Dante networks. Pass the operator's Settings → Network choice, or omit it for
 every interface.
+
+`devices` is optional. With it, the catalogue lists only those integrations,
+opening any other throws `not_selected`, and `discover` runs only the
+protocols that find them. Without it, everything built into the addon is
+available.
 
 Commands are validated against the spec before anything is sent. A channel
 out of range, or a command the model doesn't support, is rejected without
@@ -193,6 +229,59 @@ on disconnect is RFDeck's decision, as today.
 Use `canSet` checks against the catalogue: `core.catalog().devices[spec].models`
 lists each model's `supports`.
 
+## Shure
+
+The core's `shure-wireless` integration covers the families `ShureClient`
+handles, from `SHURE_PROTOCOL.md`, `protocol.ts` and Shure's command string
+documents. It is not part of the proof of concept; this is here so the
+migration can follow when you choose.
+
+| RFDeck family | `model` |
+|---|---|
+| Axient Digital (`axtd`) | `ad4d` or `ad4q` |
+| ULX-D (`ulxd`) | `ulxd4`, `ulxd4d` or `ulxd4q` |
+| QLX-D (`qlxd`) | `qlxd4` |
+| SLX-D (`slxd`) | `slxd4` or `slxd4d` |
+| PSM1000 (`p10t`) | `p10t` |
+
+`settings: { meter_interval_ms }` sets the SAMPLE interval (default 1000;
+0 turns metering off). The core turns metering off again before
+disconnecting.
+
+### State (`state.channels.N`)
+
+The core reports Shure's values with each family's documented offset applied
+(dBm and dBFS are the reported value − 120 on Axient Digital and SLX-D; RF is
+− 128 on ULX-D and QLX-D). Mapping onto `ReceiverState` stays in RFDeck, as
+for Sennheiser:
+
+| Core | `ReceiverState` |
+|---|---|
+| `name` | `name` |
+| `frequency_khz` | `frequency` |
+| `mute` | `mute` |
+| `rf.rssi_dbm.a`, `rf.rssi_dbm.b` | `rf_quality`, `rf_quality_b` through `dbmToPercent`, the same window as today. One figure, under `a`, on ULX-D, QLX-D and SLX-D: use it for both, as `handleSample` does |
+| `af.rms_dbfs` (Axient Digital, SLX-D) | `af_level` |
+| `af.level` (ULX-D, QLX-D, 0–50, no unit given by Shure) | `af_level` as `level − 50`, which is what `audioToDbfs` does today. The core leaves this field unconverted because Shure's document gives no unit |
+| `af.input_meter_left`, `af.input_meter_right` (PSM1000) | `af_level` through `iemMeterToPercent` on the louder side, as today |
+| `transmitter.battery_percent` | `battery.percent` |
+| `transmitter.battery_bars` | `battery.percent` as bars × 20, only when there is no `battery_percent` (SLX-D), as today |
+| `transmitter.battery_minutes` | `battery.minutesRemaining` |
+| `device.id`, `device.firmware`, `device.model`, `device.rf_band`, `device.high_density` | the `metadata` fields `deviceName`, `firmware`, `model`, `band`, `dense` |
+
+Fields the core doesn't know are absent rather than zero (255 and the battery
+minute sentinels), matching RFDeck's rule that no paired transmitter isn't a
+flat one.
+
+### Commands
+
+| RFDeck method | Core |
+|---|---|
+| `setMute(rx, muted)` | `mute { channel, muted }`; on the PSM1000, `rf_mute { channel, muted }`. SLX-D has no mute, and the core rejects it with `unsupported_for_model` before sending anything |
+| `setFrequency(rx, hz)` | `set_frequency { channel, frequency_khz }` |
+| `identify()` | `flash { enabled: true }` on Axient Digital, ULX-D, QLX-D and SLX-D (see review item Q) |
+| gain, if RFDeck adds it | `set_gain { channel, gain_db }`, −18 to +42 dB; the core applies the wire offset |
+
 ## Port 53212
 
 **Corrected 2026-09-29, review item K.** An earlier version of this section
@@ -200,10 +289,57 @@ suggested both the core and `McpBus` bind 53212, with `McpBus` limited to
 discovery. That cannot work: a unicast datagram reaches one of the bound
 sockets and the OS chooses which.
 
-The core owns 53212 entirely, MCP discovery included. G3/G4 migrates together
-with that discovery, and `McpBus` and the MCP half of `DiscoveryService` are
-deleted in the same change. Until then, G3/G4 stays on the old client. Digital
-6000 and EW-DX do not use 53212 and migrate first.
+The core owns 53212 entirely, MCP discovery included: open G3/G4 devices and
+discovery share the core's one socket, and datagrams from an address no open
+device claims go to discovery. G3/G4 migrates together with discovery, and
+`McpBus` and the MCP half of `DiscoveryService` are deleted in the same change.
+
+The socket asks for 8 MB receive and 4 MB send buffers and logs what the OS
+granted (a warning naming `net.core.rmem_max` when short), and a device whose
+session falls behind gets a warning counting the datagrams dropped, at most
+once a second (review item N).
+
+## Discovery
+
+```js
+core.on('discovered', (d) => { /* see below */ });
+core.discover({ action: 'listen', protocols: ['mcp'] });   // passive, at startup
+core.discover({ action: 'scan', protocols: ['mcp'],          // probe now
+                hints: ['10.2.5.6', '10.2.3.40'] });         // where devices were last seen
+core.discover({ action: 'stop' });
+```
+
+**When to scan is RFDeck's decision; how is the core's.** Keep RFDeck's policy
+(scan at startup, when a tracked device is unreachable with backoff, and when
+the operator asks; never while the rig is healthy) and call `scan` at those
+moments. The core does the scan the way `DiscoveryService` does today, so no
+caller can do it differently:
+
+- the probe (`Push 5 500 3` and `Name`) broadcast on every interface the core
+  uses (all, or only `bind_address`);
+- a unicast sweep of only the /24s of those interfaces and of the `hints`, at
+  most eight (beyond that, a `discovery` event says which were left out);
+- 32 addresses per 50 ms, two datagrams each;
+- a bare `Name` or `Push` (a request, ours or another scanner's) is never
+  taken for a device.
+
+A found device arrives as:
+
+```js
+{ event: 'discovered', protocol: 'mcp', address: '10.2.5.6', port: 53212,
+  device: 'sennheiser-ew-g3-g4',
+  models: ['em-300-500-g4', 'em-300-500-g3'],   // every model it can be
+  name: 'Vocal 3',                              // when a Name reply has arrived
+  evidence: { protocol: '...', family: '...', name: '...' } }
+```
+
+It is sent again when more is learned (the name, or receiver versus
+transmitter). `models` is the identification (review item L): receiver or IEM
+transmitter is read from the cycle telegrams (RF, RF1/RF2 and Bat only come
+from receivers; an IEM transmitter sends Af), and G3 versus G4 cannot be told
+apart over MCP, so both receiver models are listed and the operator's choice
+stands. The name is evidence, not identity (item P): matching a found device
+to an inventory row stays in RFDeck, with your bounded name fallback.
 
 ## Behaviour that changes
 

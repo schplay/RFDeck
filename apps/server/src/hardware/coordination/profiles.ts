@@ -52,10 +52,13 @@ interface FamilyRules {
 
 // `familyRuleKeys()` and `COORDINATION_FAMILIES` lived here so the device-profile
 // feed could refuse an override for a family this build has no rules for. That
-// feed is withdrawn - a device's frequencies and bands are immutable properties
-// of the hardware, so nothing updates these from the cloud - and with it goes the
-// second list of families that had to be kept in step with `FAMILY_RULES`. One
-// list cannot drift from itself.
+// feed is withdrawn, and with it goes the second list of families that had to be
+// kept in step with `FAMILY_RULES`. One list cannot drift from itself.
+//
+// Why there is no feed: a receiver's operating *band* is fixed at manufacture and
+// cannot change, so band data has nothing to learn from the cloud. The frequency
+// a device is tuned to *within* that band is programmable, and setting it is
+// exactly what the rules below are for - that half is unaffected.
 
 const FAMILY_RULES: Record<CoordinationFamily, FamilyRules> = {
   // AD4 user guide: 25 kHz step; 350 kHz standard, 125 kHz High Density.
