@@ -16,12 +16,13 @@
 //   • Vite dev server (port 5173)  → UI and API are on different ports
 //   • Electron (file:// URL)       → no useful origin; the server is local
 export function serverOrigin(): string {
-  if (typeof window === 'undefined') return 'http://localhost:3000';
+  if (typeof window === 'undefined') return 'https://localhost:3000';
 
   const { protocol, port, origin } = window.location;
 
-  if (protocol === 'file:') return 'http://localhost:3000';
-  if (port === '5173' || port === '4173') return 'http://localhost:3000';
+  // https, because the server always serves TLS now - see apps/server/src/tls.ts.
+  if (protocol === 'file:') return 'https://localhost:3000';
+  if (port === '5173' || port === '4173') return 'https://localhost:3000';
 
   return origin;
 }

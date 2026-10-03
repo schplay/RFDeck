@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { spawn, exec, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
@@ -317,7 +318,70 @@ async function ensureWindowsFirewall(): Promise<void> {
   }
 }
 
+
+/**
+ * Trust the sidecar's certificate, and only the sidecar's certificate.
+ *
+ * The server generates its own certificate now, so the renderer's requests to
+ * https://localhost:3000 hit a signature Chromium has no reason to accept. The
+ * window would simply fail to load any data.
+ *
+ * The lazy fix is `rejectUnauthorized: false` or returning true from this handler
+ * for everything, which disables certificate checking for the whole application -
+ * including the renderer's requests to meros.co. So this is pinned instead: read
+ * the certificate the sidecar actually wrote to disk, and accept exactly that one,
+ * on loopback only.
+ *
+ * Electron reports `certificate.fingerprint` as `sha256/<base64 of the DER
+ * digest>`, which is a digest of the whole certificate rather than of the public
+ * key. That is the right choice here even though Manifold pins the public key: the
+ * file is read fresh on every comparison, so a reissue on an address change is
+ * picked up on the next request with no pairing step - this side has the
+ * certificate itself, and needs no stable identifier for it.
+ */
+function certFingerprintFromDisk(): string | null {
+  try {
+    const dir = path.dirname(databaseUrl().replace(/^file:/, ''));
+    const der = new crypto.X509Certificate(
+      fs.readFileSync(path.join(dir, 'rfdeck-cert.pem')),
+    ).raw;
+    return 'sha256/' + crypto.createHash('sha256').update(der).digest('base64');
+  } catch {
+    return null;
+  }
+}
+
+function trustOwnSidecarCertificate(): void {
+  app.on('certificate-error', (event, _webContents, url, _error, certificate, callback) => {
+    let host: string;
+    try { host = new URL(url).hostname; } catch { return callback(false); }
+
+    const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+    if (!loopback) return callback(false);
+
+    const expected = certFingerprintFromDisk();
+    if (!expected) {
+      console.error('[Electron] Could not read the sidecar certificate; refusing it.');
+      return callback(false);
+    }
+    if (certificate.fingerprint !== expected) {
+      // Not a transport glitch: something on loopback is presenting a different
+      // certificate than the one this install generated. Say so rather than
+      // failing as a blank window.
+      console.error(
+        `[Electron] Certificate on ${host} does not match this install's own ` +
+        `(${certificate.fingerprint} vs ${expected}); refusing it.`,
+      );
+      return callback(false);
+    }
+
+    event.preventDefault();
+    callback(true);
+  });
+}
+
 app.on('ready', () => {
+  trustOwnSidecarCertificate();
   // Server and window first, firewall afterwards and unawaited.
   //
   // Firewall setup shells out to netsh three times and, when a rule is missing
