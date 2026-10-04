@@ -88,6 +88,11 @@ entitlements and synced state. See `docs/CLOUD_INTEGRATION_PLAN.md`.
 Billing is **à la carte per product**: an account pays for RFDeck's cloud
 independently of any other Meros product.
 
+**Cloud prices are not recorded here.** meros.co owns cloud pricing, and the
+current tiers and prices are on meros.co. This document records which cloud
+features are free and which are paid, and why — not what they cost. (It used to
+carry prices, and they went stale.)
+
 ### Cloud — free tier
 
 Needs only a free Meros account.
@@ -97,7 +102,7 @@ Needs only a free Meros account.
 - **Basic alerts** — email and webhook, configured in the cloud over RFDeck's
   event stream.
 
-### Cloud — Individual, $15/month or $150/year
+### Cloud — Individual (paid)
 
 - **Backup history — 100 files, FIFO.** The oldest is dropped beyond that.
 - **SMS alerts.** The paid delivery channel; email and webhook stay free.
@@ -112,7 +117,7 @@ Needs only a free Meros account.
   remote restore and provisioning, remote UI and control, and attributed change
   history. Not available on any desktop build, free or paid. 📋 *Deferred with RFDeck Server.*
 
-### Cloud — Team add-on, $20/month or $200/year
+### Cloud — Team add-on (paid)
 
 An **account-level** add-on rather than an RFDeck price: it layers multi-user
 features across whatever products the account pays for. Shared fleet views,
@@ -222,8 +227,9 @@ repository separation and licensing implementation are designed. Both are now
 planned — `docs/REPO_SEPARATION_PLAN.md` (the paid application: licence,
 extension points, the RFDeck Server repository, licensing) and
 `docs/CLOUD_INTEGRATION_PLAN.md` (Meros accounts, the instance and person
-links, entitlements, the free and paid cloud tiers) — and neither has started.
-Until they do:
+links, entitlements, the free and paid cloud tiers). The repository separation and
+the application licence have not started; most of the cloud plan is built. Until
+the separation and licensing start:
 
 - Build features on the free side of the line as normal.
 - Where a feature is destined to be paid, note it in the plan and build nothing
@@ -231,8 +237,11 @@ Until they do:
 - Do not scatter conditionals in anticipation. A licence check retro-fitted once,
   deliberately, is cheaper to get right than fifty guesses left lying around.
 
-One correction from the cloud side, which points the same way: Meros has
-**deferred gating** on cloud entitlements. The cloud plan builds the plumbing
-and the single gate, and features are granted liberally while testing. So even
-once that plumbing exists, nothing enforces a paywall until the owner says so —
-which is the same instruction as above, arriving from the other direction.
+Cloud gating is a separate matter, and it is **live**. Meros enforces its paid
+cloud features server-side — inventory, entitled feed packs, RF history and
+post-show reports, SMS, and backup-history depth — and answers `403 not_entitled`
+without the entitlement. RFDeck reads the account's entitlements to decide what to
+*offer* (`apps/server/src/cloud/features.ts`); Meros decides what it *serves*.
+RFDeck's own client-side cloud gating is finalised once Meros Cloud reaches
+production. None of this is the application licence, which is still not built,
+so the instruction above stands for that.
