@@ -1,7 +1,7 @@
 # Repository separation — plan
 
-How the paid application is built from, and kept in step with, the open-source
-one. Companion to `docs/EDITIONS.md` (the line between free and paid) and
+How the paid edition, **RFDeck Server**, is built from, and kept in step with,
+the open-source one. Companion to `docs/EDITIONS.md` (the line between free and paid) and
 `docs/CLOUD_INTEGRATION_PLAN.md` (the cloud, most of which is *not* paid
 application code).
 
@@ -16,7 +16,7 @@ sensible answers:
 |---|---|---|
 | What it protects | Nobody can offer RFDeck as a hosted service, or ship a modified build, without releasing their changes. A competitor cannot fork the core into their own closed paid edition. | Nothing beyond attribution. |
 | What it costs | Outside contributors must sign a CLA so the copyright holder can also license the core to the paid edition under different terms (the standard "open core" dual-licence: GitLab, Grafana, Sentry's earlier model). The paid packages are *not* derivative works of the core only because the copyright holder says so — which is fine, and only works while the holder owns every line. | Anyone, including a competitor, may build a closed paid edition on the core. Simpler; no CLA. |
-| Fit with the editions doc | Good. The paid line is organisational features; AGPL keeps others from selling those on top of the free core. | Weak. Nothing stops "RFDeck Pro by somebody else". |
+| Fit with the editions doc | Good. The paid line is organisational features; AGPL keeps others from selling those on top of the free core. | Weak. Nothing stops "RFDeck Server by somebody else". |
 
 **Recommendation: AGPL-3.0 for the application repository, with a CLA for
 outside contributions.** The cloud contract package and shared types should be
@@ -24,6 +24,21 @@ Apache-2.0 or MIT so that third parties (Companion modules, integrators) can
 depend on them freely. **Decision needed.** Also: the RFDeck name and mark
 should be reserved to the company explicitly in the README regardless of
 licence.
+
+## Headless is RFDeck Server only
+
+**Decided 2026-10-04 (David).** The paid edition is named **RFDeck Server**; it
+was called "RFDeck Pro" in earlier drafts. Every headless server product in the
+portfolio except Imperio is named "Server".
+
+**A headless install is RFDeck Server and nothing else.** Free RFDeck is the
+desktop application. This repository does contain a working headless install —
+`scripts/install-ubuntu.sh`, the systemd unit it writes, `scripts/update-server.sh`
+and the `rfdeck` admin CLI (`scripts/rfdeck`, `apps/server/src/cli.ts`) — but that
+is **David's personal testing setup**. It does not ship, it is not a free
+feature, and it will be removed from this repository once testing is done. It is
+kept for now only because it is in use. Nothing should be built on the
+assumption that a free edition runs headless, and nothing should describe one.
 
 ## The shape: one core, extension packages, a distribution repository
 
@@ -50,14 +65,14 @@ bump and a test run.
 
 ### The pin: a git submodule on release tags
 
-The paid repository (`rfdeck-pro`, private) carries the core as a **git
+The paid repository (`rfdeck-server`, private) carries the core as a **git
 submodule at `core/`, pinned to a release tag** (`vX.Y.Z`) of the open
 repository, never to a branch. Submodules are awkward for day-to-day editing,
 and that is the point: nobody edits the core from inside the paid repo. The
 pnpm workspace of the paid repository includes the submodule's packages:
 
 ```yaml
-# rfdeck-pro/pnpm-workspace.yaml
+# rfdeck-server/pnpm-workspace.yaml
 packages:
   - 'core/apps/*'
   - 'core/packages/*'
@@ -127,8 +142,9 @@ the entitlement/permission hooks the UI gates on. Contribution points are
 enumerated and typed in the core; a paid page is a normal React component.
 
 **Branding.** `productName`, `appId`, icons and the About text come from one
-`edition.json` read by the desktop shell, the web header and the server's
-`/health`. Core: "RFDeck". Paid: "RFDeck Pro".
+`edition.json` read by the web header and the server's `/health` (and by the
+desktop shell, which only the free edition has). Core: "RFDeck". Paid:
+"RFDeck Server".
 
 ### Licensing (the paid application)
 
@@ -153,14 +169,14 @@ file beside the database for headless installs). The rule that implements
 support** — a licence, not a subscription. The cloud subscription is separate and
 à la carte (`docs/EDITIONS.md`).
 
-Pro also gates three *cloud* features, which is new and worth recording here
-because it makes Pro a prerequisite rather than merely an upgrade: one-click remote
+RFDeck Server also gates three *cloud* features, which is new and worth recording here
+because it makes RFDeck Server a prerequisite rather than merely an upgrade: one-click remote
 restore and provisioning, remote UI and control, and attributed change history.
 None of them can exist on a desktop install, because there is no always-on server
 for the cloud to reach — so they are not being withheld from desktop so much as
-undefined there. All three are deferred until Pro exists.
+undefined there. All three are deferred until RFDeck Server exists.
 
-A Team cloud subscription can additionally move Pro's local per-user permissions and
+A Team cloud subscription can additionally move RFDeck Server's local per-user permissions and
 auditing into the cloud, as a migration with a keep-local option. Also deferred, and
 it only makes sense once R.4's named users exist.
 
@@ -173,36 +189,40 @@ questions; the cloud plan owns the second and they must not be merged. This live
 `packages/licensing` of the paid repo, with the verification code and its
 tests small enough to be audited by a customer's IT department.
 
-### Layout of `rfdeck-pro`
+### Layout of `rfdeck-server`
 
 ```
-rfdeck-pro/
+rfdeck-server/
   core/                      git submodule → github.com/…/rfdeck @ vX.Y.Z
   packages/
-    pro-server/              the server extension (users, roles, audit, …)
-    pro-web/                 the web extension registry implementation
-    licensing/               licence document verification, activation UI pieces
-  apps/
-    desktop-pro/             electron-builder.yml, branding, edition.json; no code of its own
+    server-extension/        the server extension (users, roles, audit, …)
+    web-extension/           the web extension registry implementation
+    licensing/               licence verification and activation
   scripts/
-    install-ubuntu-pro.sh    the core installer + extensions.json + the pro packages
-    update-server-pro.sh     the core updater + the updatesUntil check
+    install-ubuntu.sh        the headless install, moved here from the core's testing setup
+    update-server.sh         the updater + the updates-window check
+  image/                     the appliance system image build (R.5)
   .github/workflows/         build against the pinned core; nightly build against core main
 ```
+
+There is no desktop build of RFDeck Server: it is headless only. (An earlier draft
+had an `apps/desktop-pro` branding build; it is dropped, not renamed.) The headless
+install scripts belong here, not in the core — the copies in the core today are a
+testing setup that will be removed (see "Headless is RFDeck Server only").
 
 ### Process
 
 - **Upstream first.** A paid feature that needs a hook starts as a PR to
   the open repository adding the hook, with the in-tree example exercising
   it. Only then does the paid package use it.
-- **Releases follow core tags.** Core releases `vX.Y.Z`; `rfdeck-pro` bumps
-  the submodule, runs its suite, releases `vX.Y.Z-pro.n`. The pro version
-  always names the core it contains.
-- **A nightly build of pro against core `main`** catches a core change that
+- **Releases follow core tags.** Core releases `vX.Y.Z`; `rfdeck-server` bumps
+  the submodule, runs its suite, releases `vX.Y.Z-server.n`. The RFDeck Server
+  version always names the core it contains.
+- **A nightly build of RFDeck Server against core `main`** catches a core change that
   breaks an extension point weeks before a release would.
-- **The core's tests are the pro's tests too:** the paid CI runs
+- **The core's tests are RFDeck Server's tests too:** the paid CI runs
   `core`'s unit and E2E suites against the pinned commit, then its own.
-- **Nothing in the core mentions the pro edition by feature.** The core
+- **Nothing in the core mentions the Server edition by feature.** The core
   knows there can be extensions; it does not know what they do. (The
   editions doc already forbids scattered conditionals; this is the
   structural form of that rule.)
@@ -224,10 +244,10 @@ before the pro edition exists.
 |---|---|---|---|
 | R.0 | Choose the licence; add `LICENSE`, `license` fields, CLA text, trademark note | S | **decision** |
 | R.1 | Extension points in the core: `buildApp({ extensions })`, `ExtensionContext`, `authorize` hook, dispatcher targets, `edition.json`, web registry with the empty default; the in-tree example extension and its tests | M | R.0 |
-| R.2 | Create `rfdeck-pro`: submodule at the first tagged core release, workspace, CI, desktop-pro branding build, headless scripts | M | R.1, a tagged core release |
+| R.2 | Create `rfdeck-server`: submodule at the first tagged core release, workspace, CI, the headless install scripts moved out of the core | M | R.1, a tagged core release |
 | R.3 | `packages/licensing`: document format, verification, activation UI, updater check | M | R.2 |
 | R.4 | First paid feature: named users, roles and permissions replacing the PIN gate via `authorize`, with an audit log in the extension's own database | L | R.3 |
-| R.5 | Appliance image: the pro headless install on a chosen SBC/mini-PC, pre-activated | M | R.4 |
+| R.5 | Appliance image: RFDeck Server as a system image on a chosen SBC/mini-PC, pre-licensed | M | R.4 |
 
 R.1 is the only phase that touches the open repository's code, and it is
 worth doing soon after R.0 regardless of when R.2 starts: the hooks are small,
@@ -238,7 +258,8 @@ editions doc stays true.
 ## Decisions needed
 
 - The licence (above), and whether to require a CLA.
-- Whether `rfdeck-pro` builds are distributed as signed installers only, or
-  also as a private package feed for appliances.
+- Whether RFDeck Server updates reach installed systems as signed system images
+  only, or also through a private package feed. (Distribution itself is settled:
+  a system image, not Docker — `docs/IMPLEMENTATION_PLAN.md` §7.4.)
 - Seat model, if any, for the licence document (per rig is the simple
   answer; per named user is the organisational one).

@@ -778,7 +778,7 @@ SQLite.
 SQLite is adequate for a single instance serving one venue, which is every deployment
 that exists or is planned. Postgres would matter for a **hosted multi-venue service** —
 RFDeck as something customers log into rather than something they run — and that is
-not the product: the Pro tier is an appliance in a rack, and the multi-venue story is
+not the product: RFDeck Server is an appliance in a rack, and the multi-venue story is
 Meros Cloud's, over the event stream and document sync that already exist.
 
 **So this may be a feature the README outgrew.** Prisma makes the provider swap
@@ -874,8 +874,11 @@ not a container: it is sold as an appliance that boots into RFDeck, which a cont
 cannot be. That also removes the container-orchestration assumptions an earlier draft
 of this item carried.
 
-The headless build is the **Pro** tier and lives in a **separate private repository**
-along with the Pro feature set — named users, permissions, audit. See
+The headless build is **RFDeck Server** (named 2026-10-04; formerly "Pro") and lives
+in a **separate private repository** along with the RFDeck Server feature set — named
+users, permissions, audit. The headless install in *this* repository
+(`scripts/install-ubuntu.sh`, `scripts/update-server.sh`, the `rfdeck` CLI) is David's
+personal testing setup: it does not ship and will be removed once testing is done. See
 `docs/REPO_SEPARATION_PLAN.md`; none of that is built here, and the image is built
 there rather than being a packaging mode of this repo.
 
@@ -1359,7 +1362,7 @@ Two plans sit alongside this one:
   if you remember reading them.
 - **`docs/REPO_SEPARATION_PLAN.md`** — Stage R. The open repository has no
   licence yet (R.0 is that decision); extension points in the core with an
-  in-tree example (R.1); the `rfdeck-pro` repository carrying the core as a
+  in-tree example (R.1); the `rfdeck-server` repository carrying the core as a
   submodule pinned to release tags, never editing a core file (R.2);
   offline-verified licence documents with the "runs forever, updates for a
   year" rule (R.3); named users and roles as the first paid feature (R.4);

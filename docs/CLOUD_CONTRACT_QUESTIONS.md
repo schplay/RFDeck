@@ -350,7 +350,7 @@ rather than after — which is a real feature, and one worth not guessing at.
 Entitlements are consumed by feature flag, and the tier breakdown names features in
 prose. `rfdeck.regional-data` is documented (§4) and spectrum data still maps to it.
 The rest have no flag named: backup history, RF environment history, post-show RF
-reports, online inventory listing, and the three Pro-only remote features. RFDeck
+reports, online inventory listing, and the three RFDeck-Server-only remote features. RFDeck
 will not invent names for these — a guessed flag silently never matches, which
 presents as a paid feature that is simply missing.
 
@@ -402,7 +402,7 @@ never matches.
 | Post-show RF reports | `rfdeck.rf.reports` |
 | Online inventory listing | `rfdeck.inventory` |
 
-**Paid, and only on an RFDeck Pro device**
+**Paid, and only on an RFDeck Server device**
 
 | Capability | Flag |
 |---|---|

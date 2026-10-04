@@ -388,7 +388,7 @@ only**.
 Used for **profile sync**. A person can be signed in on an instance that is not
 linked, and vice versa — that separation was the original insight and it holds.
 
-RFDeck has no local person records today. Named users are an `rfdeck-pro`
+RFDeck has no local person records today. Named users are an `rfdeck-server`
 feature (R.4 in the separation plan), so the person link initially has exactly
 one job — carrying a profile — and the `sub` it stores is what R.4 should later
 key its accounts on. Worth writing down now so R.4 does not invent a second
@@ -929,7 +929,7 @@ RFDeck**: the stream now carries the transitions and the boundaries to build bot
 |---|---|---|
 | D.8 | **Online inventory listing** | **The endpoint exists** — `GET`/`PUT /v1/inventory/rfdeck`, gated on `rfdeck.inventory`, full-set upsert where devices absent from the body are deleted. Built against it in `inventorySync.ts`. The *changes* also travel as events, so the history predates the listing |
 
-And three more that belong to **RFDeck Pro** and are deferred with it: one-click
+And three more that belong to **RFDeck Server** and are deferred with it: one-click
 remote restore and provisioning, remote UI and control, and attributed change
 history. A desktop install cannot have these — there is no always-on server to
 reach — so they are the separation plan's business, not this one's.
