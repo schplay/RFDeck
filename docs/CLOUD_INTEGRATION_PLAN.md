@@ -77,7 +77,12 @@ part worth noting: the instincts were right, the cloud just already existed.
 3. **The server is the cloud client for instance things; the browser for
    personal things.** Instance tokens are stored server-side, encrypted at rest
    with the existing `secretBox` key that already protects device passwords.
-   Personal tokens never touch the server.
+   Personal tokens never touch the server — **with one deliberate exception**:
+   a cloud user signed in **from Manifold** (below). There the server redeems a
+   login token as the *RFDeck Cloud User* client and holds that user's tokens,
+   encrypted at rest and in a refresh family separate from the instance link's.
+   David decided this on 2026-10-03; it is the only way a console can sign a
+   user in to a headless rig with nobody at a browser.
 4. **Entitlements are data, verified offline.** Meros states what the account
    has paid for; the application honours it through an offline grace period.
    There is exactly one place in the code that answers "is this account
@@ -173,6 +178,7 @@ repository that is intended to go open source.
 | `MEROS_BASE_URL` | Origin OIDC discovery hangs off. `https://staging.meros.co` for staging, `https://meros.co` for production |
 | `MEROS_CLIENT_ID` | This install's client for the **instance** link — the *RFDeck Server* id for a headless install, the *RFDeck Desktop* id for the desktop build |
 | `MEROS_CLIENT_ID_BROWSER` | The *RFDeck Browser* id, for the **person** link. The server does not use it; it serves it to the web UI, which runs its own device flow |
+| `MEROS_CLIENT_ID_CLOUD_USER` | The *RFDeck Cloud User* id, which the server redeems Manifold login tokens as. Printed by meros.co's `RfdeckClientsSeeder`. Optional: unset, signing in from Manifold answers `503 not_configured` and nothing else changes |
 | `MEROS_PACK_KEYS` | Meros's Ed25519 public key(s) for product `rfdeck`, as `<kid>=<base64url>` pairs. Verifies both signed entitlements and signed packs. Public by nature, but environment-specific — staging and production sign with different keys. A map rather than one value because rotation is additive |
 
 Values live outside the repository. In production they are systemd
@@ -869,6 +875,37 @@ browser runs its own device flow against Meros and keeps the tokens in that
 browser. Nothing about it passes through `apps/server`, which is the mechanical
 form of Principle 3 — a personal token cannot end up on a shared venue machine
 if the server has no code that could store one.
+
+#### Signing in from Manifold — the exception, built 2026-10-04
+
+The one place the server does hold a person's tokens, by David's decision.
+Contract: meros.co `docs/handoff/manifold-integration.md` §5. Code:
+`apps/server/src/cloud/cloudUser.ts`, `cloudUserStore.ts`,
+`apps/server/src/routes/cloudLogin.ts`; tests in `cloudUser.test.ts`.
+
+1. Manifold calls `POST /api/auth/cloud-login/begin`. RFDeck makes a PKCE
+   verifier and a nonce, keeps the verifier, and returns the S256 challenge and
+   the nonce.
+2. Manifold mints a login token at Meros with that challenge and nonce.
+3. Manifold calls `POST /api/auth/cloud-login/complete` with the login token.
+   RFDeck redeems it at Meros as *RFDeck Cloud User* with the verifier, checks the
+   id_token is for this client and this sign-in (`aud`, `nonce`, `exp`, `iss`),
+   and signs the user in as a `CloudUser` row keyed on `sub`.
+
+Manifold never sees the verifier, so a login token taken off the wire, or kept by
+the console, cannot be redeemed by anyone else. The refresh token is a year,
+rotating, stored encrypted in its own row — never in `Settings.cloudRefreshToken`,
+because Meros's reuse detection revokes per (user, client) and the person who
+links a rig is usually the person who signs in to it. One cloud user at a time; a
+new sign-in replaces the last. Signing out on Manifold does not sign RFDeck out;
+`POST /api/auth/cloud-signout` does, revoking the **access** token at Meros
+(Meros ignores a refresh token submitted on its own). All four endpoints sit
+behind the PIN gate and refuse plain HTTP except from loopback.
+
+**Not yet decided:** what the server-held session is *used* for. Profile sync
+still runs in the browser for the browser's own person session, and which of the
+two governs a shared rig was parked with David. Today the server-held user is
+signed in, shown in Settings → Cloud, and refreshed — nothing else consumes it.
 
 Testing follows the E2E harness pattern already in `e2e/serve.mjs`: a small fake
 Meros (Fastify, in-process) that serves a well-known document, the device grant,
