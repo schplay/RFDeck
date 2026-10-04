@@ -40,7 +40,7 @@ application.
 
 ## The editions
 
-### Free — open source desktop application
+### Free — RFDeck, the open-source desktop app
 
 Free RFDeck is the **desktop application**. It does not run headless: a headless
 install is RFDeck Server and nothing else (decided 2026-10-04). The headless
@@ -53,13 +53,14 @@ The whole monitoring product. Discovery, telemetry, alerting, the mic check,
 shows and performers, the Micboard and Backstage displays, rolling capture and
 detections, the audio patch, frequency coordination.
 
-### Paid — RFDeck Server and a paid desktop build
+### Paid — RFDeck Pro and RFDeck Server
 
-The paid edition comes as **two builds** of the same paid features:
+The paid edition comes as **two apps** with the same paid features, under **one
+licence** that covers both:
 
-- **RFDeck Server**, the headless edition, for a rack or an appliance;
-- a **paid desktop build** (name pending David), for customers who need the paid
-  features but will not or cannot run a server or an appliance.
+- **RFDeck Pro**, the paid desktop app, for customers who need the paid features
+  but will not or cannot run a server or an appliance;
+- **RFDeck Server**, the headless server, for a rack or an appliance.
 
 RFDeck is unusual among Meros products in offering a paid desktop app.
 
@@ -71,7 +72,7 @@ Aimed at organisations and venues: named user accounts, user and permission
 management, and the things that follow from more than one person using the same
 rig. RFDeck Server is also what unlocks three of the cloud's paid features — remote
 restore, remote control and attributed audit — which no desktop install can have,
-the paid desktop build included, because there is no always-on server to reach.
+RFDeck Pro included, because there is no always-on server to reach.
 
 ### Appliances
 
