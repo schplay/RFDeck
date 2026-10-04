@@ -41,6 +41,8 @@ export interface FakeMerosOptions {
    * able to reproduce, because it is a 403 that means "re-link" rather than "pay".
    */
   withholdInventoryScope?: boolean;
+  /** How long a redeemed login token may be redeemed again by the same client. Meros: 60 s. */
+  ssoRedeemGraceMs?: number;
 }
 
 export class FakeMeros {
@@ -53,6 +55,15 @@ export class FakeMeros {
   /** Refresh tokens that have been rotated away (replaying one is the breach). */
   private rotated = new Set<string>();
   private accessTokens = new Set<string>();
+  /** Access token → the refresh family it was issued with, so revoking it cascades. */
+  private accessFamilies = new Map<string, string>();
+  /** Login tokens minted for a service to redeem, by token. */
+  private loginTokens = new Map<string, {
+    challenge: string; nonce: string | null; clientId: string;
+    sub: string; name: string | null; email: string | null; redeemedAt: number | null;
+  }>();
+  /** Access tokens revoked through /oauth/revoke, for assertions. */
+  accessRevocations = 0;
   /** Events received, keyed (source.instance, id) so dedupe is real. */
   readonly events = new Map<string, any>();
   /** Documents, by "collection/key". Versioned the way Meros versions them. */
@@ -112,6 +123,24 @@ export class FakeMeros {
     const signed = `MEROSPACK1.${b64(header)}.${b64(payload)}`;
     const signature = crypto.sign(null, Buffer.from(signed, 'utf8'), this.signingKey);
     return { ...header, payload, signed, signature: signature.toString('base64url') };
+  }
+
+  /**
+   * Mint a login token the way Meros does for Manifold (`POST /oauth/sso/ticket`).
+   *
+   * Called directly by tests, standing in for Manifold: what matters on RFDeck's
+   * side is the redeem, so the mint is modelled only as far as the redeem checks it.
+   */
+  mintLoginToken(opts: {
+    codeChallenge: string; nonce?: string | null; clientId: string;
+    sub: string; name?: string | null; email?: string | null;
+  }): string {
+    const token = crypto.randomBytes(32).toString('base64url');   // 43 characters, as Meros's are
+    this.loginTokens.set(token, {
+      challenge: opts.codeChallenge, nonce: opts.nonce ?? null, clientId: opts.clientId,
+      sub: opts.sub, name: opts.name ?? null, email: opts.email ?? null, redeemedAt: null,
+    });
+    return token;
   }
 
   // ── The endpoints ─────────────────────────────────────────────────────────
@@ -205,6 +234,38 @@ export class FakeMeros {
         return send(200, this.issue(family));
       }
 
+      if (grant === 'urn:meros:params:oauth:grant-type:sso-ticket') {
+        const presented = form.get('login_token') ?? '';
+        if (!presented) return send(400, { error: 'invalid_request', error_description: 'login_token is required.' });
+        const ticket = this.loginTokens.get(presented);
+        const verifier = form.get('code_verifier') ?? '';
+        const challenge = crypto.createHash('sha256').update(verifier, 'ascii').digest('base64url');
+        const graceMs = this.options.ssoRedeemGraceMs ?? 60_000;
+        // One error for every ticket failure, as Meros does.
+        const bad = !ticket
+          || ticket.clientId !== form.get('client_id')
+          || challenge !== ticket.challenge
+          || (ticket.redeemedAt !== null && Date.now() - ticket.redeemedAt > graceMs);
+        if (bad) return send(400, { error: 'invalid_grant', error_description: 'The login token is invalid.' });
+        ticket!.redeemedAt ??= Date.now();
+
+        const issued = this.issue(`sso-${ticket!.sub}`);
+        const claims: Record<string, unknown> = {
+          iss: this.baseUrl, aud: ticket!.clientId, sub: ticket!.sub,
+          iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600,
+          auth_time: Math.floor(Date.now() / 1000),
+          ...(ticket!.nonce ? { nonce: ticket!.nonce } : {}),
+          ...(ticket!.name ? { name: ticket!.name } : {}),
+          ...(ticket!.email ? { email: ticket!.email, email_verified: true } : {}),
+        };
+        const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
+        return send(200, {
+          ...issued,
+          scope: form.get('scope') ?? '',
+          id_token: `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64(claims)}.fake-signature`,
+        });
+      }
+
       return send(400, { error: 'unsupported_grant_type' });
     }
 
@@ -213,6 +274,13 @@ export class FakeMeros {
       const token = form.get('token') ?? '';
       const family = this.refreshTokens.get(token);
       if (family) this.revokedFamilies.add(family);
+      // Meros revokes by access token and cascades to the refresh lineage.
+      const accessFamily = this.accessFamilies.get(token);
+      if (accessFamily) {
+        this.revokedFamilies.add(accessFamily);
+        this.accessTokens.delete(token);
+        this.accessRevocations += 1;
+      }
       return send(200, {});          // RFC 7009: always 200, never a probe oracle
     }
 
@@ -448,6 +516,7 @@ export class FakeMeros {
     const access = `at-${crypto.randomUUID()}`;
     const refresh = `rt-${crypto.randomUUID()}`;
     this.accessTokens.add(access);
+    this.accessFamilies.set(access, family);
     this.refreshTokens.set(refresh, family);
     return {
       access_token: access,

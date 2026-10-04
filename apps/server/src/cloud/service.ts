@@ -14,6 +14,8 @@ import { Feeds } from './feeds';
 import { FEATURES } from './features';
 import { RegionalData, parseVenueLocation, OccupancyResult } from './regionalData';
 import { Events, EmitInput } from './events';
+import { CloudUserLogin } from './cloudUser';
+import { PrismaCloudUserStore } from './cloudUserStore';
 import crypto from 'crypto';
 import { CloudStatus } from './types';
 
@@ -40,6 +42,11 @@ export class CloudService {
   readonly regional: RegionalData | null;
   /** The event stream. Always present, so callers never branch on the cloud. */
   readonly events: Events | null = null;
+  /**
+   * A cloud user signed in on this install from Manifold. Null when the cloud is
+   * not configured; present but refusing when the Cloud User client is not.
+   */
+  readonly cloudUser: CloudUserLogin | null = null;
   private refreshTimer: NodeJS.Timeout | null = null;
   private regionalTimer: NodeJS.Timeout | null = null;
 
@@ -73,6 +80,11 @@ export class CloudService {
       'pending', process.env.RFDECK_VERSION ?? '0.0.0',
       process.env.RFDECK_EDITION === 'desktop' ? 'desktop' : 'server',
     );
+    this.cloudUser = new CloudUserLogin(config, this.client, new PrismaCloudUserStore(), () => {
+      void this.cloudUser?.session()
+        .then(session => this.io.emit('cloud:user', session))
+        .catch(() => { /* the next page load reads it anyway */ });
+    });
     this.config = config;
     log.info(`[Cloud] Configured for ${config.baseUrl} as client ${config.clientId}`);
   }

@@ -33,6 +33,17 @@ export interface CloudConfig {
    */
   browserClientId: string | null;
   /**
+   * The "RFDeck Cloud User" client: the one this server redeems a Manifold login
+   * token as, signing a cloud user in on this install.
+   *
+   * Its own client, not the instance link's, so the two refresh families can
+   * never revoke each other: Meros's reuse detection revokes every token for a
+   * (user, client) pair, and the person who links a rig is usually the person who
+   * signs in to it. Optional, and null until the seeder has printed an id for this
+   * environment — sign-in through Manifold is simply unavailable until then.
+   */
+  cloudUserClientId?: string | null;
+  /**
    * Meros's public signing keys for product `rfdeck`, by `kid`.
    *
    * A map rather than one key because rotation is additive: a future
@@ -74,6 +85,21 @@ export const INSTANCE_SCOPES = [
  * token is kept instead: session storage by default, so it ends with the tab, and
  * local storage only when the operator says "keep me signed in on this machine".
  */
+/**
+ * Scopes a cloud user signed in through Manifold is redeemed with.
+ *
+ * Meros adds `offline_access` to every login-token redeem, so it is not listed.
+ * Identity (`openid profile email`) is what puts `sub`, a name and an email in
+ * the id_token; the profile scopes are what a person session exists for.
+ */
+export const CLOUD_USER_SCOPES = [
+  'openid',
+  'profile',
+  'email',
+  'profiles:read',
+  'profiles:write',
+] as const;
+
 export const PERSON_SCOPES = [
   'openid',
   'profile',
@@ -135,6 +161,7 @@ export function readCloudConfig(env: NodeJS.ProcessEnv = process.env): CloudConf
     baseUrl,
     clientId,
     browserClientId: env.MEROS_CLIENT_ID_BROWSER?.trim() || null,
+    cloudUserClientId: env.MEROS_CLIENT_ID_CLOUD_USER?.trim() || null,
     packKeys: parsePackKeys(env.MEROS_PACK_KEYS),
   };
 }

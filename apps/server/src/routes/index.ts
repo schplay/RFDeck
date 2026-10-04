@@ -18,6 +18,7 @@ import { maintenanceRoutes } from './maintenance';
 import { coordinationRoutes } from './coordination';
 import { scanRoutes } from './scans';
 import { cloudRoutes } from './cloud';
+import { cloudLoginRoutes } from './cloudLogin';
 
 export default async function routes(fastify: FastifyInstance) {
   fastify.register(healthRoutes, { prefix: '/health' });
@@ -39,6 +40,7 @@ export default async function routes(fastify: FastifyInstance) {
   fastify.register(coordinationRoutes);
   fastify.register(scanRoutes);
   fastify.register(cloudRoutes);
+  fastify.register(cloudLoginRoutes);
 }
 
 

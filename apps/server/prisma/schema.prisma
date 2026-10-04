@@ -474,3 +474,22 @@ model MicCheckEntry {
   @@index([showId])
 }
 
+/// A Meros cloud user signed in on this install from another app (Manifold), by
+/// redeeming a single-use login token at Meros for RFDeck's own tokens.
+///
+/// At most one row: a new sign-in replaces it. Keyed on Meros `sub`, the cloud
+/// user's stable id (a UUID).
+///
+/// The refresh token is a second, separate refresh family from the instance
+/// link's (Settings.cloudRefreshToken): it belongs to the "RFDeck Cloud User"
+/// OAuth client, so reuse detection on one can never revoke the other. Encrypted
+/// at rest with the secret box, like the instance link's.
+model CloudUser {
+  sub           String    @id
+  name          String?
+  email         String?
+  refreshToken  String?
+  signedInVia   String    @default("manifold")
+  signedInAt    DateTime  @default(now())
+  lastRefreshAt DateTime?
+}

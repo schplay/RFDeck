@@ -85,6 +85,16 @@ describe('what the PIN gate lets through unauthenticated', () => {
     expect(needsNoPin('GET', '/api/auth/pin-params')).toBe(false);
   });
 
+  it('keeps cloud sign-in behind the PIN, like everything else', async () => {
+    // Cloud sign-in adds an *identity* to a connection the PIN has already
+    // authorised. It must never become a way to reach the API without the PIN.
+    const { needsNoPin } = await import('../app');
+    expect(needsNoPin('POST', '/api/auth/cloud-login/begin')).toBe(false);
+    expect(needsNoPin('POST', '/api/auth/cloud-login/complete')).toBe(false);
+    expect(needsNoPin('GET', '/api/auth/cloud-session')).toBe(false);
+    expect(needsNoPin('POST', '/api/auth/cloud-signout')).toBe(false);
+  });
+
   it('exempts the Micboard reads by method, not by path alone', async () => {
     // /api/live answers POST and DELETE too, and listing it as a path would let
     // anyone on the network stand the whole rig down without a PIN.
