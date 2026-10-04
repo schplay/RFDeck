@@ -221,17 +221,23 @@ describe('the signed-in session', () => {
 });
 
 describe('signing out', () => {
-  it('revokes the access token at Meros, which is what actually ends the family', async () => {
-    // Meros ignores a refresh token submitted to /oauth/revoke on its own, so
-    // revoking that would look like it worked and do nothing.
-    const { fake, login, store } = await harness();
+  it('ends the sign-in at Meros, not just here', async () => {
+    // Meros answers 200 to a revoke that does not name the client and revokes
+    // nothing, so "the request succeeded" proves nothing. What is asserted is the
+    // outcome: the refresh token this install held no longer works at Meros.
+    const { fake, login, store, client } = await harness();
     const begun = login.begin();
     await login.complete(begun.requestId, mint(fake, begun));
+    const held = (await store.read())!.refreshToken!;
 
     const result = await login.signOut();
     expect(result).toEqual({ signedIn: false, revoked: true });
-    expect(fake.accessRevocations).toBe(1);
     expect(await store.read()).toBeNull();
+    expect(fake.unidentifiedRevocations).toBe(0);
+
+    await expect(client.json('POST', await client.tokenEndpoint(), {
+      form: { grant_type: 'refresh_token', refresh_token: held, client_id: CLOUD_USER_CLIENT },
+    })).rejects.toMatchObject({ code: 'invalid_grant' });
   });
 
   it('forgets locally even when Meros cannot be reached', async () => {

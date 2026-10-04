@@ -327,11 +327,12 @@ export class CloudUserLogin {
   /**
    * Revoke at Meros, then forget locally.
    *
-   * Meros revokes by **access token**, cascading to the refresh family; a refresh
-   * token submitted on its own is accepted and does nothing. So this obtains an
-   * access token first if it has none. Local state is cleared even when Meros is
-   * unreachable — an operator who signed out must not stay signed in because the
-   * venue's uplink was down.
+   * Revokes the access token, which revokes its refresh token with it; Meros
+   * also accepts the refresh token directly. Either works **only if the request
+   * names the client** — without `client_id`, Meros answers 200 and revokes
+   * nothing, which looks exactly like success. Local state is cleared even when
+   * Meros is unreachable: an operator who signed out must not stay signed in
+   * because the venue's uplink was down.
    */
   async signOut(): Promise<{ signedIn: false; revoked: boolean }> {
     let revoked = false;

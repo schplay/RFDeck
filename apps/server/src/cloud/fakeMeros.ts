@@ -64,6 +64,8 @@ export class FakeMeros {
   }>();
   /** Access tokens revoked through /oauth/revoke, for assertions. */
   accessRevocations = 0;
+  /** Revoke requests that named no client, and so revoked nothing. */
+  unidentifiedRevocations = 0;
   /** Events received, keyed (source.instance, id) so dedupe is real. */
   readonly events = new Map<string, any>();
   /** Documents, by "collection/key". Versioned the way Meros versions them. */
@@ -272,9 +274,16 @@ export class FakeMeros {
     if (path === '/oauth/revoke') {
       const form = new URLSearchParams(body);
       const token = form.get('token') ?? '';
+      // Meros revokes only when the request identifies the client (`client_id`
+      // for a public client). Without it: 200, and nothing revoked — which is
+      // exactly the failure a test has to be able to see.
+      if (!form.get('client_id')) {
+        this.unidentifiedRevocations += 1;
+        return send(200, {});
+      }
       const family = this.refreshTokens.get(token);
       if (family) this.revokedFamilies.add(family);
-      // Meros revokes by access token and cascades to the refresh lineage.
+      // Revoking an access token revokes its refresh token too, as Meros does.
       const accessFamily = this.accessFamilies.get(token);
       if (accessFamily) {
         this.revokedFamilies.add(accessFamily);
