@@ -4,6 +4,7 @@ import { useCloudStore } from '../../stores/cloudStore';
 import { API_BASE, apiFetch } from '../../lib/api';
 import { ConfigBackupCard } from './ConfigBackupCard';
 import { InventoryListingCard } from './InventoryListingCard';
+import { CloudUserCard } from './CloudUserCard';
 import './CloudSettings.css';
 
 /**
@@ -187,6 +188,10 @@ export function CloudSettings() {
           </div>
         )}
       </div>
+
+      {/* ── The cloud user signed in here from Manifold ─────────────────────
+          Independent of the instance link: a person, not this rig. */}
+      <CloudUserCard />
 
       {/* ── Events ───────────────────────────────────────────────────────────
           Off by default, and the copy is explicit about what turning it on means.
