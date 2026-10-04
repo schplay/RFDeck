@@ -146,48 +146,54 @@ enumerated and typed in the core; a paid page is a normal React component.
 desktop shell, which only the free edition has). Core: "RFDeck". Paid:
 "RFDeck Server".
 
-### Licensing (the paid application)
+### Licensing (RFDeck Server)
 
-A licence is a **signed document, verified offline**, because a venue's rig
-may never see the internet:
+Follows the portfolio decision "Cloud Accounts, Licensing and User Identifiers"
+(vault, 2026-10-03). Where this section and that decision disagree, the decision
+wins.
 
-```
-{ licensee, edition: "pro", issuedAt, updatesUntil, seats?: n, keyId }
-```
+- **Editions.** Free RFDeck needs no licence. RFDeck Server requires one.
+  Appliances ship with RFDeck Server pre-installed and **pre-licensed**.
+- **A licence is tied to the Meros Cloud account that bought it**, because that is
+  where it is purchased. It is **never tied to users**: not to a local account,
+  not to a named user, not to a seat. A licensed install does not thereby need a
+  paid cloud subscription.
+- **Activation works three ways**, and all three must be possible:
+  1. with a cloud login;
+  2. online, without a login;
+  3. offline — a venue's rig may never see the internet.
+- **Deferred until RFDeck Server prepares to launch:** activation with a cloud
+  login, the mapping from licence to features, and key provisioning. None of it is
+  built.
 
-as a JWS signed with an Ed25519 key whose public half is compiled into the
-paid build only. Activation is pasting the key into Settings → Licence (or a
-file beside the database for headless installs). The rule that implements
-"lifetime licence, one year of updates":
+**Commercial terms (priced 2026-09-26): $499 perpetual, including twelve months
+of updates and support** — a licence, not a subscription. The cloud subscription
+is separate and à la carte (`docs/EDITIONS.md`). The rule that implements
+"lifetime licence, one year of updates": RFDeck Server **runs forever** on a valid
+licence, and the updater refuses to install a build released after the licence's
+updates window, saying so with the date and where to renew.
 
-- The application **runs forever** on a valid licence.
-- The updater refuses to install a build whose *release date* is after
-  `updatesUntil`, and says so with the date and where to renew. Renewal
-  issues a new document with a later date; nothing else changes.
+An earlier draft specified one activation mechanism — a signed document pasted
+into Settings — and floated per-seat or per-named-user licensing. Both are
+superseded by the decision above and are not part of the design.
 
-**Priced 2026-09-26: $499 perpetual, including twelve months of updates and
-support** — a licence, not a subscription. The cloud subscription is separate and
-à la carte (`docs/EDITIONS.md`).
+RFDeck Server also gates three *cloud* features, which makes it a prerequisite
+rather than merely an upgrade: one-click remote restore and provisioning, remote
+UI and control, and attributed change history. None of them can exist on a
+desktop install, because there is no always-on server for the cloud to reach — so
+they are not being withheld from desktop so much as undefined there. All three
+are deferred until RFDeck Server exists.
 
-RFDeck Server also gates three *cloud* features, which is new and worth recording here
-because it makes RFDeck Server a prerequisite rather than merely an upgrade: one-click remote
-restore and provisioning, remote UI and control, and attributed change history.
-None of them can exist on a desktop install, because there is no always-on server
-for the cloud to reach — so they are not being withheld from desktop so much as
-undefined there. All three are deferred until RFDeck Server exists.
+A Team cloud subscription can additionally move RFDeck Server's local per-user
+permissions and auditing into the cloud, as a migration with a keep-local option.
+Also deferred, and it only makes sense once R.4's named users exist. (Named users
+are an RFDeck Server *feature*; the licence is still never tied to them.)
 
-A Team cloud subscription can additionally move RFDeck Server's local per-user permissions and
-auditing into the cloud, as a migration with a keep-local option. Also deferred, and
-it only makes sense once R.4's named users exist.
-
-No phone-home is required. A cloud-linked rig *may* refresh its licence
-automatically, as a convenience, never as a requirement. Note that this
-licence — the paid *application* licence, verified against a key in the paid
-build — is a different document from a Meros **entitlement**, which says what
-an account has paid for in the *cloud*. Two keys, two documents, two
-questions; the cloud plan owns the second and they must not be merged. This lives in
-`packages/licensing` of the paid repo, with the verification code and its
-tests small enough to be audited by a customer's IT department.
+A licence is a different thing from a Meros **entitlement**: the licence says
+this install may run RFDeck Server; an entitlement says what an account has paid
+for in the *cloud*. They must not be merged. The licence code lives in
+`packages/licensing` of the RFDeck Server repository, small enough to be audited
+by a customer's IT department.
 
 ### Layout of `rfdeck-server`
 
@@ -261,5 +267,6 @@ editions doc stays true.
 - Whether RFDeck Server updates reach installed systems as signed system images
   only, or also through a private package feed. (Distribution itself is settled:
   a system image, not Docker — `docs/IMPLEMENTATION_PLAN.md` §7.4.)
-- Seat model, if any, for the licence document (per rig is the simple
-  answer; per named user is the organisational one).
+
+The seat model is no longer open: a licence is tied to the account that bought it,
+never to users (see Licensing).
