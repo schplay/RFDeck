@@ -53,17 +53,25 @@ The whole monitoring product. Discovery, telemetry, alerting, the mic check,
 shows and performers, the Micboard and Backstage displays, rolling capture and
 detections, the audio patch, frequency coordination.
 
-### Paid — RFDeck Server, the headless edition
+### Paid — RFDeck Server and a paid desktop build
+
+The paid edition comes as **two builds** of the same paid features:
+
+- **RFDeck Server**, the headless edition, for a rack or an appliance;
+- a **paid desktop build** (name pending David), for customers who need the paid
+  features but will not or cannot run a server or an appliance.
+
+RFDeck is unusual among Meros products in offering a paid desktop app.
 
 A perpetual licence at **$499**, including twelve months of updates and support;
-further year-long contracts afterwards at a discount. Not a subscription — see
-"Paid application" below, and `docs/REPO_SEPARATION_PLAN.md`.
+further year-long contracts afterwards at a discount. Not a subscription — see the
+Licensing section of `docs/REPO_SEPARATION_PLAN.md`.
 
 Aimed at organisations and venues: named user accounts, user and permission
 management, and the things that follow from more than one person using the same
 rig. RFDeck Server is also what unlocks three of the cloud's paid features — remote
-restore, remote control and attributed audit — which a desktop install cannot
-have because there is no always-on server to reach.
+restore, remote control and attributed audit — which no desktop install can have,
+the paid desktop build included, because there is no always-on server to reach.
 
 ### Appliances
 
@@ -102,15 +110,15 @@ Needs only a free Meros account.
   nothing further for the application to build.
 - **Only on RFDeck Server** (self-hosted or an appliance): one-click
   remote restore and provisioning, remote UI and control, and attributed change
-  history. Not available on desktop RFDeck. 📋 *Deferred with RFDeck Server.*
+  history. Not available on any desktop build, free or paid. 📋 *Deferred with RFDeck Server.*
 
 ### Cloud — Team add-on, $20/month or $200/year
 
 An **account-level** add-on rather than an RFDeck price: it layers multi-user
 features across whatever products the account pays for. Shared fleet views,
-shared alert routing, member management. With RFDeck Server it can also move
+shared alert routing, member management. With the paid edition it can also move
 RFDeck's local per-user permissions and auditing into the cloud — 📋 deferred
-until RFDeck Server exists.
+until the paid edition exists.
 
 > **A correction worth noting.** This document used to describe the free cloud
 > tier as "user profiles and show files", which was too generous on one count and

@@ -388,7 +388,7 @@ only**.
 Used for **profile sync**. A person can be signed in on an instance that is not
 linked, and vice versa — that separation was the original insight and it holds.
 
-RFDeck has no local person records today. Named users are an `rfdeck-server`
+RFDeck has no local person records today. Named users are a paid-edition
 feature (R.4 in the separation plan), so the person link initially has exactly
 one job — carrying a profile — and the `sub` it stores is what R.4 should later
 key its accounts on. Worth writing down now so R.4 does not invent a second

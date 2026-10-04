@@ -876,7 +876,9 @@ of this item carried.
 
 The headless build is **RFDeck Server** (named 2026-10-04; formerly "Pro") and lives
 in a **separate private repository** along with the RFDeck Server feature set — named
-users, permissions, audit. The headless install in *this* repository
+users, permissions, audit. The paid edition also includes a **paid desktop build**
+(name pending David) for customers who need the paid features without running a
+server. The headless install in *this* repository
 (`scripts/install-ubuntu.sh`, `scripts/update-server.sh`, the `rfdeck` CLI) is David's
 personal testing setup: it does not ship and will be removed once testing is done. See
 `docs/REPO_SEPARATION_PLAN.md`; none of that is built here, and the image is built
