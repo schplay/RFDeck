@@ -36,7 +36,7 @@ export const FEATURES = {
   RF_REPORTS: 'rfdeck.rf.reports',
   INVENTORY: 'rfdeck.inventory',
 
-  // ── Paid, and only on an RFDeck Pro device ────────────────────────────────
+  // ── Paid, and only on an RFDeck Server install ────────────────────────────
   REMOTE_RESTORE: 'rfdeck.remote.restore',
   REMOTE_CONTROL: 'rfdeck.remote.control',
   AUDIT: 'rfdeck.audit',

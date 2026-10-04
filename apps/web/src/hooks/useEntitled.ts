@@ -79,7 +79,7 @@ export const FEATURES = {
   rfHistory: 'rfdeck.rf.history',
   rfReports: 'rfdeck.rf.reports',
   inventory: 'rfdeck.inventory',
-  // Individual, and only on an RFDeck Pro device
+  // Individual, and only on an RFDeck Server install
   remoteRestore: 'rfdeck.remote.restore',
   remoteControl: 'rfdeck.remote.control',
   audit: 'rfdeck.audit',
