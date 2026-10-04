@@ -188,12 +188,22 @@ describe('the instance link', () => {
   });
 
   it('revokes at Meros when it can', async () => {
-    const { link, fake } = await harness();
+    // Asserted by outcome, not by the request. Meros answers 200 to a revoke that
+    // does not name the client and revokes nothing, so "a request reached
+    // /oauth/revoke" proves nothing. What matters is that the refresh token this
+    // install held no longer works there.
+    const { link, store, fake, client, config } = await harness();
     await link.start();
     await settle(link);
+    const held = (await store.readRefreshToken())!;
+
     const { revoked } = await link.unlink();
     expect(revoked).toBe(true);
-    expect(fake.requests.some(r => r.path === '/oauth/revoke')).toBe(true);
+    expect(fake.unidentifiedRevocations).toBe(0);
+
+    await expect(client.json('POST', await client.tokenEndpoint(), {
+      form: { grant_type: 'refresh_token', refresh_token: held, client_id: config.clientId },
+    })).rejects.toMatchObject({ code: 'invalid_grant' });
   });
 });
 
