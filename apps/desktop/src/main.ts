@@ -5,6 +5,7 @@ import * as crypto from 'crypto';
 import { spawn, exec, ChildProcess } from 'child_process';
 import { promisify } from 'util';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,8 +73,9 @@ function ffmpegPath(): string | null {
 // to live in the per-user data directory. This is also what makes the data
 // survive an app upgrade, which replaces the install directory wholesale.
 //
-// On first run there is no database yet and a packaged app cannot run
-// `prisma db push`, so an empty pre-migrated template is copied across.
+// On first run there is no database yet, so an empty pre-migrated template is
+// copied across. Every start after that, `applySchema` brings the database up to
+// the schema this build ships — the template alone never upgraded anything.
 function databaseUrl(): string {
   const dir = app.getPath('userData');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -133,11 +135,107 @@ async function createWindow() {
   });
 }
 
-function startServer() {
+/**
+ * The Prisma CLI, which this build ships so it can upgrade a user's database.
+ *
+ * A dependency of the desktop package for exactly this reason (see package.json):
+ * electron-builder only packs runtime dependencies, and the server lists the CLI
+ * as a dev dependency.
+ */
+function prismaCli(): string | null {
+  let candidate: string | null = null;
+  if (app.isPackaged) {
+    candidate = path.join(process.resourcesPath, 'app', 'node_modules', 'prisma', 'build', 'index.js');
+  } else {
+    try {
+      candidate = createRequire(import.meta.url).resolve('prisma/build/index.js', { paths: [paths.serverDir] });
+    } catch { /* reported below */ }
+  }
+  return candidate && fs.existsSync(candidate) ? candidate : null;
+}
+
+/**
+ * Bring the user's database up to the schema this build ships, on every start.
+ *
+ * The template is copied only when no database exists, so before this an
+ * install that already had a database never received a schema change again:
+ * new tables and columns simply did not exist, and the first query to touch
+ * one failed. The headless updater has always run `prisma db push`; this is
+ * the same thing, run by the app because there is no separate updater.
+ *
+ * **It can never lose data.** `db push` is run without `--accept-data-loss`
+ * and without `--force-reset`, and must stay that way. Without them Prisma
+ * refuses any change that would drop a column holding values, or would need
+ * the database reset, and exits non-zero with nothing changed — verified
+ * against a database built from the 2026-08-21 schema. A refusal is logged and
+ * the server starts on the database as it is: features that need the new
+ * schema will fail, and everything else works, which is the right way round.
+ *
+ * Never throws and never blocks for long: the server must start whatever
+ * happens here.
+ */
+function applySchema(databaseUrl: string): Promise<void> {
+  return new Promise((resolve) => {
+    const cli = prismaCli();
+    if (!cli) {
+      console.error('[Electron] Prisma CLI not found; the database schema was not checked');
+      resolve();
+      return;
+    }
+
+    const child = spawn(
+      process.execPath,
+      [cli, 'db', 'push', '--skip-generate', '--schema', paths.schema],
+      {
+        cwd: paths.serverDir,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+          DATABASE_URL: databaseUrl,
+          // No update checks or banners from a venue machine that may be offline.
+          CHECKPOINT_DISABLE: '1',
+          PRISMA_HIDE_UPDATE_MESSAGE: '1',
+        },
+      },
+    );
+
+    let output = '';
+    child.stdout?.on('data', (chunk) => { output += chunk; });
+    child.stderr?.on('data', (chunk) => { output += chunk; });
+
+    // A wedged schema engine must not hold the server back indefinitely.
+    const timer = setTimeout(() => child.kill(), 60_000);
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      console.error(`[Electron] Could not run the schema upgrade: ${err.message}`);
+      resolve();
+    });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        console.log('[Electron] Database schema is up to date');
+      } else {
+        console.error(
+          `[Electron] The database was left as it was (schema upgrade exit ${code}); ` +
+          `nothing was deleted. Prisma said:\n${output.trim().slice(-2000)}`,
+        );
+      }
+      resolve();
+    });
+  });
+}
+
+async function startServer() {
   if (!fs.existsSync(paths.serverJs)) {
     console.error(`[Electron] Server not found at ${paths.serverJs}`);
     return;
   }
+
+  // Before the server opens the database, so the two never hold it at once.
+  const dbUrl = databaseUrl();
+  await applySchema(dbUrl);
 
   const ffmpeg = ffmpegPath();
 
@@ -162,7 +260,7 @@ function startServer() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       PORT: '3000',
-      DATABASE_URL: databaseUrl(),
+      DATABASE_URL: dbUrl,
       PRISMA_SCHEMA_PATH: paths.schema,
       // Where the built UI is, so the sidecar can serve it over HTTP.
       //
@@ -395,7 +493,7 @@ app.on('ready', () => {
   // Nothing about opening a window or starting the sidecar depends on the
   // rules being in place: they matter when a receiver first tries to reach us,
   // which is later than this.
-  startServer();
+  void startServer();
   createWindow();
 
   ensureWindowsFirewall().catch(err => {

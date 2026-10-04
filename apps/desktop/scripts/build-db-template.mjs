@@ -1,9 +1,10 @@
 // Produce an empty database with the schema applied, to ship with the app.
 //
-// A packaged install cannot run `prisma db push` — the Prisma CLI is a dev
-// dependency and the install directory is read-only. So the app carries a
-// pre-migrated empty database and copies it into the user data directory on
-// first run.
+// Copied into the user data directory on first run, so a new install starts with
+// a complete database without waiting on the schema engine. It does not upgrade
+// anything: an existing database is brought up to date by `prisma db push` on
+// every start (applySchema in src/main.ts), using the Prisma CLI the desktop
+// package now ships as a runtime dependency.
 //
 // Built fresh each time from the current schema, so the template can never
 // drift from the models the server expects.

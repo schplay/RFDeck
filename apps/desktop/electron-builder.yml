@@ -41,7 +41,8 @@ extraResources:
   - from: resources/server-package.json
     to: app/server/package.json
   # Empty database with the schema already applied. Copied into the user data
-  # directory on first run, since a packaged install cannot run prisma db push.
+  # directory on first run; later schema changes are applied by `prisma db push`
+  # on every start (applySchema in src/main.ts), using the CLI this package ships.
   - from: resources/template.db
     to: template.db
   # The generated Prisma client and its native query engine. Build output rather
