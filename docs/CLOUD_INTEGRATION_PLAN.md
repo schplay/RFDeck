@@ -898,8 +898,9 @@ rotating, stored encrypted in its own row — never in `Settings.cloudRefreshTok
 because Meros's reuse detection revokes per (user, client) and the person who
 links a rig is usually the person who signs in to it. One cloud user at a time; a
 new sign-in replaces the last. Signing out on Manifold does not sign RFDeck out;
-`POST /api/auth/cloud-signout` does, revoking the **access** token at Meros
-(Meros ignores a refresh token submitted on its own). All four endpoints sit
+`POST /api/auth/cloud-signout` does, revoking the access token at Meros with
+`client_id` — without it Meros answers 200 and revokes nothing (meros.co,
+2026-10-04). All four endpoints sit
 behind the PIN gate and refuse plain HTTP except from loopback.
 
 **Not yet decided:** what the server-held session is *used* for. Profile sync
