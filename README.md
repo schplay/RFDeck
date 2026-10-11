@@ -798,10 +798,10 @@ as `RFDeck Setup 1.0.0.exe`.
 | Phase | Focus | Status |
 |---|---|---|
 | **Phase 1** | Foundation: monorepo scaffold, Electron shell, Fastify server, Sennheiser SSCv2, monitoring dashboard, alert feed | Complete |
-| **Phase 2** | Hardware inventory, battery management, show/event management, mic check mode, RF environment visualization | Mostly complete — battery depth outstanding |
-| **Phase 3** | Audio monitoring (AES-67 + OS audio), native WebRTC gateway, instant replay | Audio complete; replay not started |
-| **Phase 4** | Mobile PWA, performer/notebook system (Theater mode), backstage/talent view, Web Push | Backstage complete; rest not started |
-| **Phase 5** | Additional hardware brands, Docker packaging, E2E tests, auto-update | Not started |
+| **Phase 2** | Hardware inventory, battery management, show/event management, mic check mode, RF environment visualization | Mostly complete — battery runtime estimates are built; battery health and cycle counts are not |
+| **Phase 3** | Audio monitoring (AES-67 + OS audio), native WebRTC gateway, instant replay | Complete. AES-67 receive needs the Linux server install. Instant replay became rolling capture: problems are detected in the audio and saved as clips |
+| **Phase 4** | Mobile PWA, performer/notebook system (Theater mode), backstage/talent view, Web Push | Mostly complete — backstage view, performer roster with notes, phone layouts and Web Push are built; the installable PWA and QR codes are not |
+| **Phase 5** | Additional hardware brands, Docker packaging, E2E tests, auto-update | Partly complete — Shure (Axient Digital, ULX-D, QLX-D, SLX-D, PSM1000) and Sennheiser Digital 6000 are built but unverified on hardware; E2E tests run in CI; Docker packaging and auto-update are not started |
 
 ---
 
@@ -815,6 +815,11 @@ organisations and venues, and optional features provided through a linked cloud
 account, which is the identity provider and the home of the shared services
 those features are built on, rather than anything RFDeck runs itself.
 
-None of it is implemented: paid functionality is blocked on separating the
-repository and building licence enforcement, and no feature should assume an
-enforcement mechanism that does not exist yet.
+The paid edition is not built: it is blocked on separating the repository and
+building licence enforcement, and no feature should assume an enforcement
+mechanism that does not exist yet.
+
+The cloud features are built and work on an install linked to a cloud account.
+Three of them (configuration backup, the inventory listing and TV-occupancy
+data) need a cloud plan that includes them. An install that is not linked is
+never restricted.
