@@ -29,8 +29,6 @@ RFDeck is designed for the A2 / RF tech who manages multi-brand wireless systems
 > | *(no mark)* | Implemented and working against real hardware |
 > | 🚧 | Partially implemented — see the note |
 > | 📋 | Planned, not yet built |
->
-> See [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) for sequencing.
 
 ### Live Monitoring Dashboard
 Real-time telemetry for all active wireless channels:
@@ -100,8 +98,7 @@ The log of problems RFDeck noticed on its own, each with the audio that proves i
   autocorrelation), and clicks/pops (second-difference impulses against a
   rolling MAD-style baseline). RF state gates promotion, so a click while the
   RF link is degrading is reported differently from one that is not.
-  See [`docs/AUDIO_DETECTION.md`](docs/AUDIO_DETECTION.md) 🚧 *— clipping and
-  low SNR are not yet detected as distinct kinds*
+  🚧 *— clipping and low SNR are not yet detected as distinct kinds*
 - Alert feed with severity levels (CRITICAL / WARNING / INFO); acknowledgement is
   shared across all connected clients 🚧 *— actionable CTAs not yet implemented*
 - Event log: timestamped history of all system events, persisted to the database
@@ -118,8 +115,7 @@ The log of problems RFDeck noticed on its own, each with the audio that proves i
 - Spectrum scans imported from Wireless Workbench, WSM or an RF Explorer
   export, drawn under the frequency map and used to keep coordination out of
   occupied spectrum; exported in the form those tools read
-- _Note: RFDeck does **not** yet take scans itself; see `docs/SCANNING.md`
-  for what is planned._
+- _Note: RFDeck does **not** yet take scans itself._
 
 ### Hardware Inventory
 - Auto-discovery of supported devices via mDNS / Bonjour, passive MCP listening,
@@ -307,9 +303,6 @@ network access gate, not per-user identity.
 > many channels they have. Receivers can still be added by IP, in which case the
 > model must be chosen from a list — it selects the command vocabulary (Axient
 > and ULX-D genuinely use different parameter names) and the channel count.
->
-> What was verified, against how many sources, and what remains assumed is
-> written up in [`docs/SHURE_PROTOCOL.md`](docs/SHURE_PROTOCOL.md).
 
 > **Digital 6000 support is new and unverified on hardware.** Set the model to
 > "EM 6000" when adding one — that is what selects the right client, because
@@ -321,9 +314,8 @@ network access gate, not per-user identity.
 
 ### Phase 2+ (Planned)
 
-Researched properly rather than assumed — see
-[`docs/MANUFACTURER_ROADMAP.md`](docs/MANUFACTURER_ROADMAP.md) for the evidence
-behind each, including which have a usable specification and which do not.
+Researched properly rather than assumed, including which have a usable
+specification and which do not.
 
 | Target | Route | State |
 |---|---|---|
@@ -400,7 +392,6 @@ rfdeck/
 │   └── shared-utils/    # Pure utility functions (frequency math, battery calc)
 ├── e2e/                 # Playwright specs, driven against the real stack
 ├── design/              # Stitch design reference files
-├── docs/                # Architecture documentation
 ├── playwright.config.ts
 ├── pnpm-workspace.yaml
 └── README.md
@@ -734,8 +725,6 @@ passwords. **A backup of the database alone will not restore those passwords** �
 they are encrypted with `/var/lib/rfdeck/.rfdeck-key`, kept outside the database
 deliberately so copying one file does not carry the credentials with it.
 
-Full reference including troubleshooting: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
-
 ---
 
 ## Development
@@ -814,11 +803,6 @@ as `RFDeck Setup 1.0.0.exe`.
 | **Phase 4** | Mobile PWA, performer/notebook system (Theater mode), backstage/talent view, Web Push | Backstage complete; rest not started |
 | **Phase 5** | Additional hardware brands, Docker packaging, E2E tests, auto-update | Not started |
 
-The sequenced plan for the remaining work is in
-[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md), and deployment,
-firewall requirements, and verification procedures are in
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
-
 ---
 
 ## License
@@ -827,12 +811,9 @@ Private / Proprietary — All rights reserved.
 
 That is the state today, not the intended one. RFDeck is planned to ship as a
 free, open-source desktop application, with a paid edition aimed at
-organisations and venues, and cloud features hosted by
-[Meros Cloud](https://meros.co) — which is the identity provider and the home of
-the shared services those features are built on, rather than anything RFDeck
-runs itself. The editions, and the reasoning behind where the line falls, are in
-[`docs/EDITIONS.md`](docs/EDITIONS.md); how the cloud is reached is in
-[`docs/CLOUD_INTEGRATION_PLAN.md`](docs/CLOUD_INTEGRATION_PLAN.md).
+organisations and venues, and optional features provided through a linked cloud
+account, which is the identity provider and the home of the shared services
+those features are built on, rather than anything RFDeck runs itself.
 
 None of it is implemented: paid functionality is blocked on separating the
 repository and building licence enforcement, and no feature should assume an
