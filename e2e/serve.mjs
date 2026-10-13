@@ -52,6 +52,11 @@ const env = {
   // Scanning the subnet for receivers would make every run slow, noisy and
   // dependent on whatever else is on the tester's network.
   RFDECK_DISABLE_DISCOVERY: '1',
+  // No cloud. Empty rather than deleted: the server fills unset variables from
+  // a developer's .env.local, but never overwrites one that is present, so this
+  // also keeps that file from pointing a test run at a real cloud service.
+  MEROS_BASE_URL: '',
+  MEROS_CLIENT_ID: '',
 };
 
 const push = spawnSync(
