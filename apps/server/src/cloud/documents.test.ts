@@ -232,8 +232,8 @@ describe('the canonical hash', () => {
 
   it('emits no whitespace, unescaped slashes and unescaped unicode', () => {
     // Matching PHP's JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE.
-    expect(canonicalJson({ url: 'https://meros.co/link', who: 'Renée Fleming' }))
-      .toBe('{"url":"https://meros.co/link","who":"Renée Fleming"}');
+    expect(canonicalJson({ url: 'https://meros.test/link', who: 'Renée Fleming' }))
+      .toBe('{"url":"https://meros.test/link","who":"Renée Fleming"}');
   });
 
   it('is stable across nesting depth and null', () => {
