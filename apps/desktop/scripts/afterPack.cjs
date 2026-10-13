@@ -28,6 +28,9 @@ exports.default = async function afterPack(context) {
   };
 
   remove(path.join(serverPkg, '.env'), '@rfdeck/server/.env');
+  // A developer's own cloud settings and client ids. An installer must not
+  // carry them, whichever environment they point at.
+  remove(path.join(serverPkg, '.env.local'), '@rfdeck/server/.env.local');
   remove(path.join(serverPkg, 'src'), '@rfdeck/server/src');
   remove(path.join(serverPkg, 'tsconfig.json'), '@rfdeck/server/tsconfig.json');
 
