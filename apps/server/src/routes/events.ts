@@ -18,7 +18,8 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     const where: any = {};
     if (q.source)   where.source   = q.source;
     if (q.severity) where.severity = q.severity;
-    if (q.type)     where.type     = q.type;
+    // One type, or several separated by commas.
+    if (q.type)     where.type     = q.type.includes(',') ? { in: q.type.split(',') } : q.type;
     if (q.channel)  where.channelKey = q.channel;
     if (q.from || q.to) {
       where.timestamp = {};

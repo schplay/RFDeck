@@ -450,6 +450,10 @@ model Event {
   deviceId       String?
   rfLevelA       Int?
   rfLevelB       Int?
+  // A carrier moving (FREQUENCY_SET / FREQUENCY_CHANGE): where it was and where
+  // it went, in kHz.
+  fromKHz        Int?
+  toKHz          Int?
   acknowledged   Boolean  @default(false)
   acknowledgedBy String?
   dismissed      Boolean  @default(false)

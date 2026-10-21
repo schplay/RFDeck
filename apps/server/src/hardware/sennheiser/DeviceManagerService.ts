@@ -25,6 +25,9 @@ import { Digital6000Client } from './digital6000/Digital6000Client';
 import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
 import { canSet } from '../HardwareClient';
 import { BatteryThresholds, DEFAULT_BATTERY_THRESHOLDS, normalizeBatteryThresholds, batteryAlertStep } from '../batteryThresholds';
+import {
+  FREQUENCY_SET, FREQUENCY_CHANGE, PendingRetune, isRfdeckRetune, frequencyChangeMessage,
+} from '../frequencyHistory';
 import { log } from '../../logger';
 
 // The union is kept rather than replaced by HardwareClient because the
@@ -234,6 +237,9 @@ export class DeviceManagerService extends EventEmitter {
   // The operator's low and critical levels from Settings, read at startup and
   // again whenever they are saved.
   private batteryThresholds: BatteryThresholds = { ...DEFAULT_BATTERY_THRESHOLDS };
+  // Retunes RFDeck has sent, keyed by device and receiver slot, so the change
+  // that follows in telemetry is recorded as RFDeck's rather than the hardware's.
+  private pendingRetunes = new Map<string, PendingRetune>();
 
   // Last moment each device was known to be in contact, keyed by device id.
   //
@@ -2086,6 +2092,7 @@ export class DeviceManagerService extends EventEmitter {
                 fromKHz: oldChannel.frequency,
                 toKHz: newChannel.frequency,
               });
+              this.recordFrequencyChange(channelId, newChannel, oldChannel.frequency);
             }
 
             // RF dropout / recovery — see evaluateRfState.
@@ -2232,6 +2239,36 @@ export class DeviceManagerService extends EventEmitter {
         rfLevelB: Math.round(channel.rfLevelB),
       },
     }).catch(err => log.warn('[DeviceManager] Could not persist RF event:', err?.message));
+  }
+
+  /**
+   * Keep a carrier's move in the event history and show it on every screen.
+   * See frequencyHistory.ts for why this lives here and not in the browser.
+   */
+  private recordFrequencyChange(channelId: string, channel: Channel, fromKHz: number): void {
+    const toKHz = channel.frequency;
+    const retuneKey = `${channel.deviceId}|${channel.channelIndex}`;
+    const byRfdeck = isRfdeckRetune(this.pendingRetunes.get(retuneKey), toKHz, Date.now());
+    if (byRfdeck) this.pendingRetunes.delete(retuneKey);
+
+    const row = {
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      source: 'RF',
+      type: byRfdeck ? FREQUENCY_SET : FREQUENCY_CHANGE,
+      severity: 'INFO',
+      message: frequencyChangeMessage(byRfdeck, fromKHz, toKHz),
+      channelKey: channelId,
+      channelName: channel.name,
+      deviceId: channel.deviceId,
+      fromKHz,
+      toKHz,
+    };
+    this.io.emit('rf:frequency', row);
+    // Fire-and-forget, as for RF events: the database must never hold up
+    // live monitoring.
+    prisma.event.create({ data: row })
+      .catch(err => log.warn('[DeviceManager] Could not persist a frequency change:', err?.message));
   }
 
   clearRfEvents(): void {
@@ -2597,6 +2634,7 @@ export class DeviceManagerService extends EventEmitter {
       log.warn(`[DeviceManager] Cannot set frequency, device ${deviceId} not connected or cannot tune.`);
       return false;
     }
+    this.pendingRetunes.set(`${deviceId}|${rxIndex}`, { toKHz: Math.round(frequencyHz / 1000), at: Date.now() });
     return client.setFrequency!(rxIndex, frequencyHz);
   }
 
