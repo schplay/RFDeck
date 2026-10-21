@@ -340,13 +340,18 @@ export default function Settings() {
         <Tabs.Content value="alerts" className="tabs-content">
           <div className="settings-card">
             <h3>Battery Alerts</h3>
-            <p className="settings-desc">Global thresholds for all battery powered devices.</p>
+            <p className="settings-desc">
+              The levels every battery is judged by: low and critical alerts, and the
+              battery colors on every screen. Critical must be below warning.
+            </p>
             
             <div className="settings-form">
               <div className="form-group">
                 <label>Warning Threshold (%)</label>
                 <input 
                   type="number" 
+                  min={1}
+                  max={100}
                   value={settings.batteryWarningPct}
                   onChange={e => setSettings({ ...settings, batteryWarningPct: parseInt(e.target.value) })}
                 />
@@ -355,6 +360,8 @@ export default function Settings() {
                 <label>Critical Threshold (%)</label>
                 <input 
                   type="number" 
+                  min={0}
+                  max={98}
                   value={settings.batteryCriticalPct}
                   onChange={e => setSettings({ ...settings, batteryCriticalPct: parseInt(e.target.value) })}
                 />

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Battery, BatteryCharging, BatteryWarning, AlertTriangle } from 'lucide-react';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
-import { useBatteryStore, formatRuntime } from '../../stores/batteryStore';
+import { useBatteryStore, useBatteryThresholds, formatRuntime } from '../../stores/batteryStore';
 import { useDeviceStore } from '../../stores/deviceStore';
-import { BATT_LOW, BATT_CRIT, channelPlace } from '../../lib/channelStatus';
+import { channelPlace } from '../../lib/channelStatus';
 import './BatteryDashboard.css';
 
 export default function BatteryDashboard() {
@@ -15,6 +15,8 @@ export default function BatteryDashboard() {
   const setShowMinutes = useBatteryStore(s => s.setShowMinutes);
   
   const inventory = useDeviceStore(s => s.inventory);
+  // The levels saved in Settings, the same ones the server alerts at.
+  const { warningPct: BATT_LOW, criticalPct: BATT_CRIT } = useBatteryThresholds();
   const nameFor = (deviceId: string) => inventory.find(d => d.ip === deviceId.split(':')[0])?.name;
 
   // A pack is "at risk" only when the server is confident enough to project.
@@ -46,7 +48,7 @@ export default function BatteryDashboard() {
   const measuring = sortedChannels.filter(c => !estimates[c.id]?.confident).length;
 
   const getBatteryIcon = (percent: number) => {
-    if (percent <= 10) return <BatteryWarning size={20} className="text-error" />;
+    if (percent <= BATT_CRIT) return <BatteryWarning size={20} className="text-error" />;
     if (percent < 100) return <Battery size={20} className={percent <= BATT_LOW ? 'text-warning' : 'text-muted'} />;
     return <BatteryCharging size={20} className="text-success" />;
   };

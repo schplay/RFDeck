@@ -1,6 +1,7 @@
 import { Channel } from '@rfdeck/shared-types';
+import type { BatteryThresholds } from '../stores/batteryStore';
 
-// What one word to say about a channel, and what colour to say it in.
+// What one word to say about a channel, and what color to say it in.
 //
 // Lifted out of the Micboard so the dense grid and the wall display give the
 // same answer for the same channel. Two views that disagree about whether a
@@ -18,24 +19,25 @@ import { Channel } from '@rfdeck/shared-types';
 
 export type StatusTone = 'good' | 'warn' | 'crit' | 'idle';
 
-/** Battery thresholds, in percent. The same numbers the Battery page flags at. */
-export const BATT_LOW = 20;
-export const BATT_CRIT = 5;
-
-export function batteryTone(pct: number | undefined | null): StatusTone {
+/**
+ * How worried to be about a pack, at the levels saved in Settings. The server
+ * raises its low and critical alerts at the same levels, so a battery is never
+ * colored low without the alert agreeing.
+ */
+export function batteryTone(pct: number | undefined | null, t: BatteryThresholds): StatusTone {
   if (pct == null) return 'good';
-  if (pct <= BATT_CRIT) return 'crit';
-  if (pct <= BATT_LOW) return 'warn';
+  if (pct <= t.criticalPct) return 'crit';
+  if (pct <= t.warningPct) return 'warn';
   return 'good';
 }
 
-export function channelStatus(ch: Channel, online: boolean, stale: boolean): {
+export function channelStatus(ch: Channel, online: boolean, stale: boolean, t: BatteryThresholds): {
   label: string; tone: StatusTone;
 } {
   if (!online) return { label: 'OFFLINE', tone: 'crit' };
   if (stale) return { label: 'NO DATA', tone: 'crit' };
   if (ch.status === 'CRITICAL') return { label: 'DROPOUT', tone: 'crit' };
-  const batt = batteryTone(ch.batteryPercent);
+  const batt = batteryTone(ch.batteryPercent, t);
   if (batt === 'crit') return { label: 'BATT CRITICAL', tone: 'crit' };
   if (ch.isMuted) return { label: 'MUTED', tone: 'idle' };
   // A performer's own mute switch is a state, not a problem.

@@ -7,6 +7,7 @@ import { ChannelActions } from './ChannelActions';
 import { useIntermodStore, IntermodHit } from '../../stores/intermodStore';
 import { Meter } from '../meters/Meter';
 import { channelStatus, channelPlace, batteryTone } from '../../lib/channelStatus';
+import { useBatteryThresholds } from '../../stores/batteryStore';
 import './ChannelStrip.css';
 
 /**
@@ -55,7 +56,8 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   // dense grid, the Micboard and Backstage. A healthy card stays neutral: with
   // every card outlined in green, the one that needed attention did not stand
   // out from the thirty that did not.
-  const status = channelStatus(channel, deviceOnline, stale);
+  const thresholds = useBatteryThresholds();
+  const status = channelStatus(channel, deviceOnline, stale, thresholds);
   const statusBorder = status.tone === 'crit' ? 'error'
                      : status.tone === 'warn' ? 'warning' : 'default';
   const place = channelPlace(channel, deviceName);
@@ -153,7 +155,7 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
               <span className="cs-im" title={intermodTitle(imHits)}>IM</span>
             )}
           </div>
-          <div className={`cs-batt batt-${batteryTone(channel.batteryPercent)}`}>
+          <div className={`cs-batt batt-${batteryTone(channel.batteryPercent, thresholds)}`}>
             {channel.batteryPercent != null ? Math.round(channel.batteryPercent) : '--'}%
             <div className="batt-icon" />
           </div>

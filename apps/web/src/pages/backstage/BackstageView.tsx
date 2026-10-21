@@ -8,6 +8,7 @@ import { useShortcuts } from '../../lib/shortcuts';
 import { Meter } from '../../components/meters/Meter';
 import { Channel } from '@rfdeck/shared-types';
 import { channelStatus, batteryTone, StatusTone } from '../../lib/channelStatus';
+import { useBatteryThresholds, BatteryThresholds } from '../../stores/batteryStore';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import './BackstageView.css';
 import logoMark from '../../assets/logo-mark.svg';
@@ -24,8 +25,8 @@ function batteryIcon(pct?: number): string {
 const TONE_CLASS: Record<StatusTone, string> = {
   good: 'active', warn: 'warning', crit: 'critical', idle: 'muted',
 };
-function statusFor(ch: Channel, stale: boolean) {
-  const s = channelStatus(ch, true, stale);
+function statusFor(ch: Channel, stale: boolean, t: BatteryThresholds) {
+  const s = channelStatus(ch, true, stale, t);
   return { label: s.label, cls: TONE_CLASS[s.tone] };
 }
 
@@ -45,6 +46,7 @@ export default function BackstageView() {
   const channels = useActiveChannels();
   const { socket, isConnected } = useSocket();
   const { isChannelStale } = useConnectionHealth();
+  const thresholds = useBatteryThresholds();
 
   // Subscribe to channel telemetry
   const updateChannel = useChannelStore((s) => s.updateChannel);
@@ -117,7 +119,7 @@ export default function BackstageView() {
 
       <div className="bs-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
         {displayChannels.map((ch) => {
-          const { label: st, cls: stClass } = statusFor(ch, isChannelStale(ch.id));
+          const { label: st, cls: stClass } = statusFor(ch, isChannelStale(ch.id), thresholds);
           return (
             <div key={ch.id} ref={setFlipRef(ch.id)} className={`bs-card ${stClass}`} {...dragHandlers(ch)}>
               <div className="bs-card-header">
@@ -149,7 +151,7 @@ export default function BackstageView() {
               </div>
 
               {ch.batteryPercent !== undefined && (
-                <div className={`bs-battery ${{ crit: 'bs-batt-critical', warn: 'bs-batt-low' }[batteryTone(ch.batteryPercent) as 'crit' | 'warn'] ?? ''}`}>
+                <div className={`bs-battery ${{ crit: 'bs-batt-critical', warn: 'bs-batt-low' }[batteryTone(ch.batteryPercent, thresholds) as 'crit' | 'warn'] ?? ''}`}>
                   <div className="bs-batt-bar-track">
                     <div
                       className="bs-batt-bar-fill"

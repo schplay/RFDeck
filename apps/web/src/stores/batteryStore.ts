@@ -10,12 +10,21 @@ export interface BatteryEstimate {
   confident: boolean;
 }
 
+/** The low and critical levels saved in Settings, in percent. */
+export interface BatteryThresholds {
+  warningPct: number;
+  criticalPct: number;
+}
+
 interface BatteryStore {
   estimates: Record<string, BatteryEstimate>;
+  /** Sent by the server on connect and whenever Settings change. */
+  thresholds: BatteryThresholds;
   /** Operator's expected remaining running time, in minutes. */
   showMinutes: number;
   applyEstimate: (est: BatteryEstimate) => void;
   setShowMinutes: (minutes: number) => void;
+  setThresholds: (t: BatteryThresholds) => void;
 }
 
 // Estimates are computed on the server from its own sampling history, so this
@@ -25,10 +34,13 @@ export const useBatteryStore = create<BatteryStore>()(
   persist(
     (set) => ({
       estimates: {},
+      // The schema defaults, only until the server says otherwise.
+      thresholds: { warningPct: 20, criticalPct: 5 },
       showMinutes: 120,
       applyEstimate: (est) =>
         set((state) => ({ estimates: { ...state.estimates, [est.channelId]: est } })),
       setShowMinutes: (minutes) => set({ showMinutes: Math.max(0, minutes) }),
+      setThresholds: (thresholds) => set({ thresholds }),
     }),
     {
       name: 'rfdeck-battery',
@@ -38,6 +50,9 @@ export const useBatteryStore = create<BatteryStore>()(
     }
   )
 );
+
+/** The battery levels from Settings, for batteryTone and channelStatus. */
+export const useBatteryThresholds = () => useBatteryStore((s) => s.thresholds);
 
 // "2h 15m" / "45m" / "—"
 export function formatRuntime(minutes: number | null): string {

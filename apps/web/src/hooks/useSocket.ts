@@ -6,7 +6,7 @@ import { useAlertStore } from '../stores/alertStore';
 import { useFrequencyHistoryStore } from '../stores/frequencyHistoryStore';
 import { useRfEventStore, RfEvent } from '../stores/rfEventStore';
 import { useShowStore } from '../stores/showStore';
-import { useBatteryStore, BatteryEstimate } from '../stores/batteryStore';
+import { useBatteryStore, BatteryEstimate, BatteryThresholds } from '../stores/batteryStore';
 import { getToken, serverOrigin } from '../lib/api';
 import { Channel, Alert, Show, Performer } from '@rfdeck/shared-types';
 import { usePerformerStore } from '../stores/performerStore';
@@ -129,6 +129,12 @@ function getSocket(): Socket {
   // Battery runtime projection, computed server-side from its sampling history.
   _socket.on('battery:estimate', (est: BatteryEstimate) => {
     useBatteryStore.getState().applyEstimate(est);
+  });
+
+  // The low and critical levels from Settings: on connect, and again whenever
+  // anyone saves them.
+  _socket.on('battery:thresholds', (t: BatteryThresholds) => {
+    useBatteryStore.getState().setThresholds(t);
   });
 
   // RF dropout / recovery, detected server-side and replayed on connect.

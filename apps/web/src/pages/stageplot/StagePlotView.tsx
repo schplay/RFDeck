@@ -9,6 +9,7 @@ import { useDeviceStore } from '../../stores/deviceStore';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import { channelKey } from '../../lib/channelKey';
 import { channelStatus } from '../../lib/channelStatus';
+import { useBatteryThresholds } from '../../stores/batteryStore';
 import './StagePlotView.css';
 
 /**
@@ -52,6 +53,7 @@ export default function StagePlotView() {
   const channels = useActiveChannels();
   const inventory = useDeviceStore(s => s.inventory);
   const { isChannelStale } = useConnectionHealth();
+  const thresholds = useBatteryThresholds();
 
   const [unlocked, setUnlocked] = useState(false);
   const surfaceRef = useRef<HTMLDivElement | null>(null);
@@ -228,7 +230,7 @@ export default function StagePlotView() {
 
         {placed.map(p => {
           const status = p.channel
-            ? channelStatus(p.channel, p.online, p.stale)
+            ? channelStatus(p.channel, p.online, p.stale, thresholds)
             : { label: 'NO MIC', tone: 'idle' as const };
           return (
             <div

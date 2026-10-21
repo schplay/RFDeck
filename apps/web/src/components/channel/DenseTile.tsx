@@ -3,6 +3,7 @@ import { Channel } from '@rfdeck/shared-types';
 import { VolumeX, Headphones } from 'lucide-react';
 import { Meter } from '../meters/Meter';
 import { channelStatus, batteryTone } from '../../lib/channelStatus';
+import { useBatteryThresholds } from '../../stores/batteryStore';
 import { useIntermodStore } from '../../stores/intermodStore';
 import './DenseTile.css';
 
@@ -27,7 +28,8 @@ interface Props {
 }
 
 export function DenseTile({ channel, online, stale, onOpen, onContextMenu }: Props) {
-  const { label, tone } = channelStatus(channel, online, stale);
+  const thresholds = useBatteryThresholds();
+  const { label, tone } = channelStatus(channel, online, stale, thresholds);
   const isIem = channel.role === 'iem';
   const im = useIntermodStore(s => s.report.hits.some(h => h.victimId === channel.id));
   const dim = !online || stale;
@@ -71,7 +73,7 @@ export function DenseTile({ channel, online, stale, onOpen, onContextMenu }: Pro
       <div className="dt-foot">
         <span className={`dt-status dt-status-${tone}`}>{label}</span>
         {channel.batteryPercent != null && (
-          <span className={`dt-batt batt-${batteryTone(channel.batteryPercent)}`}>
+          <span className={`dt-batt batt-${batteryTone(channel.batteryPercent, thresholds)}`}>
             {Math.round(channel.batteryPercent)}%
           </span>
         )}

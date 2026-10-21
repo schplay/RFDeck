@@ -16,6 +16,7 @@ import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '
 import { Ban, LayoutGrid, List, Grid3x3, Search, ArrowUpDown, WifiOff, Lock, Unlock } from 'lucide-react';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import { channelStatus, channelPlace, batteryTone } from '../../lib/channelStatus';
+import { useBatteryThresholds } from '../../stores/batteryStore';
 import './MonitoringDashboard.css';
 
 export default function MonitoringDashboard() {
@@ -67,6 +68,7 @@ export default function MonitoringDashboard() {
   const { handlers: dragHandlers } = useDragReorder(filteredChannels);
   const setFlipRef = useFlipAnimation(filteredChannels.map(ch => ch.id).join('|'));
   const { isConnected, isChannelStale } = useConnectionHealth();
+  const thresholds = useBatteryThresholds();
   const { live, loaded: liveLoaded, fetchLive } = useLiveStore();
   useEffect(() => { void fetchLive(); }, [fetchLive]);
   const mutesLocked = useUiStore(s => s.mutesLocked);
@@ -261,7 +263,7 @@ export default function MonitoringDashboard() {
             {filteredChannels.map(ch => {
               const dev = deviceByIp.get(ch.deviceId.split(':')[0]);
               const online = dev?.online ?? true;
-              const st = channelStatus(ch, online, isChannelStale(ch.id));
+              const st = channelStatus(ch, online, isChannelStale(ch.id), thresholds);
               return (
                 <div
                   key={ch.id}
@@ -282,7 +284,7 @@ export default function MonitoringDashboard() {
                     <div className="mini-meter" style={{ '--fill': `${online ? ch.rfLevelA : 0}%` } as any} />
                     <div className="mini-meter" style={{ '--fill': `${online ? ch.rfLevelB : 0}%` } as any} />
                   </div>
-                  <div className={`col-batt batt-${batteryTone(ch.batteryPercent)}`}>
+                  <div className={`col-batt batt-${batteryTone(ch.batteryPercent, thresholds)}`}>
                     {ch.batteryPercent != null ? Math.round(ch.batteryPercent) : '--'}%
                   </div>
                   <div className="col-actions">
