@@ -7,7 +7,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-background, #131314);
+  background: var(--color-background, #121417);
   color: var(--color-on-surface-variant, #8d8d99);
   font-size: 14px;
   padding: 24px;
@@ -35,9 +35,9 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: rgba(0, 219, 233, 0.1);
-  border: 1px solid rgba(0, 219, 233, 0.28);
-  color: var(--color-primary, #00dbe9);
+  background: rgb(var(--color-primary-rgb) / 0.1);
+  border: 1px solid rgb(var(--color-primary-rgb) / 0.28);
+  color: var(--color-primary, #3dd9e8);
 }
 
 .pg-title {
@@ -71,7 +71,7 @@
   transition: border-color 0.15s;
 }
 
-.pg-input:focus { border-color: var(--color-primary, #00dbe9); }
+.pg-input:focus { border-color: var(--color-primary, #3dd9e8); }
 
 .pg-error {
   font-size: 12.5px;
@@ -85,7 +85,7 @@
   padding: 11px 16px;
   border-radius: 8px;
   border: none;
-  background: var(--color-primary, #00dbe9);
+  background: var(--color-primary, #3dd9e8);
   color: #04202a;
   font-size: 14px;
   font-weight: 700;

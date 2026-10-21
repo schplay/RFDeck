@@ -4,14 +4,14 @@
    readable from 3–4m away in dim stage lighting.
    =================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Geist:wght@600;700;800&family=Inter:wght@400;600;700&display=swap');
+/* Fonts: bundled globally in styles/index.css. */
 
 .bs-root {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
   background: #080809;
-  color: #e5e2e3;
+  color: #e8eaed;
   font-family: 'Inter', sans-serif;
   user-select: none;
 }
@@ -33,16 +33,19 @@
 .bs-brand {
   font-family: 'Geist', sans-serif;
   font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #00dbe9;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--color-on-surface);
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .bs-brand-sub {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: #849495;
+  color: #8c929b;
   margin-left: 8px;
   vertical-align: middle;
 }
@@ -55,7 +58,7 @@
 
 .bs-hint {
   font-size: 11px;
-  color: #849495;
+  color: #8c929b;
   margin-right: 8px;
   letter-spacing: 0.03em;
 }
@@ -64,9 +67,9 @@
   width: 32px;
   height: 32px;
   border-radius: 6px;
-  border: 1px solid #3b494b;
+  border: 1px solid #2e3238;
   background: transparent;
-  color: #849495;
+  color: #8c929b;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -74,14 +77,14 @@
 }
 
 .bs-col-btn:hover {
-  border-color: #00dbe9;
-  color: #00dbe9;
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .bs-col-btn.active {
-  border-color: #00dbe9;
-  background: rgba(0, 219, 233, 0.15);
-  color: #00dbe9;
+  border-color: var(--color-primary);
+  background: rgb(var(--color-primary-rgb) / 0.15);
+  color: var(--color-primary);
 }
 
 .bs-order-btn {
@@ -95,9 +98,9 @@
   margin-left: 12px;
   padding: 6px 14px;
   border-radius: 6px;
-  border: 1px solid #3b494b;
+  border: 1px solid #2e3238;
   background: transparent;
-  color: #849495;
+  color: #8c929b;
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
@@ -105,8 +108,8 @@
 }
 
 .bs-exit-btn:hover {
-  border-color: #849495;
-  color: #e5e2e3;
+  border-color: #8c929b;
+  color: #e8eaed;
 }
 
 /* ── Grid ──────────────────────────────────────────── */
@@ -120,10 +123,10 @@
 
 /* ── Channel Card ──────────────────────────────────── */
 .bs-card {
-  background: #0e1517;
+  background: var(--color-surface);
   border-radius: 12px;
   padding: 24px 28px;
-  border: 1px solid #1e2d2e;
+  border: 1px solid var(--color-outline-variant);
   position: relative;
   overflow: hidden;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -144,12 +147,12 @@
   transition: background 0.2s ease;
 }
 
-.bs-card.active::before   { background: #4ae176; }
+.bs-card.active::before   { background: transparent; } /* calm when fine */
 .bs-card.warning::before  { background: #ffb86c; }
 .bs-card.critical::before { background: #ff5555; animation: bs-pulse-red 1s ease-in-out infinite; }
-.bs-card.muted::before    { background: #849495; }
+.bs-card.muted::before    { background: #8c929b; }
 
-.bs-card.active  { border-color: #1c3a22; box-shadow: 0 0 0 0 transparent; }
+.bs-card.active  { box-shadow: 0 0 0 0 transparent; }
 .bs-card.warning { border-color: #3d2e10; box-shadow: 0 0 24px rgba(255, 184, 108, 0.08); }
 .bs-card.critical { border-color: #3d1010; box-shadow: 0 0 32px rgba(255, 85, 85, 0.12); }
 .bs-card.muted   { border-color: #252525; opacity: 0.65; }
@@ -172,7 +175,7 @@
   font-size: clamp(22px, 3vw, 36px);
   font-weight: 700;
   line-height: 1.1;
-  color: #e5e2e3;
+  color: #e8eaed;
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -191,10 +194,10 @@
   text-transform: uppercase;
 }
 
-.bs-status-pill.active   { background: rgba(74, 225, 118, 0.15); color: #4ae176; border: 1px solid rgba(74, 225, 118, 0.3); }
+.bs-status-pill.active   { background: transparent; color: var(--color-success); border: 1px solid rgba(74, 225, 118, 0.3); }
 .bs-status-pill.warning  { background: rgba(255, 184, 108, 0.15); color: #ffb86c; border: 1px solid rgba(255, 184, 108, 0.3); }
 .bs-status-pill.critical { background: rgba(255, 85, 85, 0.15); color: #ff5555; border: 1px solid rgba(255, 85, 85, 0.4); }
-.bs-status-pill.muted    { background: rgba(132, 148, 149, 0.1); color: #849495; border: 1px solid rgba(132, 148, 149, 0.2); }
+.bs-status-pill.muted    { background: rgba(132, 148, 149, 0.1); color: #8c929b; border: 1px solid rgba(132, 148, 149, 0.2); }
 
 /* ── Frequency ───────────────────────────────────── */
 .bs-freq {
@@ -202,7 +205,7 @@
   font-size: clamp(32px, 5vw, 64px);
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #00dbe9;
+  color: var(--color-primary);
   line-height: 1;
   display: flex;
   align-items: baseline;
@@ -211,7 +214,7 @@
 
 .bs-freq-unit {
   font-size: 0.35em;
-  color: #849495;
+  color: #8c929b;
   letter-spacing: 0.04em;
   font-weight: 500;
 }
@@ -235,14 +238,16 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #849495;
+  color: #8c929b;
 }
 
 .bs-rf-bar {
   display: flex;
   gap: 3px;
   height: 10px;
-  align-items: center;
+  /* stretch, not center: the segments have no height of their own, so
+     centring them collapsed every bar to nothing and left only the numbers. */
+  align-items: stretch;
 }
 
 /* Segments and their colours come from components/meters, shared with the
@@ -252,7 +257,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   font-weight: 500;
-  color: #849495;
+  color: #8c929b;
 }
 
 /* ── Battery ─────────────────────────────────────── */
@@ -293,7 +298,7 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 14px;
   font-weight: 700;
-  color: #849495;
+  color: #8c929b;
   min-width: 40px;
   text-align: right;
 }
@@ -314,8 +319,8 @@
 }
 
 .bs-empty-icon  { font-size: 48px; }
-.bs-empty-text  { font-family: 'Geist', sans-serif; font-size: 22px; font-weight: 700; color: #849495; }
-.bs-empty-sub   { font-size: 14px; color: #849495; }
+.bs-empty-text  { font-family: 'Geist', sans-serif; font-size: 22px; font-weight: 700; color: #8c929b; }
+.bs-empty-sub   { font-size: 14px; color: #8c929b; }
 
 /* Empty state must distinguish "nothing powered on" from "lost the server" —
    on a stage-facing display those call for different responses. */

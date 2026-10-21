@@ -39,14 +39,15 @@ export function AudioMonitor() {
     <div className="audio-monitor">
       <audio ref={audioRef} autoPlay muted={isMuted} />
       <div className="audio-controls">
-        <button onClick={toggleTestTone} className="control-btn" title={isPlayingTest ? "Stop GStreamer" : "Start GStreamer Test"}>
+        <button onClick={toggleTestTone} className="control-btn" title={isPlayingTest ? "Stop the test tone" : "Play a test tone through the monitor stream"} aria-label={isPlayingTest ? "Stop test tone" : "Play test tone"}>
           {isPlayingTest ? <Square size={16} /> : <PlaySquare size={16} />}
         </button>
-        <button onClick={toggleMute} className="control-btn" title="Toggle Mute">
+        <button onClick={toggleMute} className="control-btn" title={isMuted ? "Unmute the monitor output on this device" : "Mute the monitor output on this device"} aria-label={isMuted ? "Unmute monitor" : "Mute monitor"}>
           {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
         <span className="status-text">
-          {stream ? "Stream Active" : "No Stream"}
+          {/* Says what the stream is: the audio monitor this browser plays. */}
+          {stream ? (isMuted ? "Monitor muted" : "Monitor on") : "No monitor"}
         </span>
       </div>
     </div>

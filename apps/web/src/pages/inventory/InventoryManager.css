@@ -85,7 +85,7 @@
   font-size: 13px;
   cursor: pointer;
   transition: opacity 0.15s, transform 0.1s;
-  box-shadow: 0 0 16px rgba(0, 219, 233, 0.25);
+  box-shadow: 0 0 16px rgb(var(--color-primary-rgb) / 0.25);
   white-space: nowrap;
 }
 
@@ -155,7 +155,7 @@
 
 .search-input:focus {
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(0, 219, 233, 0.15);
+  box-shadow: 0 0 0 2px rgb(var(--color-primary-rgb) / 0.15);
 }
 
 .filter-group {
@@ -225,7 +225,7 @@
 }
 
 .view-btn.active {
-  background: rgba(0, 219, 233, 0.1);
+  background: rgb(var(--color-primary-rgb) / 0.1);
   color: var(--color-primary);
 }
 

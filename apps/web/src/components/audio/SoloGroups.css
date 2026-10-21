@@ -83,7 +83,7 @@
   opacity: 1;
   color: var(--color-primary);
   border-color: var(--color-primary);
-  background: rgba(0, 219, 233, 0.12);
+  background: rgb(var(--color-primary-rgb) / 0.12);
 }
 
 .sg-count {

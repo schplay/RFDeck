@@ -7,7 +7,7 @@ import { useDeviceStore } from '../../stores/deviceStore';
 import { channelKey } from '../../lib/channelKey';
 import { useShortcuts, plainKey } from '../../lib/shortcuts';
 import { Meter as SharedMeter } from '../../components/meters/Meter';
-import { channelStatus } from '../../lib/channelStatus';
+import { channelStatus, batteryTone } from '../../lib/channelStatus';
 import { API_BASE } from '../../lib/api';
 import './MicboardView.css';
 
@@ -213,7 +213,7 @@ export default function MicboardView() {
                     <Meter value={dim ? 0 : ch.afLevel} kind="af" />
                   </div>
                   <div className="mb-foot">
-                    <span className="mb-batt">
+                    <span className={`mb-batt batt-${batteryTone(ch.batteryPercent)}`}>
                       {ch.batteryPercent === undefined ? '—' : `${Math.round(ch.batteryPercent)}%`}
                     </span>
                     <span className="mb-freq">

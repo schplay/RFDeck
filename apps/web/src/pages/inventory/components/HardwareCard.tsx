@@ -32,7 +32,9 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
     ? 'var(--color-on-surface-variant)'
     : authFailed
       ? 'var(--color-warning, #d97706)'
-      : device.online ? 'var(--color-success)' : 'var(--color-error)';
+      // Calm when fine: an online device draws no color, so the one that
+      // dropped off is the one you see.
+      : device.online ? 'transparent' : 'var(--color-error)';
 
   const StatusIcon = isInactive ? (
     <PowerOff size={16} color="var(--color-on-surface-variant)" />

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Layout, Menu, X, Keyboard, Lock, Unlock } from 'lucide-react';
+import { Activity, LayoutDashboard, Radio, Settings, Battery, Monitor, ClipboardList, Users, AlertTriangle, LayoutGrid, Layout, Menu, X, Keyboard, Lock, Unlock, type LucideIcon } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket';
 import { AudioMonitor } from '../components/audio/AudioMonitor';
 import { AlertFeed } from '../components/alerts/AlertFeed';
@@ -12,8 +12,32 @@ import { watchProfileChanges, flushProfileChanges } from '../lib/profileWatcher'
 import { StatusBar } from '../components/StatusBar';
 import { AccountMenu } from '../components/AccountMenu';
 // Bundled import so the path survives base './' and the Electron file:// build.
-import logoMark from '../assets/logo-mark.png';
+import logoMark from '../assets/logo-mark.svg';
 import './RootLayout.css';
+
+// Listed for every environment mode, Stage Plot included: hiding a nav item
+// based on which show happens to be open would make it vanish with no
+// explanation, and a seating plan is as useful for a panel as for a band.
+const NAV: { title: string; items: { to: string; label: string; icon: LucideIcon }[] }[] = [
+  { title: 'Live', items: [
+    { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/rf', label: 'RF', icon: Radio },
+    { to: '/battery', label: 'Batteries', icon: Battery },
+    { to: '/detections', label: 'Detections', icon: AlertTriangle },
+  ] },
+  { title: 'Show', items: [
+    { to: '/shows', label: 'Shows & Mic Check', icon: ClipboardList },
+    { to: '/performers', label: 'Performers', icon: Users },
+    { to: '/stage-plot', label: 'Stage Plot', icon: Layout },
+  ] },
+  { title: 'Hardware', items: [
+    { to: '/inventory', label: 'Inventory', icon: Activity },
+  ] },
+  { title: 'Displays', items: [
+    { to: '/micboard', label: 'Micboard', icon: LayoutGrid },
+    { to: '/backstage', label: 'Backstage', icon: Monitor },
+  ] },
+];
 
 export default function RootLayout() {
   const { isConnected } = useSocket();
@@ -87,64 +111,41 @@ export default function RootLayout() {
           RFDeck
           {statusDot}
         </div>
-        {/* Any link tap closes the drawer; harmless on desktop. */}
-        <LiveIndicator />
+        {/* Grouped by when you reach for them: during the show, preparing it,
+            the hardware itself, and the screens you hand to someone else.
+            Settings sits apart at the bottom — it is not a place you visit
+            mid-show. Any link tap closes the drawer; harmless on desktop. */}
         <div className="nav-links" onClick={() => setNavOpen(false)}>
-          <NavLink to="/" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <LayoutDashboard size={20} />
-            Dashboard
-          </NavLink>
-          <NavLink to="/inventory" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <Activity size={20} />
-            Inventory
-          </NavLink>
-          <NavLink to="/rf" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <Radio size={20} />
-            RF Environment
-          </NavLink>
-          <NavLink to="/battery" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <Battery size={20} />
-            Battery Management
-          </NavLink>
+          {NAV.map(section => (
+            <div className="nav-section" key={section.title}>
+              <div className="nav-section-title">{section.title}</div>
+              {section.items.map(item => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}
+                >
+                  <item.icon size={18} />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div className="nav-footer" onClick={() => setNavOpen(false)}>
           <NavLink to="/settings" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <Settings size={20} />
+            <Settings size={18} />
             Settings
-          </NavLink>
-          <NavLink to="/shows" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <ClipboardList size={20} />
-            Show & Mic Check
-          </NavLink>
-          <NavLink to="/performers" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <Users size={20} />
-            Performers
-          </NavLink>
-          <NavLink to="/detections" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <AlertTriangle size={20} />
-            Detections
-          </NavLink>
-
-          <div className="nav-divider" />
-
-          <NavLink to="/micboard" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <LayoutGrid size={20} />
-            Micboard
-          </NavLink>
-          <NavLink to="/backstage" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <Monitor size={20} />
-            Backstage View
-          </NavLink>
-          {/* Listed for every environment mode, not just Concert/Touring as the
-              README scopes it. Hiding a nav item based on which show happens to be
-              open would make it vanish with no explanation, and a seating plan is
-              just as useful for a conference panel or a worship team. */}
-          <NavLink to="/stage-plot" className={({ isActive }) => (isActive ? 'nav-link active' : 'nav-link')}>
-            <Layout size={20} />
-            Stage Plot
           </NavLink>
         </div>
       </nav>
       <main className="main-content">
         <header className="topbar-tools">
+          {/* Live or not, and which show: the one piece of global state an
+              operator must never have to hunt for. It used to sit in a small
+              box in the sidebar, truncated to "No show · si…". */}
+          <div className="topbar-live"><LiveIndicator /></div>
           <AudioMonitor />
           <div className="topbar-divider" />
           <AlertFeed />

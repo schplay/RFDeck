@@ -79,7 +79,7 @@
 .det-row + .det-row { border-top: 1px solid var(--color-surface-container-highest); }
 .det-row.flagged {
   border-left-color: var(--color-primary);
-  background: rgba(0, 219, 233, 0.04);
+  background: rgb(var(--color-primary-rgb) / 0.04);
 }
 .det-row.dismissed { opacity: 0.55; }
 

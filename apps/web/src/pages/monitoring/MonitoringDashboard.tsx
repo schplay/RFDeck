@@ -15,6 +15,7 @@ import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
 import { Ban, LayoutGrid, List, Grid3x3, Search, ArrowUpDown, WifiOff, Lock, Unlock } from 'lucide-react';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
+import { channelStatus, channelPlace, batteryTone } from '../../lib/channelStatus';
 import './MonitoringDashboard.css';
 
 export default function MonitoringDashboard() {
@@ -111,8 +112,8 @@ export default function MonitoringDashboard() {
 
       <header className="dashboard-header">
         <div className="header-left">
-          <h1>Monitoring Dashboard</h1>
-          <span className="channel-count">{filteredChannels.length} Channels</span>
+          <h1>Monitoring</h1>
+          <span className="channel-count">{filteredChannels.length} channels</span>
         </div>
         
         <div className="dashboard-toolbar">
@@ -225,6 +226,8 @@ export default function MonitoringDashboard() {
                     channel={ch}
                     deviceType={dev?.deviceType}
                     deviceOnline={dev?.online ?? true}
+                    deviceName={dev?.name}
+                    stale={isChannelStale(ch.id)}
                   />
                 </ErrorBoundary>
               </div>
@@ -258,6 +261,7 @@ export default function MonitoringDashboard() {
             {filteredChannels.map(ch => {
               const dev = deviceByIp.get(ch.deviceId.split(':')[0]);
               const online = dev?.online ?? true;
+              const st = channelStatus(ch, online, isChannelStale(ch.id));
               return (
                 <div
                   key={ch.id}
@@ -267,18 +271,18 @@ export default function MonitoringDashboard() {
                   title="Double-click for device details, right-click for actions"
                 >
                   <div className="col-status">
-                    <div className={`status-indicator ${!online ? 'offline' : ch.status.toLowerCase()}`} />
+                    <div className={`status-indicator tone-${st.tone}`} title={st.label} />
                   </div>
                   <div className="col-name">
                     <strong>{ch.name || `CH ${ch.channelIndex}`}</strong>
-                    <span>{ch.deviceId.split(':')[0]}{!online ? ' · Offline' : ''}</span>
+                    <span>{channelPlace(ch, dev?.name)}{st.tone !== 'good' ? ` · ${st.label}` : ''}</span>
                   </div>
                   <div className="col-freq">{ch.frequency > 0 ? (ch.frequency / 1000).toFixed(3) : '—'} MHz</div>
                   <div className="col-meters">
                     <div className="mini-meter" style={{ '--fill': `${online ? ch.rfLevelA : 0}%` } as any} />
                     <div className="mini-meter" style={{ '--fill': `${online ? ch.rfLevelB : 0}%` } as any} />
                   </div>
-                  <div className={`col-batt ${ch.batteryPercent && ch.batteryPercent <= 20 ? 'low' : ''}`}>
+                  <div className={`col-batt batt-${batteryTone(ch.batteryPercent)}`}>
                     {ch.batteryPercent != null ? Math.round(ch.batteryPercent) : '--'}%
                   </div>
                   <div className="col-actions">

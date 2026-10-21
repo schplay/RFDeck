@@ -7,10 +7,10 @@ import { open, expectNoCrash, goLive, standDown } from './helpers';
 // tab woke up. All of them compiled.
 
 const ROUTES: Array<{ path: string; heading: RegExp }> = [
-  { path: '/',            heading: /Monitoring Dashboard|Ready when you are/ },
+  { path: '/',            heading: /^Monitoring$|Ready when you are/ },
   { path: '/inventory',   heading: /Hardware Inventory/ },
   { path: '/rf',          heading: /RF Environment/ },
-  { path: '/battery',     heading: /Battery/ },
+  { path: '/battery',     heading: /Batteries/ },
   { path: '/settings',    heading: /Settings/i },
   { path: '/shows',       heading: /Shows/ },
   { path: '/performers',  heading: /Performers/ },
@@ -74,13 +74,13 @@ test.describe('navigating between pages', () => {
 
     for (const [label, expected] of [
       ['Inventory', /Hardware Inventory/],
-      ['RF Environment', /RF Environment/],
-      ['Battery Management', /Battery/],
+      ['RF', /RF Environment/],
+      ['Batteries', /Batteries/],
       ['Performers', /Performers/],
       ['Detections', /Detections/],
       ['Settings', /Settings/i],
     ] as const) {
-      await page.getByRole('link', { name: label }).click();
+      await page.getByRole('link', { name: label, exact: true }).click();
       await expect(page.getByText(expected).first()).toBeVisible();
       await expectNoCrash(page);
     }

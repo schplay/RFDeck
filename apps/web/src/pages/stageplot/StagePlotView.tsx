@@ -169,7 +169,7 @@ export default function StagePlotView() {
     return (
       <div className="page">
         <div className="page-header">
-          <h2><Layout size={18} /> Stage Plot</h2>
+          <h1><Layout size={20} /> Stage Plot</h1>
         </div>
         <div className="sp-empty">
           <p>No show open.</p>
@@ -186,7 +186,7 @@ export default function StagePlotView() {
   return (
     <div className="page sp-page">
       <div className="page-header">
-        <h2><Layout size={18} /> Stage Plot</h2>
+        <h1><Layout size={20} /> Stage Plot</h1>
         <div className="sp-header-actions">
           <span className="sp-show-name">
             {show.name}

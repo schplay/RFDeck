@@ -57,7 +57,7 @@ export function SpectrumCanvas({ channels, scan }: Props) {
     ctx.clearRect(0, 0, W, H);
 
     // Background
-    ctx.fillStyle = '#0a0a0b';
+    ctx.fillStyle = '#0b0c0e';
     ctx.fillRect(0, 0, W, H);
 
     // Grid lines
@@ -154,7 +154,7 @@ export function SpectrumCanvas({ channels, scan }: Props) {
       // Peak fill gradient
       const grad = ctx.createLinearGradient(cx, 8 + plotH - peakH, cx, 8 + plotH);
       const color = ch.status === 'CRITICAL' ? '255,180,171' :
-                    ch.status === 'WARNING' ? '255,167,100' : '0,219,233';
+                    ch.status === 'WARNING' ? '255,167,100' : '61,217,232';
       grad.addColorStop(0, `rgba(${color}, 0.5)`);
       grad.addColorStop(1, `rgba(${color}, 0.0)`);
 
@@ -183,6 +183,22 @@ export function SpectrumCanvas({ channels, scan }: Props) {
       ctx.arc(cx, 8 + plotH - peakH, 3, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(${color}, 1)`;
       ctx.fill();
+
+      // Which channel this is. Written vertically so neighbors a few hundred
+      // kHz apart do not overwrite each other: above the peak when there is
+      // room, otherwise up the side of its line.
+      const label = (ch.name || `CH ${ch.channelIndex}`).slice(0, 18);
+      ctx.save();
+      ctx.font = '10px Inter, sans-serif';
+      const tw = ctx.measureText(label).width;
+      const topY = 8 + plotH - peakH;
+      const fitsAbove = topY - 8 >= tw + 8;
+      ctx.translate(fitsAbove ? cx + 3 : cx + 9, fitsAbove ? topY - 7 : 8 + plotH - 4);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(232, 234, 237, 0.85)';
+      ctx.fillText(label, 0, 0);
+      ctx.restore();
     });
   }, [channels, scan]);
 

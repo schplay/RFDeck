@@ -11,9 +11,18 @@
 
 .dashboard-header {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 24px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* Title and count on one line; the toolbar gets a row of its own so neither
+   has to squeeze the other. */
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
 }
 
 .header-left h1 {
@@ -30,14 +39,19 @@
 
 .dashboard-toolbar {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
   align-items: center;
 }
 
 .search-bar {
   position: relative;
-  width: 240px;
+  flex: 0 1 280px;
+  min-width: 180px;
 }
+
+/* View switch pinned to the far right of the toolbar row. */
+.dashboard-toolbar .view-toggle { margin-left: auto; }
 
 .search-icon {
   position: absolute;
@@ -64,6 +78,8 @@
 
 .toolbar-group {
   display: flex;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
   gap: 8px;
   align-items: center;
 }
@@ -125,10 +141,10 @@
 }
 
 .dashboard-content.grid {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
-  flex-wrap: wrap;
-  align-content: flex-start;
+  align-content: start;
 }
 
 .dashboard-content.list {
@@ -187,9 +203,10 @@
   height: 10px;
   border-radius: 50%;
 }
-.status-indicator.active { background: var(--color-success); box-shadow: 0 0 8px rgba(107, 255, 143, 0.4); }
-.status-indicator.warning { background: #ff8c42; }
-.status-indicator.critical { background: var(--color-error); }
+.status-indicator.tone-good { background: var(--color-outline); }
+.status-indicator.tone-idle { background: transparent; box-shadow: inset 0 0 0 1.5px var(--color-outline); }
+.status-indicator.tone-warn { background: var(--color-warning); }
+.status-indicator.tone-crit { background: var(--color-error); }
 
 .col-meters {
   display: flex;
@@ -215,8 +232,9 @@
   border-radius: 2px;
 }
 
-.col-batt { font-family: var(--font-mono); font-size: 13px; color: var(--color-success); }
-.col-batt.low { color: var(--color-error); }
+.col-batt { font-family: var(--font-mono); font-size: 13px; color: var(--color-on-surface); }
+.col-batt.batt-warn { color: var(--color-warning); }
+.col-batt.batt-crit { color: var(--color-error); }
 
 .col-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
@@ -340,7 +358,7 @@
     flex-wrap: wrap;
     gap: 8px;
   }
-  .search-bar { width: 100%; }
+  .search-bar { width: 100%; flex: 1 1 100%; }
   .toolbar-group { flex-wrap: wrap; gap: 8px; }
 
   /* One card per row; the card itself flexes instead of holding 280px. */

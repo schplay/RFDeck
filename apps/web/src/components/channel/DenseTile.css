@@ -17,7 +17,7 @@
   user-select: none;
 }
 
-.dt-good { border-left-color: var(--color-success, #4ade80); }
+.dt-good { border-left-color: var(--color-outline-variant); }
 .dt-warn { border-left-color: var(--color-warning, #fb923c); }
 .dt-crit { border-left-color: var(--color-error, #f87171); }
 .dt-idle { border-left-color: var(--color-on-surface-variant); }
@@ -94,7 +94,7 @@
   letter-spacing: 0.04em;
 }
 
-.dt-status-good { color: var(--color-success, #4ade80); }
+.dt-status-good { color: var(--color-on-surface-variant); }
 .dt-status-warn { color: var(--color-warning, #fb923c); }
 .dt-status-crit { color: var(--color-error, #f87171); }
 .dt-status-idle { color: var(--color-on-surface-variant); }
@@ -104,7 +104,8 @@
   color: var(--color-on-surface-variant);
 }
 
-.dt-batt.is-low { color: var(--color-error, #f87171); font-weight: 700; }
+.dt-batt.batt-warn { color: var(--color-warning); font-weight: 700; }
+.dt-batt.batt-crit { color: var(--color-error, #f87171); font-weight: 700; }
 
 /* The grid the tiles sit in. auto-fill, so a wider screen gets more columns
    rather than wider tiles — the point is how many fit, not how big they are. */

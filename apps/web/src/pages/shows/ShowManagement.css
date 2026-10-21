@@ -99,8 +99,8 @@
 }
 
 .sm-show-item.active {
-  background: rgba(0, 219, 233, 0.08);
-  border-color: rgba(0, 219, 233, 0.25);
+  background: rgb(var(--color-primary-rgb) / 0.08);
+  border-color: rgb(var(--color-primary-rgb) / 0.25);
 }
 
 .sm-show-item-name {
@@ -251,7 +251,7 @@
 }
 
 .sm-tab-badge {
-  background: rgba(0, 219, 233, 0.15);
+  background: rgb(var(--color-primary-rgb) / 0.15);
   color: var(--color-primary);
   font-size: 10px;
   font-weight: 700;
@@ -299,8 +299,8 @@
 }
 
 .sm-act-btn.active {
-  background: rgba(0, 219, 233, 0.12);
-  border-color: rgba(0, 219, 233, 0.4);
+  background: rgb(var(--color-primary-rgb) / 0.12);
+  border-color: rgb(var(--color-primary-rgb) / 0.4);
   color: var(--color-primary);
 }
 
@@ -371,7 +371,7 @@
 .sm-channel-row.focused {
   background: var(--color-surface-container);
   border-color: var(--color-surface-container-highest);
-  outline: 1px solid rgba(0, 219, 233, 0.3);
+  outline: 1px solid rgb(var(--color-primary-rgb) / 0.3);
 }
 
 .sm-channel-row.checked {

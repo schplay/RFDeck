@@ -2,7 +2,7 @@ import React from 'react';
 import { Channel } from '@rfdeck/shared-types';
 import { VolumeX, Headphones } from 'lucide-react';
 import { Meter } from '../meters/Meter';
-import { channelStatus } from '../../lib/channelStatus';
+import { channelStatus, batteryTone } from '../../lib/channelStatus';
 import { useIntermodStore } from '../../stores/intermodStore';
 import './DenseTile.css';
 
@@ -71,7 +71,7 @@ export function DenseTile({ channel, online, stale, onOpen, onContextMenu }: Pro
       <div className="dt-foot">
         <span className={`dt-status dt-status-${tone}`}>{label}</span>
         {channel.batteryPercent != null && (
-          <span className={`dt-batt ${channel.batteryPercent <= 20 ? 'is-low' : ''}`}>
+          <span className={`dt-batt batt-${batteryTone(channel.batteryPercent)}`}>
             {Math.round(channel.batteryPercent)}%
           </span>
         )}

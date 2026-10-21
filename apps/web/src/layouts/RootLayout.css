@@ -18,25 +18,49 @@
   display: flex;
   align-items: center;
   padding: 0 24px;
-  font-family: var(--font-display);
-  font-weight: 700;
+  font-family: 'Geist', var(--font-body);
+  font-weight: 600;
   font-size: 20px;
-  color: var(--color-primary);
+  letter-spacing: -0.03em;
+  color: var(--color-on-surface);
   border-bottom: 1px solid var(--color-surface-container-high);
 }
 
 .nav-links {
   display: flex;
   flex-direction: column;
-  padding: 16px;
-  gap: 8px;
+  padding: 12px 12px 8px;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-section-title {
+  padding: 0 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-outline);
+}
+
+.nav-footer {
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--color-surface-container-high);
 }
 
 .nav-link {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 9px 12px;
   border-radius: var(--radius-md);
   color: var(--color-on-surface-variant);
   font-weight: 500;
@@ -49,7 +73,7 @@
 }
 
 .nav-link.active {
-  background-color: rgba(0, 219, 233, 0.1);
+  background-color: rgb(var(--color-primary-rgb) / 0.1);
   color: var(--color-primary);
 }
 
@@ -96,13 +120,20 @@
 /* Header tools (was inline styles; classed so mobile can restyle it). */
 .topbar-tools {
   flex-shrink: 0;
-  padding: 16px 24px;
+  padding: 12px 24px;
   display: flex;
   justify-content: flex-end;
   gap: 16px;
   align-items: center;
   border-bottom: 1px solid var(--color-surface-container-high);
 }
+/* Live state takes the left of the top bar and pushes the tools right. */
+.topbar-live {
+  margin-right: auto;
+  min-width: 0;
+  display: flex;
+}
+
 .topbar-divider {
   width: 1px;
   height: 24px;
@@ -170,13 +201,22 @@
     background: rgba(0, 0, 0, 0.5);
   }
 
-  .topbar-tools { padding: 10px 12px; }
+  /* Live state on its own full-width row, tools beneath it: squeezed into one
+     row they drew over each other. */
+  .topbar-tools {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+  }
+  .topbar-live { flex: 1 1 100%; margin-right: 0; }
+  .topbar-live .live-indicator { flex: 1; }
+  .topbar-live .live-text { min-width: 0; }
+  .topbar-tools .topbar-keys { display: none; } /* no keyboard on a phone */
 }
 
 .brand-logo {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
   margin-right: 10px;
   display: block;
 }

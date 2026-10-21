@@ -7,7 +7,10 @@ import { useSocket } from '../../hooks/useSocket';
 import { useShortcuts } from '../../lib/shortcuts';
 import { Meter } from '../../components/meters/Meter';
 import { Channel } from '@rfdeck/shared-types';
+import { channelStatus, batteryTone, StatusTone } from '../../lib/channelStatus';
+import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import './BackstageView.css';
+import logoMark from '../../assets/logo-mark.svg';
 
 function batteryIcon(pct?: number): string {
   if (pct === undefined) return '🔋';
@@ -16,12 +19,14 @@ function batteryIcon(pct?: number): string {
   return '⚡';
 }
 
-function statusLabel(ch: Channel): string {
-  if (ch.isMuted) return 'MUTED';
-  if (ch.isTxMuted) return 'TX MUTED';
-  if (ch.status === 'CRITICAL') return 'DROPOUT';
-  if (ch.status === 'WARNING') return 'LOW SIGNAL';
-  return 'ON AIR';
+// Status words and tones come from the shared channelStatus, so this screen,
+// the dashboard and the Micboard say the same thing about the same channel.
+const TONE_CLASS: Record<StatusTone, string> = {
+  good: 'active', warn: 'warning', crit: 'critical', idle: 'muted',
+};
+function statusFor(ch: Channel, stale: boolean) {
+  const s = channelStatus(ch, true, stale);
+  return { label: s.label, cls: TONE_CLASS[s.tone] };
 }
 
 // Both bars are the shared meter. This view used to carry its own thresholds
@@ -39,6 +44,7 @@ function afBar(level: number) {
 export default function BackstageView() {
   const channels = useActiveChannels();
   const { socket, isConnected } = useSocket();
+  const { isChannelStale } = useConnectionHealth();
 
   // Subscribe to channel telemetry
   const updateChannel = useChannelStore((s) => s.updateChannel);
@@ -86,7 +92,7 @@ export default function BackstageView() {
         </div>
       )}
       <div className="bs-topbar">
-        <div className="bs-brand">RFDeck <span className="bs-brand-sub">BACKSTAGE</span></div>
+        <div className="bs-brand"><img src={logoMark} alt="" width={24} height={24} />RFDeck <span className="bs-brand-sub">BACKSTAGE</span></div>
         <div className="bs-controls">
           <span className="bs-hint">{dragEnabled ? 'Drag cards to reorder' : 'Press 1–4 to change columns'}</span>
           <button
@@ -111,8 +117,7 @@ export default function BackstageView() {
 
       <div className="bs-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
         {displayChannels.map((ch) => {
-          const st = statusLabel(ch);
-          const stClass = (ch.isMuted || ch.isTxMuted) ? 'muted' : ch.status === 'CRITICAL' ? 'critical' : ch.status === 'WARNING' ? 'warning' : 'active';
+          const { label: st, cls: stClass } = statusFor(ch, isChannelStale(ch.id));
           return (
             <div key={ch.id} ref={setFlipRef(ch.id)} className={`bs-card ${stClass}`} {...dragHandlers(ch)}>
               <div className="bs-card-header">
@@ -144,7 +149,7 @@ export default function BackstageView() {
               </div>
 
               {ch.batteryPercent !== undefined && (
-                <div className={`bs-battery ${ch.batteryPercent <= 5 ? 'bs-batt-critical' : ch.batteryPercent <= 20 ? 'bs-batt-low' : ''}`}>
+                <div className={`bs-battery ${{ crit: 'bs-batt-critical', warn: 'bs-batt-low' }[batteryTone(ch.batteryPercent) as 'crit' | 'warn'] ?? ''}`}>
                   <div className="bs-batt-bar-track">
                     <div
                       className="bs-batt-bar-fill"

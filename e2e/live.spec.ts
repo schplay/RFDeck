@@ -24,7 +24,7 @@ test.describe('Go Live', () => {
     await page.getByRole('button', { name: /Go Live/ }).click();
 
     // The dashboard replaces the panel, and the sidebar says so.
-    await expect(page.getByRole('heading', { name: 'Monitoring Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Monitoring' })).toBeVisible();
     await expect(page.locator('.live-indicator')).toBeVisible();
     await expect(page.getByText('LIVE', { exact: true })).toBeVisible();
     await expectNoCrash(page);

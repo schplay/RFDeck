@@ -74,12 +74,15 @@
   min-height: 0;
   border-radius: 10px;
   overflow: hidden;
-  background: #15151a;
-  border: 2px solid rgba(255, 255, 255, 0.06);
+  background: var(--color-surface);
+  border: 2px solid var(--color-outline-variant);
 }
-.mb-tone-good { border-color: rgba(107, 255, 143, 0.35); }
-.mb-tone-warn { border-color: rgba(217, 119, 6, 0.55); }
-.mb-tone-crit { border-color: var(--color-error); }
+/* Calm when fine. A wall display is read from across a room, so a problem
+   changes the whole tile — border and ground — not just a word in its corner. */
+.mb-tone-good { border-color: var(--color-outline-variant); }
+.mb-tone-idle { border-color: var(--color-outline-variant); }
+.mb-tone-warn { border-color: var(--color-warning); background: color-mix(in srgb, var(--color-warning) 10%, var(--color-surface)); }
+.mb-tone-crit { border-color: var(--color-error); background: color-mix(in srgb, var(--color-error) 14%, var(--color-surface)); }
 .mb-tile.is-dim { opacity: 0.45; }
 
 .mb-photo {
@@ -122,8 +125,8 @@
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.55);
 }
-.mb-status-good { color: #6bff8f; }
-.mb-status-warn { color: #ffb444; }
+.mb-status-good { color: var(--color-success); }
+.mb-status-warn { color: var(--color-warning); }
 .mb-status-crit { color: #ff6b6b; background: rgba(120, 0, 0, 0.6); }
 .mb-status-idle { color: rgba(255, 255, 255, 0.6); }
 .mb-iem {
@@ -183,11 +186,13 @@
   display: flex;
   justify-content: space-between;
   font-family: var(--font-mono, monospace);
-  font-size: clamp(9px, 0.95vw, 13px);
-  color: rgba(255, 255, 255, 0.68);
+  font-size: clamp(11px, 1.15vw, 16px);
+  color: rgba(255, 255, 255, 0.78);
   margin-top: 1px;
 }
 .mb-batt { font-weight: 700; }
+.mb-batt.batt-warn { color: var(--color-warning); }
+.mb-batt.batt-crit { color: var(--color-error); }
 
 .mb-empty {
   flex: 1;

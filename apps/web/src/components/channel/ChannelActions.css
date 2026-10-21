@@ -10,7 +10,10 @@
   gap: 6px;
 }
 
-.cs-btn {
+/* Scoped under .cs-actions on purpose: a page stylesheet's bare
+   .btn-secondary (Inventory has one) used to win on load order and fatten the
+   padding until every label was cut to "M…". */
+.cs-actions .cs-btn {
   min-width: 0;
   padding: 7px 6px;
   border-radius: var(--radius-sm);
@@ -47,13 +50,13 @@
 }
 
 .cs-btn.btn-primary {
-  background: rgba(0, 219, 233, 0.1);
-  border: 1px solid rgba(0, 219, 233, 0.3);
+  background: rgb(var(--color-primary-rgb) / 0.1);
+  border: 1px solid rgb(var(--color-primary-rgb) / 0.3);
   color: var(--color-primary);
 }
 
 .cs-btn.btn-primary:hover {
-  background: rgba(0, 219, 233, 0.2);
+  background: rgb(var(--color-primary-rgb) / 0.2);
 }
 
 /* Listening: filled, unmistakably "on". The idle button is the quiet one. */
@@ -129,4 +132,10 @@
   width: auto;
   padding: 0 6px;
   font-size: 10px;
+}
+
+/* A card too narrow for words keeps the icons; the labels stay in the
+   tooltips and aria-labels. */
+@container channel-card (max-width: 240px) {
+  .cs-actions:not(.is-compact) .cs-btn-label { display: none; }
 }

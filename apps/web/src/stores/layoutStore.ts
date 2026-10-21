@@ -44,7 +44,10 @@ export const useLayoutStore = create<LayoutStore>()(
       orderMode: 'alpha',
       customOrder: [],
       backstageCols: 2,
-      dashboardView: 'grid',
+      // A phone starts on the dense grid: one card per screen meant scrolling
+      // past every healthy channel to find the one that was not. Only the first
+      // visit — after that, whatever the operator chose is remembered.
+      dashboardView: (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 768px)').matches) ? 'dense' : 'grid',
       soloGroups: {},
       setOrderMode: (orderMode) => set({ orderMode }),
       setCustomOrder: (customOrder) => set({ customOrder }),

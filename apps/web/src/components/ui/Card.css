@@ -4,8 +4,8 @@
 }
 
 .rfdeck-card-default {
-  background-color: #161618;
-  border: 1px solid #262629;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-outline-variant);
 }
 
 .rfdeck-card-glass {

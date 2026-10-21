@@ -14,7 +14,8 @@ export function LiveIndicator() {
   // Standing down stops tracking, recording and detection for the whole rig.
   // If anything belongs behind the lock, this does.
   const surfaceLocked = useSurfaceLocked();
-  if (!live) return null;
+  // Not live is a state too, and saying so is what makes LIVE mean something.
+  if (!live) return <div className="live-standby" title="Nothing is being tracked or recorded. Go live from the Dashboard.">NOT LIVE</div>;
 
   const since = startedAt
     ? new Date(startedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })

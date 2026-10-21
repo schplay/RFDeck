@@ -1,11 +1,12 @@
 import React from 'react';
 import { Card } from '../ui/Card';
 import { Channel } from '@rfdeck/shared-types';
-import { Mic, Headphones, AlertTriangle, AlertCircle, VolumeX, WifiOff } from 'lucide-react';
+import { Mic, Headphones, WifiOff } from 'lucide-react';
 import { useSocket } from '../../hooks/useSocket';
 import { ChannelActions } from './ChannelActions';
 import { useIntermodStore, IntermodHit } from '../../stores/intermodStore';
 import { Meter } from '../meters/Meter';
+import { channelStatus, channelPlace, batteryTone } from '../../lib/channelStatus';
 import './ChannelStrip.css';
 
 /**
@@ -33,9 +34,13 @@ interface ChannelStripProps {
   channel: Channel;
   deviceType?: 'input' | 'output';
   deviceOnline?: boolean;
+  /** The receiver's inventory name, for the "Vocal rack · Ch 3" line. */
+  deviceName?: string | null;
+  /** No recent telemetry for this channel. */
+  stale?: boolean;
 }
 
-export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, deviceType = 'input', deviceOnline = true }) => {
+export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, deviceType = 'input', deviceOnline = true, deviceName, stale = false }) => {
   const { socket, isConnected } = useSocket();
   // Products from the rig's own transmitters that land on this channel.
   const imHits = useIntermodStore(s => s.report.hits.filter(h => h.victimId === channel.id));
@@ -46,9 +51,14 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
   // channel's RF, and the two must not be able to disagree.
   const isOutput = channel.role === 'iem' || deviceType === 'output';
 
-  const statusBorder = !deviceOnline ? 'error'
-                     : channel.status === 'ACTIVE' ? 'success'
-                     : channel.status === 'WARNING' ? 'warning' : 'error';
+  // One answer for "is this channel a problem", shared with the list, the
+  // dense grid, the Micboard and Backstage. A healthy card stays neutral: with
+  // every card outlined in green, the one that needed attention did not stand
+  // out from the thirty that did not.
+  const status = channelStatus(channel, deviceOnline, stale);
+  const statusBorder = status.tone === 'crit' ? 'error'
+                     : status.tone === 'warn' ? 'warning' : 'default';
+  const place = channelPlace(channel, deviceName);
 
   // The shared meter, with this card's segment count. Thresholds, ballistics,
   // peak hold and colours all come from the meter settings rather than being
@@ -58,17 +68,13 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
     <Meter value={level} kind={type} segments={10} orientation="vertical" className="meter-stack" />
   );
 
-  const StatusIcon = () => {
-    if (!deviceOnline) return <WifiOff size={18} className="text-muted" />;
-    if (channel.status === 'CRITICAL') return <AlertCircle size={18} className="text-error" />;
-    // A performer's own mute switch is a state, not a problem — showing a
-    // warning triangle for it sent operators hunting for a fault.
-    if (channel.isTxMuted) return <VolumeX size={18} className="text-muted" aria-label="Muted at the transmitter" />;
-    if (channel.status === 'WARNING') return <AlertTriangle size={18} className="text-warning" />;
-    return isOutput
-      ? <Headphones size={18} className="text-primary" />
-      : <Mic size={18} className="text-primary" />;
-  };
+  // Quiet when fine: the role icon in gray. Otherwise the one word that says
+  // what is wrong, in the color of how wrong it is.
+  const StatusMark = () => status.tone === 'good'
+    ? (isOutput
+        ? <Headphones size={18} className="text-muted" aria-label="IEM transmitter" />
+        : <Mic size={18} className="text-muted" aria-label="Microphone" />)
+    : <span className={`cs-status cs-status-${status.tone}`}>{status.label}</span>;
 
   // Offline overlay — device disconnected, show stale data dimmed with a banner
   if (!deviceOnline) {
@@ -81,7 +87,7 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
         <div className="cs-header cs-header-dimmed">
           <div>
             <h3 className="cs-title">{channel.name || `CH ${channel.channelIndex}`}</h3>
-            <p className="cs-subtitle">{channel.deviceId.split(':')[0]}</p>
+            <p className="cs-subtitle">{place}</p>
           </div>
           {isOutput ? <Headphones size={18} className="text-muted" /> : <Mic size={18} className="text-muted" />}
         </div>
@@ -109,19 +115,28 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
       <div className="cs-header">
         <div>
           <h3 className="cs-title">{channel.name || `CH ${channel.channelIndex}`}</h3>
-          <p className="cs-subtitle">{channel.deviceId.split(':')[0]}</p>
+          <p className="cs-subtitle">{place}</p>
         </div>
-        <StatusIcon />
+        <StatusMark />
       </div>
 
       <div className="cs-body">
         <div className="cs-meters">
-          <div className="meter-label">{isOutput ? 'TX' : 'A'}</div>
-          {renderMeter(channel.rfLevelA, 'rf')}
-          {renderMeter(channel.rfLevelB, 'rf')}
+          {/* Each meter labeled underneath, where the eye lands after the
+              level — A and B are the two diversity antennas. */}
+          <div className="cs-meter-col">
+            {renderMeter(channel.rfLevelA, 'rf')}
+            <span className="cs-meter-tag">{isOutput ? 'TX' : 'A'}</span>
+          </div>
+          <div className="cs-meter-col">
+            {renderMeter(channel.rfLevelB, 'rf')}
+            <span className="cs-meter-tag">{isOutput ? '' : 'B'}</span>
+          </div>
           <div className="meter-spacer" />
-          <div className="meter-label">{isOutput ? 'MON' : 'AF'}</div>
-          {renderMeter(channel.afLevel, 'af')}
+          <div className="cs-meter-col">
+            {renderMeter(channel.afLevel, 'af')}
+            <span className="cs-meter-tag">{isOutput ? 'MON' : 'AF'}</span>
+          </div>
         </div>
 
         <div className="cs-data">
@@ -138,7 +153,7 @@ export const ChannelStrip: React.FC<ChannelStripProps> = React.memo(({ channel, 
               <span className="cs-im" title={intermodTitle(imHits)}>IM</span>
             )}
           </div>
-          <div className={`cs-batt ${channel.batteryPercent && channel.batteryPercent <= 20 ? 'batt-low' : ''}`}>
+          <div className={`cs-batt batt-${batteryTone(channel.batteryPercent)}`}>
             {channel.batteryPercent != null ? Math.round(channel.batteryPercent) : '--'}%
             <div className="batt-icon" />
           </div>
