@@ -577,10 +577,21 @@ export function DeviceDrawer({ device, onClose, initialSection = 'device' }: Pro
                       Remove
                     </button>
                     <div className="footer-actions-right">
-                      <button className="btn-secondary-sm" onClick={handleIdentify} disabled={!device.online}>
-                        <Zap size={14} />
-                        Identify
-                      </button>
+                      {/* Only where the hardware can flash: G3/G4, QLX-D and the
+                          PSM1000 have no command for it, and a button that does
+                          nothing is worse than none. Unknown until the device has
+                          connected, so it stays (disabled) until then. */}
+                      {device.canIdentify !== false && (
+                        <button
+                          className="btn-secondary-sm"
+                          onClick={handleIdentify}
+                          disabled={!device.online}
+                          title="Make the device flash so you can find it in the rack"
+                        >
+                          <Zap size={14} />
+                          Identify
+                        </button>
+                      )}
                       <button className="btn-primary-sm">
                         <Radio size={14} />
                         View Channels

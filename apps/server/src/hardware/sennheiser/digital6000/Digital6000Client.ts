@@ -247,6 +247,8 @@ export class Digital6000Client extends EventEmitter implements HardwareClient {
     return true;
   }
 
+  readonly canIdentify = true;
+
   async identify(): Promise<boolean> {
     if (!this.connected) return false;
     // "/rx1/identify" exists per channel; identifying channel 1 flashes the

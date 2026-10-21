@@ -913,7 +913,7 @@ export class DeviceManagerService extends EventEmitter {
         this.lostTimers.delete(ip);
       }
       this.genuinelyOnlineIps.add(ip);
-      this.emit('device:online', { ip, port });
+      this.emit('device:online', { ip, port, canIdentify: client.canIdentify });
 
       // A return after an announced loss goes in the event log too, so the
       // record shows the outage's length rather than only its start.
@@ -2593,9 +2593,9 @@ export class DeviceManagerService extends EventEmitter {
     return { at: Date.now(), devices };
   }
 
-  getOnlineDevices(): Array<{ ip: string; port: number }> {
+  getOnlineDevices(): Array<{ ip: string; port: number; canIdentify: boolean }> {
     const seen = new Set<string>();
-    const result: Array<{ ip: string; port: number }> = [];
+    const result: Array<{ ip: string; port: number; canIdentify: boolean }> = [];
     for (const [id, client] of this.clients.entries()) {
       if (!client.isConnected) continue;
       const baseId = id.replace(/-legacy$/, '');
@@ -2604,7 +2604,7 @@ export class DeviceManagerService extends EventEmitter {
       const colonIdx = baseId.lastIndexOf(':');
       const ip   = baseId.slice(0, colonIdx);
       const port = parseInt(baseId.slice(colonIdx + 1), 10);
-      result.push({ ip, port });
+      result.push({ ip, port, canIdentify: client.canIdentify });
     }
     return result;
   }

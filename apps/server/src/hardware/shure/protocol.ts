@@ -104,6 +104,15 @@ export interface FamilySpec {
    * documents say nothing of the sort.
    */
   terminator?: string;
+
+  /**
+   * Whether the device can be told to identify itself with `< SET FLASH ON >`.
+   * Documented in the Axient Digital (v4, 2019), ULX-D (v1.0, 2022) and SLX-D
+   * (v2, 2020) command-string documents: "Controls the flash to identify a
+   * device or channel." No QLX-D document has been found, and the PSM1000's
+   * command table has no FLASH, so neither claims it.
+   */
+  canIdentify?: boolean;
 }
 
 export const FAMILIES: Record<ShureFamily, FamilySpec> = {
@@ -123,6 +132,7 @@ export const FAMILIES: Record<ShureFamily, FamilySpec> = {
       quality:     'CHAN_QUALITY',
     },
     maxChannels: 4,
+    canIdentify: true,
   },
   ulxd: {
     family: 'ulxd',
@@ -137,6 +147,7 @@ export const FAMILIES: Record<ShureFamily, FamilySpec> = {
       // rfLevel, audioLevel and antenna deliberately absent — see FamilySpec.
     },
     maxChannels: 4,
+    canIdentify: true,
   },
   slxd: {
     family: 'slxd',
@@ -155,6 +166,7 @@ export const FAMILIES: Record<ShureFamily, FamilySpec> = {
     // "The character x ... can be ASCII numbers 0 through 4", but the table
     // that follows lists only 0 (all channels) and 1, 2 (individual).
     maxChannels: 2,
+    canIdentify: true,
   },
   p10t: {
     family: 'p10t',
@@ -733,6 +745,15 @@ export function setMute(channel: number, muted: boolean, family: ShureFamily): s
     ? (muted ? '1' : '0')
     : (muted ? 'ON' : 'OFF');
   return wrap(`SET ${channel} ${param} ${value}`, family);
+}
+
+/**
+ * Make the whole device flash so someone at the rack can find it: a Device
+ * Identify, with no channel index. It stops on its own. Null where the family
+ * has no documented command.
+ */
+export function identifyDevice(family: ShureFamily): string | null {
+  return FAMILIES[family].canIdentify ? wrap('SET FLASH ON', family) : null;
 }
 
 /** Frequency is set in kHz, without the leading-zero padding a REP carries. */

@@ -162,8 +162,9 @@ function getSocket(): Socket {
   });
 
   // Device (from inventory) successfully polled/connected
-  _socket.on('device:online', (device: { ip: string; port: number }) => {
-    useDeviceStore.getState().markDeviceOnline(device.ip, device.port);
+  _socket.on('device:online', (device: { ip: string; port: number; canIdentify?: boolean }) => {
+    useDeviceStore.getState().markDeviceOnline(device.ip, device.port,
+      device.canIdentify === undefined ? undefined : { canIdentify: device.canIdentify });
   });
 
   // Device lost from network — mark offline but keep channel data so the

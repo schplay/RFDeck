@@ -20,6 +20,8 @@ export interface InventoryDevice {
   // device counts as online — it answers — yet no channel data will arrive
   // until this is fixed, so it is shown as its own condition, not as healthy.
   authFailed?: string | null;
+  /** Whether the connected device can flash to identify itself. Unknown until it connects. */
+  canIdentify?: boolean;
   deviceType: DeviceType;
   // Frequency coordination: the receiver's band and who said so. Reported
   // by the hardware where it can be; declared by the operator where not.
@@ -117,9 +119,12 @@ export const useDeviceStore = create<DeviceState>()((set, get) => ({
       const data = await res.json();
       // Apply any online status that arrived via socket before this fetch completed
       const onlineSet = get()._onlineSet;
+      // What the live connection reported is not in the database; keep it.
+      const previous = new Map(get().inventory.map(d => [d.ip, d]));
       set({
         inventory: data.map((d: any) => ({
           ...d,
+          canIdentify: previous.get(d.ip)?.canIdentify,
           online: onlineSet.has(`${d.ip}:${d.port}`) || onlineSet.has(d.ip),
           deviceType: d.deviceType ?? 'input',
           active: d.active ?? true,

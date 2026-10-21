@@ -1370,6 +1370,8 @@ export class SSCClient extends EventEmitter {
     }
   }
 
+  readonly canIdentify = true;
+
   async identify(): Promise<boolean> {
     return this.sendControl('device/identity/flash', true);
   }

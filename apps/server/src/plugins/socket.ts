@@ -79,8 +79,8 @@ export default fp(async (fastify, opts) => {
     });
   });
 
-  deviceManager.on('device:online', (device: { ip: string; port: number }) => {
-    io.emit('device:online', { ip: device.ip, port: device.port });
+  deviceManager.on('device:online', (device: { ip: string; port: number; canIdentify: boolean }) => {
+    io.emit('device:online', { ip: device.ip, port: device.port, canIdentify: device.canIdentify });
   });
 
   deviceManager.on('device:lost', (device: { ip: string; port: number }) => {

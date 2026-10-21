@@ -379,6 +379,37 @@ describe('ShureClient', () => {
     expect(tree.rx1!.mute).toBe(true);
   });
 
+  // Identify: the FLASH command the Axient Digital, ULX-D and SLX-D documents
+  // define. QLX-D and PSM1000 have none documented and must say so.
+  for (const { family, model, channels } of [
+    { family: 'axtd', model: 'AD4D', channels: 2 },
+    { family: 'ulxd', model: 'ULXD4D', channels: 2 },
+    { family: 'slxd', model: 'SLXD4D', channels: 2 },
+  ] as const) {
+    it(`identifies ${model} with a Device Identify`, async () => {
+      const { client, device } = await connect({ family, model, channels });
+      client.startPolling();
+      await nextState(client, t => !!t.rx1?.name);
+
+      expect(await client.identify()).toBe(true);
+      expect(await receivedCommand(device, '< SET FLASH ON >')).toBe(true);
+    });
+  }
+
+  for (const { family, model, channels } of [
+    { family: 'qlxd', model: 'QLXD4', channels: 1 },
+    { family: 'p10t', model: 'P10T', channels: 2 },
+  ] as const) {
+    it(`reports that ${model} cannot identify, and sends nothing`, async () => {
+      const { client, device } = await connect({ family, model, channels });
+      client.startPolling();
+      await nextState(client, t => !!t.rx1?.name);
+
+      expect(await client.identify()).toBe(false);
+      expect(device.received.some(m => m.includes('FLASH'))).toBe(false);
+    });
+  }
+
   it('never asks a PSM1000 for ALL, which it does not have', async () => {
     const { client, device } = await connect({ family: 'p10t', model: 'P10T', channels: 2 });
     client.startPolling();

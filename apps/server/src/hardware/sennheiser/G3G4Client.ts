@@ -392,6 +392,9 @@ export class G3G4Client extends EventEmitter {
     }
   }
 
+  // MCP has no identify command.
+  readonly canIdentify = false;
+
   async identify(): Promise<boolean> { return false; }
 
   /**

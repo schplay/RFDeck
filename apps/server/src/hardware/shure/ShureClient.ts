@@ -11,6 +11,7 @@ import {
   parseFrequencyKhz, audioToDbfs, rssiToPercent, iemMeterToPercent,
   getAll, getEveryChannelParam, getDeviceParam,
   setMeterRate, setMute as buildSetMute, setFrequency as buildSetFrequency,
+  identifyDevice,
 } from './protocol';
 
 // Shure receivers over the "command strings" protocol: ASCII in angle brackets
@@ -511,10 +512,23 @@ export class ShureClient extends EventEmitter implements HardwareClient {
   }
 
   /**
-   * Axient has no "flash the display" command over this protocol, so the
-   * button reports that nothing happened rather than appearing to work.
+   * Flash the device so it can be found in the rack. Axient Digital, ULX-D and
+   * SLX-D document `< SET FLASH ON >`; QLX-D and the PSM1000 have no documented
+   * command, so for them this reports that nothing happened rather than
+   * appearing to work.
    */
+  get canIdentify(): boolean {
+    return identifyDevice(this.family) !== null;
+  }
+
   async identify(): Promise<boolean> {
-    return false;
+    if (!this.connected) return false;
+    const command = identifyDevice(this.family);
+    if (command === null) {
+      log.warn(`[Shure] ${this.ip} is ${this.spec.label}, which has no documented identify command.`);
+      return false;
+    }
+    this.write(command);
+    return true;
   }
 }

@@ -127,6 +127,13 @@ export interface HardwareClient extends EventEmitter {
    */
   identify(): Promise<boolean>;
 
+  /**
+   * Whether identify() can do anything on this device. Sent to clients with
+   * the device's online status, so the app offers an Identify button only
+   * where pressing it does something.
+   */
+  readonly canIdentify: boolean;
+
   // ── Optional capabilities ──
   //
   // Present only on clients whose hardware supports them. Callers check for
