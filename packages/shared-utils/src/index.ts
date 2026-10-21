@@ -17,3 +17,4 @@
 export * from './frequency.js';
 export * from './battery.js';
 export * from './stagePlot.js';
+export * from './manufacturers.js';

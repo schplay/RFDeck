@@ -7,6 +7,7 @@ import { findIntermodHits, intermodSignature, IntermodReport } from '../intermod
 import { EventEmitter } from 'events';
 import { Server } from 'socket.io';
 import { Device, Channel } from '@rfdeck/shared-types';
+import { isUnsupportedManufacturer } from '@rfdeck/shared-utils';
 import { prisma } from '../../db';
 import { getMacByIp, isDirectlyAttached } from '../../utils/arp';
 import {
@@ -559,6 +560,15 @@ export class DeviceManagerService extends EventEmitter {
     // Slots the operator has said are empty. Read before the first poll, so a
     // disabled slot never produces a card even momentarily.
     this.disabledSlots.set(id, DeviceManagerService.parseSlots((device as any).disabledSlots));
+
+    // A brand RFDeck cannot talk to is never contacted. Any client started for
+    // it would never connect, and a device that never connects counts as
+    // missing, which kept the recovery scan sweeping the network for as long
+    // as the row existed. The app shows these rows as not supported.
+    if (isUnsupportedManufacturer(device.manufacturer)) {
+      log.info(`[DeviceManager] Not contacting ${device.name ?? id}: RFDeck does not support ${device.manufacturer} devices`);
+      return;
+    }
 
     // Shure speaks a different protocol on a different port, and there is no
     // probe chain to fall into: the manufacturer on the inventory row decides.
@@ -2413,9 +2423,12 @@ export class DeviceManagerService extends EventEmitter {
     try {
       const rows = await prisma.inventoryDevice.findMany({
         where: { active: true },
-        select: { ip: true },
+        select: { ip: true, manufacturer: true },
       });
-      this.discovery.setSearchHints(rows.map(r => r.ip));
+      // A brand RFDeck cannot talk to is never contacted, so its address is no
+      // reason to widen the sweep.
+      this.discovery.setSearchHints(
+        rows.filter(r => !isUnsupportedManufacturer(r.manufacturer)).map(r => r.ip));
     } catch (err: any) {
       // A scan of the interface subnets alone is still better than no scan.
       log.debug(`[DeviceManager] Could not read inventory for search hints: ${err?.message}`);

@@ -2,6 +2,7 @@ import React from 'react';
 import { CheckCircle, XCircle, PowerOff, Ban } from 'lucide-react';
 import { InventoryDevice } from '../../../stores/deviceStore';
 import { useSurfaceLocked, LOCKED_REASON } from '../../../stores/uiStore';
+import { isUnsupportedManufacturer } from '@rfdeck/shared-utils';
 import './HardwareCard.css';
 
 
@@ -17,18 +18,22 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
   // Inactive devices are intentionally powered off — show them as dimmed/neutral
   // rather than as an error state, so real offline faults still stand out.
   const isInactive = device.active === false;
+  // A brand RFDeck cannot talk to. The server never contacts it, so it is
+  // neither online nor a fault, and is drawn neutral like an inactive device.
+  const unsupported = !isInactive && isUnsupportedManufacturer(device.manufacturer);
+  const UNSUPPORTED_TITLE = `RFDeck cannot monitor ${device.manufacturer} devices, so it does not contact this one.`;
   // Reachable but refusing the password: a third state between online and
   // offline. Shown as a warning rather than green, because green sent the
   // operator to the dashboard looking for cards that could never appear.
   const authFailed = !isInactive && device.online && !!device.authFailed;
-  const borderColor = isInactive
+  const borderColor = isInactive || unsupported
     ? 'rgba(132, 148, 149, 0.2)'
     : authFailed
       ? 'rgba(217, 119, 6, 0.3)'
       : device.online
         ? 'rgba(107, 255, 143, 0.2)'
         : 'rgba(255, 180, 171, 0.2)';
-  const topBarColor = isInactive
+  const topBarColor = isInactive || unsupported
     ? 'var(--color-on-surface-variant)'
     : authFailed
       ? 'var(--color-warning, #d97706)'
@@ -38,6 +43,8 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
 
   const StatusIcon = isInactive ? (
     <PowerOff size={16} color="var(--color-on-surface-variant)" />
+  ) : unsupported ? (
+    <Ban size={16} color="var(--color-on-surface-variant)" aria-label="Not supported" />
   ) : authFailed ? (
     <Ban size={16} color="var(--color-warning, #d97706)" />
   ) : device.online ? (
@@ -73,6 +80,7 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
           <span className="card-name">
             {device.name}
             {isInactive && <span className="inactive-tag">Inactive</span>}
+            {unsupported && <span className="inactive-tag" title={UNSUPPORTED_TITLE}>Not supported</span>}
             {authFailed && <span className="auth-tag" title={device.authFailed ?? undefined}>Password refused</span>}
           </span>
           <span className="card-model">{device.manufacturer} · {device.model}</span>
@@ -110,6 +118,7 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
             <h3 className="card-name">
               {device.name}
               {isInactive && <span className="inactive-tag">Inactive</span>}
+            {unsupported && <span className="inactive-tag" title={UNSUPPORTED_TITLE}>Not supported</span>}
             {authFailed && <span className="auth-tag" title={device.authFailed ?? undefined}>Password refused</span>}
             </h3>
             <p className="card-model">{device.manufacturer} · {device.model}</p>
