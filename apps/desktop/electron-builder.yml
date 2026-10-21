@@ -53,6 +53,36 @@ extraResources:
 win:
   target: nsis
 
+# macOS. The two usage strings are not decoration: without them macOS refuses
+# the microphone (no audio capture at all) and, from macOS 15, local-network
+# access (no discovery, no telemetry), and the user is never asked.
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.music
+  extendInfo:
+    NSMicrophoneUsageDescription: RFDeck captures the audio inputs you patch to channels, so you can listen to them and it can catch audio problems.
+    NSLocalNetworkUsageDescription: RFDeck finds and monitors the wireless receivers on your network.
+    NSBonjourServices:
+      - _ssc._tcp
+      - _ssc._udp
+      - _sennheiser-ssc._tcp
+
+# Linux. The server captures audio with arecord there rather than ffmpeg, so
+# the package depends on alsa-utils; the AppImage cannot declare it, and says
+# so through the capture error if it is missing.
+linux:
+  target:
+    - AppImage
+    - deb
+  category: AudioVideo
+  maintainer: RFDeck
+
+deb:
+  depends:
+    - alsa-utils
+
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

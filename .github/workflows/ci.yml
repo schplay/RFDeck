@@ -5,8 +5,9 @@
 # every audio device at two channels would have been caught by the parser
 # tests the moment they existed — had anything been running them.
 #
-# The desktop app is not built here: Electron packaging needs a native
-# toolchain per platform and is verified on a clean machine instead.
+# The desktop app is packaged on each platform it ships for, on that platform:
+# the Prisma query engine and ffmpeg are native binaries, so a Windows runner
+# cannot produce a working macOS or Linux build.
 
 name: CI
 
@@ -107,3 +108,50 @@ jobs:
 
       - name: Shell script syntax
         run: bash -n scripts/install-ubuntu.sh && bash -n scripts/update-server.sh && bash -n scripts/rfdeck
+
+  desktop:
+    name: Package desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    env:
+      DATABASE_URL: file:./ci.db
+      # No signing identity in CI; build unsigned rather than fail looking for one.
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @rfdeck/server exec prisma generate
+
+      # Builds the shared packages, web and server, then packages. Never
+      # publishes: a CI run is a check that packaging works, not a release.
+      - name: Package
+        run: pnpm --filter @rfdeck/desktop run package --publish never
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+          if-no-files-found: error
+          retention-days: 7
