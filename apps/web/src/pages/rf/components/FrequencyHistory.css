@@ -108,6 +108,13 @@
   color: var(--color-on-surface);
 }
 
+/* Also used by the RF event log's clear button. */
+.fh-action-btn.danger:hover {
+  border-color: rgb(255 180 171 / 0.3);
+  color: var(--color-error);
+  background: rgb(255 180 171 / 0.08);
+}
+
 .fh-action-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
