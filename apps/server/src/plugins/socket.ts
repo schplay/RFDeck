@@ -4,7 +4,7 @@ import { DeviceManagerService } from '../hardware/sennheiser/DeviceManagerServic
 import { DiscoveredDevice } from '../hardware/sennheiser/DiscoveryService';
 import { mcpBus } from '../hardware/sennheiser/McpBus';
 import { WebRTCSignaling } from '../audio/WebRTCSignaling';
-import { AES67Manager } from '../audio/AES67Manager';
+import { TestTone } from '../audio/TestTone';
 import { CaptureManager } from '../audio/CaptureManager';
 import { RecordingManager } from '../recording/RecordingManager';
 import { CloudService } from '../cloud/service';
@@ -24,7 +24,7 @@ export default fp(async (fastify, opts) => {
   });
 
   const deviceManager = new DeviceManagerService(io);
-  const audioManager = new AES67Manager();
+  const testTone = new TestTone();
   const captureManager = new CaptureManager();
   // The audio detectors ask the RF side what it knows before reporting
   // anything ambiguous — see docs/AUDIO_DETECTION.md.
@@ -42,7 +42,7 @@ export default fp(async (fastify, opts) => {
       muted: ch.isMuted === true || ch.isTxMuted === true,
     };
   });
-  const webrtcSignaling = new WebRTCSignaling(io, audioManager, captureManager);
+  const webrtcSignaling = new WebRTCSignaling(io, testTone, captureManager);
   // Meros Cloud. Constructed unconditionally: with nothing configured it exists,
   // answers "not configured", and does nothing — the application has never
   // needed the cloud and still does not.
@@ -50,7 +50,6 @@ export default fp(async (fastify, opts) => {
 
   fastify.decorate('io', io);
   fastify.decorate('deviceManager', deviceManager);
-  fastify.decorate('audioManager', audioManager);
   fastify.decorate('captureManager', captureManager);
   fastify.decorate('recordingManager', recordingManager);
   fastify.decorate('cloud', cloud);
@@ -118,7 +117,7 @@ export default fp(async (fastify, opts) => {
     if (heartbeat) clearInterval(heartbeat);
     deviceManager.stop();
     mcpBus.close();
-    audioManager.stop();
+    testTone.stop();
     recordingManager.stopAll();
     io.close();
   });
@@ -221,15 +220,11 @@ export default fp(async (fastify, opts) => {
     webrtcSignaling.attach(socket);
 
     socket.on('audio:start-test', () => {
-      audioManager.startTestTone();
-    });
-
-    socket.on('audio:start-aes67', ({ ip, port }) => {
-      audioManager.startAES67Stream(ip, port);
+      testTone.start();
     });
 
     socket.on('audio:stop', () => {
-      audioManager.stop();
+      testTone.stop();
     });
 
     // Hardware Control Commands

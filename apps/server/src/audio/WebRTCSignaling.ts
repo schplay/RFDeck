@@ -1,6 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, MediaStream } from '@roamhq/wrtc';
-import { AES67Manager } from './AES67Manager';
+import { TestTone } from './TestTone';
 import { CaptureManager } from './CaptureManager';
 import { Mixer } from './Mixer';
 import { prisma } from '../db';
@@ -18,8 +18,8 @@ import { log } from '../logger';
 // wired to — so a client only names channels. A channel that is not patched
 // is reported by name and skipped; it does not take the rest of the bus down.
 //
-// With no channels requested the peer gets the shared AES67 / test-tone source,
-// which is what the header monitor uses.
+// With no channels requested the peer gets the test tone, which is what the
+// header monitor plays.
 
 interface PeerState {
   pc: RTCPeerConnection;
@@ -30,12 +30,12 @@ interface PeerState {
 const LEVELS_MS = 100;
 
 export class WebRTCSignaling {
-  private audioManager: AES67Manager;
+  private testTone: TestTone;
   private captureManager: CaptureManager;
   private peers = new Map<string, PeerState>();
 
-  constructor(_io: Server, audioManager: AES67Manager, captureManager: CaptureManager) {
-    this.audioManager = audioManager;
+  constructor(_io: Server, testTone: TestTone, captureManager: CaptureManager) {
+    this.testTone = testTone;
     this.captureManager = captureManager;
   }
 
@@ -61,8 +61,8 @@ export class WebRTCSignaling {
           track = state.mixer.createTrack();
           await this.applyBus(socket, state, keys);
         } else {
-          // Fall back to the shared source (AES67 stream or test tone).
-          track = this.audioManager.audioSource.createTrack();
+          // Nothing named: the header monitor's test tone.
+          track = this.testTone.audioSource.createTrack();
         }
 
         // The stream is not optional. A track added on its own has no stream
