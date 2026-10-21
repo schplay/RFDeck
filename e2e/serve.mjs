@@ -44,7 +44,8 @@ const env = {
   DATABASE_URL,
   PORT,
   HOST: '127.0.0.1',
-  // No certificate: the tests speak plain HTTP.
+  // No configured certificate: the server generates its own beside the test
+  // database, as a fresh install does, and the tests speak HTTPS to it.
   TLS_KEY: '',
   TLS_CERT: '',
   HTTP_REDIRECT_PORT: '0',

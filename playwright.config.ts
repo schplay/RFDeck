@@ -1,7 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = process.env.E2E_PORT ?? '4180';
-const baseURL = `http://127.0.0.1:${PORT}`;
+// HTTPS, as every install serves it. The certificate is the one the server
+// generates for itself, so nothing here can be asked to trust it.
+const baseURL = `https://127.0.0.1:${PORT}`;
 
 // End-to-end tests against a real RFDeck: real server, real database, real
 // socket, the built UI served the way a deployment serves it.
@@ -33,6 +35,7 @@ export default defineConfig({
 
   use: {
     baseURL,
+    ignoreHTTPSErrors: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
@@ -54,6 +57,7 @@ export default defineConfig({
   webServer: {
     command: 'node e2e/serve.mjs',
     url: `${baseURL}/health`,
+    ignoreHTTPSErrors: true,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
     stdout: 'pipe',
