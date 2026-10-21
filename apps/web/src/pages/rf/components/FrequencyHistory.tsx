@@ -1,206 +1,164 @@
 import React, { useState, useMemo } from 'react';
 import { FrequencyChangeEvent, useFrequencyHistoryStore } from '../../../stores/frequencyHistoryStore';
-import { History, Trash2, Download, ChevronUp, ChevronDown, Radio, Pencil } from 'lucide-react';
+import { useDeviceStore } from '../../../stores/deviceStore';
+import { History, Download, ChevronUp, ChevronDown, Radio, SlidersHorizontal } from 'lucide-react';
 import './FrequencyHistory.css';
 
-type SortKey = 'timestamp' | 'channelName' | 'newFrequencyHz' | 'delta';
-type SortDir = 'asc' | 'desc';
+// Every time a carrier moved, newest first: who moved it (RFDeck, or someone
+// at the receiver), from where to where. The history is the server's, so it
+// covers time when no screen was open and reads the same on every screen.
 
-function formatFreq(hz: number) {
-  return (hz / 1000).toFixed(3);
+type SortKey = 'timestamp' | 'channelName' | 'toKHz' | 'delta';
+type SortDir = 'asc' | 'desc';
+type Origin = 'ALL' | 'FREQUENCY_CHANGE' | 'FREQUENCY_SET';
+
+const ORIGIN_LABEL: Record<FrequencyChangeEvent['type'], string> = {
+  FREQUENCY_CHANGE: 'At the receiver',
+  FREQUENCY_SET: 'RFDeck',
+};
+
+function formatFreq(kHz: number) {
+  return (kHz / 1000).toFixed(3);
 }
 
-function formatDelta(prev: number, next: number) {
-  const delta = (next - prev) / 1000; // kHz → MHz
+function formatDelta(fromKHz: number, toKHz: number) {
+  const delta = (toKHz - fromKHz) / 1000;
   const sign = delta > 0 ? '+' : '';
   return `${sign}${delta.toFixed(3)}`;
 }
 
 function formatTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function formatDate(iso: string) {
   const d = new Date(iso);
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === new Date().toDateString()) return 'Today';
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-interface Props {
-  filterChannelId?: string; // optional: only show events for one channel
-  compact?: boolean;         // compact mode for sidebar embed
+function csvCell(value: string) {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-export function FrequencyHistory({ filterChannelId, compact = false }: Props) {
-  const { events, clearAll, clearForChannel } = useFrequencyHistoryStore();
+export function FrequencyHistory() {
+  const events = useFrequencyHistoryStore(s => s.events);
+  const loaded = useFrequencyHistoryStore(s => s.loaded);
+  const inventory = useDeviceStore(s => s.inventory);
   const [sortKey, setSortKey] = useState<SortKey>('timestamp');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
-  const [filterSource, setFilterSource] = useState<'ALL' | 'TELEMETRY' | 'MANUAL'>('ALL');
+  const [origin, setOrigin] = useState<Origin>('ALL');
   const [search, setSearch] = useState('');
 
-  const filtered = useMemo(() => {
-    let list = filterChannelId
-      ? events.filter((e) => e.channelId === filterChannelId)
-      : events;
+  // The receiver's inventory name where it has one, as elsewhere in the app.
+  const deviceName = (deviceId: string | null) => {
+    if (!deviceId) return '';
+    const ip = deviceId.split(':')[0];
+    return inventory.find(d => d.ip === ip)?.name || ip;
+  };
+  const channelName = (e: FrequencyChangeEvent) => e.channelName || 'Unnamed channel';
 
-    if (filterSource !== 'ALL') {
-      list = list.filter((e) => e.source === filterSource);
-    }
+  const filtered = useMemo(() => {
+    let list = origin === 'ALL' ? events : events.filter(e => e.type === origin);
 
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(
-        (e) =>
-          e.channelName.toLowerCase().includes(q) ||
-          formatFreq(e.newFrequencyHz).includes(q) ||
-          formatFreq(e.previousFrequencyHz).includes(q)
-      );
+      list = list.filter(e =>
+        channelName(e).toLowerCase().includes(q) ||
+        formatFreq(e.toKHz).includes(q) ||
+        formatFreq(e.fromKHz).includes(q));
     }
 
     return [...list].sort((a, b) => {
       let cmp = 0;
       if (sortKey === 'timestamp') cmp = a.timestamp.localeCompare(b.timestamp);
-      else if (sortKey === 'channelName') cmp = a.channelName.localeCompare(b.channelName);
-      else if (sortKey === 'newFrequencyHz') cmp = a.newFrequencyHz - b.newFrequencyHz;
-      else if (sortKey === 'delta')
-        cmp = Math.abs(a.newFrequencyHz - a.previousFrequencyHz) -
-              Math.abs(b.newFrequencyHz - b.previousFrequencyHz);
+      else if (sortKey === 'channelName') cmp = channelName(a).localeCompare(channelName(b));
+      else if (sortKey === 'toKHz') cmp = a.toKHz - b.toKHz;
+      else if (sortKey === 'delta') cmp = Math.abs(a.toKHz - a.fromKHz) - Math.abs(b.toKHz - b.fromKHz);
       return sortDir === 'asc' ? cmp : -cmp;
     });
-  }, [events, filterChannelId, filterSource, search, sortKey, sortDir]);
+  }, [events, origin, search, sortKey, sortDir]);
 
   const handleSort = (key: SortKey) => {
-    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    if (sortKey === key) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir('desc'); }
   };
 
   const SortIcon = ({ k }: { k: SortKey }) =>
-    sortKey === k ? (
-      sortDir === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />
-    ) : null;
+    sortKey === k ? (sortDir === 'desc' ? <ChevronDown size={12} /> : <ChevronUp size={12} />) : null;
 
+  // Exactly the rows on screen, filters included.
   const handleExport = () => {
     const rows = [
-      ['Timestamp', 'Channel', 'Device', 'Previous (MHz)', 'New (MHz)', 'Delta (MHz)', 'Source'],
-      ...filtered.map((e) => [
+      ['Timestamp', 'Channel', 'Device', 'Previous (MHz)', 'New (MHz)', 'Delta (MHz)', 'Changed by'],
+      ...filtered.map(e => [
         e.timestamp,
-        e.channelName,
-        e.deviceId,
-        formatFreq(e.previousFrequencyHz),
-        formatFreq(e.newFrequencyHz),
-        formatDelta(e.previousFrequencyHz, e.newFrequencyHz),
-        e.source,
+        channelName(e),
+        deviceName(e.deviceId),
+        formatFreq(e.fromKHz),
+        formatFreq(e.toKHz),
+        formatDelta(e.fromKHz, e.toKHz),
+        ORIGIN_LABEL[e.type],
       ]),
     ];
-    const csv = rows.map((r) => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
+    const csv = rows.map(r => r.map(csvCell).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `rfdeck-freq-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `rfdeck-frequency-history-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  if (compact) {
-    // Compact view: last 10 events, no sorting/filter controls
-    const recent = filtered.slice(0, 10);
-    return (
-      <div className="fh-compact">
-        <div className="fh-compact-header">
-          <span className="fh-compact-title">
-            <History size={13} /> Frequency Changes
-          </span>
-          <span className="fh-compact-count">{events.length}</span>
-        </div>
-        {recent.length === 0 ? (
-          <div className="fh-compact-empty">No changes recorded yet</div>
-        ) : (
-          <div className="fh-compact-list">
-            {recent.map((e) => (
-              <div key={e.id} className="fh-compact-row">
-                <div className="fh-compact-ch">{e.channelName}</div>
-                <div className="fh-compact-freqs">
-                  <span className="fh-prev">{formatFreq(e.previousFrequencyHz)}</span>
-                  <span className="fh-arrow">→</span>
-                  <span className="fh-new">{formatFreq(e.newFrequencyHz)}</span>
-                  <span className="fh-unit">MHz</span>
-                </div>
-                <div className="fh-compact-meta">
-                  <span
-                    className={`fh-source-badge ${e.source === 'MANUAL' ? 'manual' : 'telem'}`}
-                  >
-                    {e.source === 'MANUAL' ? <Pencil size={9} /> : <Radio size={9} />}
-                  </span>
-                  <span className="fh-time">{formatTime(e.timestamp)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Full view
   return (
     <div className="fh-root">
-      {/* Toolbar */}
       <div className="fh-toolbar">
         <div className="fh-toolbar-left">
           <input
             type="text"
             className="fh-search"
             placeholder="Filter by channel or frequency…"
+            aria-label="Filter frequency history"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={e => setSearch(e.target.value)}
           />
-          <div className="fh-filter-pills">
-            {(['ALL', 'TELEMETRY', 'MANUAL'] as const).map((s) => (
+          <div className="fh-filter-pills" role="group" aria-label="Changed by">
+            {(['ALL', 'FREQUENCY_CHANGE', 'FREQUENCY_SET'] as const).map(s => (
               <button
                 key={s}
-                className={`fh-pill ${filterSource === s ? 'active' : ''}`}
-                onClick={() => setFilterSource(s)}
+                className={`fh-pill ${origin === s ? 'active' : ''}`}
+                aria-pressed={origin === s}
+                onClick={() => setOrigin(s)}
               >
-                {s === 'TELEMETRY' && <Radio size={11} />}
-                {s === 'MANUAL' && <Pencil size={11} />}
-                {s === 'ALL' ? 'All' : s === 'TELEMETRY' ? 'Hardware' : 'Manual'}
+                {s === 'FREQUENCY_CHANGE' && <Radio size={11} />}
+                {s === 'FREQUENCY_SET' && <SlidersHorizontal size={11} />}
+                {s === 'ALL' ? 'All' : ORIGIN_LABEL[s]}
               </button>
             ))}
           </div>
         </div>
         <div className="fh-toolbar-right">
-          <span className="fh-count">{filtered.length} events</span>
+          <span className="fh-count">{filtered.length} {filtered.length === 1 ? 'change' : 'changes'}</span>
           <button
             className="fh-action-btn"
             onClick={handleExport}
             disabled={filtered.length === 0}
-            title="Export CSV"
+            title="Export these changes as CSV"
+            aria-label="Export frequency history as CSV"
           >
             <Download size={14} />
-          </button>
-          <button
-            className="fh-action-btn danger"
-            onClick={() => {
-              if (filterChannelId) clearForChannel(filterChannelId);
-              else if (window.confirm('Clear all frequency change history?')) clearAll();
-            }}
-            disabled={filtered.length === 0}
-            title="Clear history"
-          >
-            <Trash2 size={14} />
           </button>
         </div>
       </div>
 
-      {/* Table */}
       {filtered.length === 0 ? (
         <div className="fh-empty">
           <History size={36} />
-          <p>No frequency changes recorded</p>
-          <span>Changes will appear here automatically when hardware reports a new frequency.</span>
+          <p>{!loaded ? 'Loading frequency history…'
+              : events.length === 0 ? 'No frequency changes recorded' : 'No changes match the filter'}</p>
+          {loaded && events.length === 0 && (
+            <span>Every retune is recorded here, whether RFDeck sent it or someone changed it at the receiver.</span>
+          )}
         </div>
       ) : (
         <div className="fh-table-wrap">
@@ -214,18 +172,18 @@ export function FrequencyHistory({ filterChannelId, compact = false }: Props) {
                   Channel <SortIcon k="channelName" />
                 </th>
                 <th className="fh-th">Previous</th>
-                <th className="fh-th sortable" onClick={() => handleSort('newFrequencyHz')}>
-                  New <SortIcon k="newFrequencyHz" />
+                <th className="fh-th sortable" onClick={() => handleSort('toKHz')}>
+                  New <SortIcon k="toKHz" />
                 </th>
                 <th className="fh-th sortable" onClick={() => handleSort('delta')}>
                   Delta <SortIcon k="delta" />
                 </th>
-                <th className="fh-th">Source</th>
+                <th className="fh-th">Changed by</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((e, i) => {
-                const delta = e.newFrequencyHz - e.previousFrequencyHz;
+                const delta = e.toKHz - e.fromKHz;
                 const deltaClass = delta > 0 ? 'positive' : delta < 0 ? 'negative' : '';
                 return (
                   <tr key={e.id} className={`fh-row ${i % 2 === 0 ? '' : 'alt'}`}>
@@ -236,24 +194,24 @@ export function FrequencyHistory({ filterChannelId, compact = false }: Props) {
                       </div>
                     </td>
                     <td className="fh-td fh-td-channel">
-                      <span className="fh-ch-name">{e.channelName}</span>
-                      <span className="fh-device-id">{e.deviceId.split(':')[0]}</span>
+                      <span className="fh-ch-name">{channelName(e)}</span>
+                      <span className="fh-device-id">{deviceName(e.deviceId)}</span>
                     </td>
                     <td className="fh-td fh-td-mono fh-prev-freq">
-                      {formatFreq(e.previousFrequencyHz)}
+                      {formatFreq(e.fromKHz)}
                       <span className="fh-mhz-unit">MHz</span>
                     </td>
                     <td className="fh-td fh-td-mono fh-new-freq">
-                      {formatFreq(e.newFrequencyHz)}
+                      {formatFreq(e.toKHz)}
                       <span className="fh-mhz-unit">MHz</span>
                     </td>
                     <td className={`fh-td fh-td-mono fh-delta ${deltaClass}`}>
-                      {formatDelta(e.previousFrequencyHz, e.newFrequencyHz)}
+                      {formatDelta(e.fromKHz, e.toKHz)}
                     </td>
                     <td className="fh-td">
-                      <span className={`fh-source-badge ${e.source === 'MANUAL' ? 'manual' : 'telem'}`}>
-                        {e.source === 'MANUAL' ? <Pencil size={10} /> : <Radio size={10} />}
-                        {e.source === 'MANUAL' ? 'Manual' : 'Hardware'}
+                      <span className={`fh-source-badge ${e.type === 'FREQUENCY_SET' ? 'manual' : 'telem'}`}>
+                        {e.type === 'FREQUENCY_SET' ? <SlidersHorizontal size={10} /> : <Radio size={10} />}
+                        {ORIGIN_LABEL[e.type]}
                       </span>
                     </td>
                   </tr>

@@ -1,49 +1,55 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { apiFetch } from '../lib/api';
+
+// Every time a carrier moved, as the server recorded it.
+//
+// The server keeps this history, not the browser: it records while no screen
+// is open, and every screen shows the same account. This store loads the
+// history when the socket connects and adds each change as it is broadcast.
 
 export interface FrequencyChangeEvent {
   id: string;
-  channelId: string;
-  channelName: string;
-  deviceId: string;
-  previousFrequencyHz: number;
-  newFrequencyHz: number;
   timestamp: string; // ISO 8601
-  source: 'TELEMETRY' | 'MANUAL'; // was it detected from hardware or set by user
+  /** FREQUENCY_SET: retuned by RFDeck. FREQUENCY_CHANGE: changed at the receiver. */
+  type: 'FREQUENCY_SET' | 'FREQUENCY_CHANGE';
+  channelKey: string | null;
+  /** What the channel was called at the time. */
+  channelName: string | null;
+  deviceId: string | null;
+  fromKHz: number;
+  toKHz: number;
 }
 
-const MAX_HISTORY = 500; // cap so localStorage doesn't grow unbounded
+/** As much history as the server hands out in one request. */
+const LOAD_LIMIT = 1000;
 
 interface FrequencyHistoryState {
   events: FrequencyChangeEvent[];
-  addEvent: (event: Omit<FrequencyChangeEvent, 'id'>) => void;
-  clearAll: () => void;
-  clearForChannel: (channelId: string) => void;
+  loaded: boolean;
+  load: () => Promise<void>;
+  add: (event: FrequencyChangeEvent) => void;
 }
 
-function uid() {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
+export const useFrequencyHistoryStore = create<FrequencyHistoryState>()((set) => ({
+  events: [],
+  loaded: false,
 
-export const useFrequencyHistoryStore = create<FrequencyHistoryState>()(
-  persist(
-    (set) => ({
-      events: [],
+  load: async () => {
+    try {
+      const res = await apiFetch<{ events: FrequencyChangeEvent[] }>(
+        `/events?type=FREQUENCY_SET,FREQUENCY_CHANGE&limit=${LOAD_LIMIT}`);
+      set({ events: res.events.filter(e => e.fromKHz != null && e.toKHz != null), loaded: true });
+    } catch (err) {
+      console.error('Failed to load frequency history:', err);
+    }
+  },
 
-      addEvent: (event) =>
-        set((state) => {
-          const newEvent: FrequencyChangeEvent = { ...event, id: uid() };
-          const events = [newEvent, ...state.events].slice(0, MAX_HISTORY);
-          return { events };
-        }),
+  add: (event) =>
+    set((state) => state.events.some(e => e.id === event.id)
+      ? state
+      : { events: [event, ...state.events].slice(0, LOAD_LIMIT) }),
+}));
 
-      clearAll: () => set({ events: [] }),
-
-      clearForChannel: (channelId) =>
-        set((state) => ({
-          events: state.events.filter((e) => e.channelId !== channelId),
-        })),
-    }),
-    { name: 'rfdeck-freq-history' }
-  )
-);
+// This history used to live in localStorage. Drop the old copy so it does not
+// sit in the browser forever.
+try { localStorage.removeItem('rfdeck-freq-history'); } catch { /* storage may be blocked */ }

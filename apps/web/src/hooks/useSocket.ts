@@ -3,7 +3,7 @@ import { io, Socket } from 'socket.io-client';
 import { useChannelStore, type HeartbeatPayload } from '../stores/channelStore';
 import { useDeviceStore, DiscoveredDevice } from '../stores/deviceStore';
 import { useAlertStore } from '../stores/alertStore';
-import { useFrequencyHistoryStore } from '../stores/frequencyHistoryStore';
+import { useFrequencyHistoryStore, FrequencyChangeEvent } from '../stores/frequencyHistoryStore';
 import { useRfEventStore, RfEvent } from '../stores/rfEventStore';
 import { useShowStore } from '../stores/showStore';
 import { useBatteryStore, BatteryEstimate, BatteryThresholds } from '../stores/batteryStore';
@@ -55,6 +55,10 @@ function getSocket(): Socket {
 
   _socket.on('connect', () => {
     console.log('[RFDeck] Connected to server');
+    // On every connect, not only the first: a reconnect may have missed
+    // changes. The read-only Micboard has no PIN to read history with, and
+    // shows none.
+    if (!isMicboard) void useFrequencyHistoryStore.getState().load();
   });
 
   _socket.on('disconnect', () => {
@@ -77,23 +81,8 @@ function getSocket(): Socket {
     useChannelStore.setState((state) => {
       const existing = state.channels.find((c) => c.id === channelData.id);
 
-      // Frequency change log — both values non-zero and actually different
-      if (
-        existing &&
-        channelData.frequency > 0 &&
-        existing.frequency > 0 &&
-        existing.frequency !== channelData.frequency
-      ) {
-        useFrequencyHistoryStore.getState().addEvent({
-          channelId: channelData.id,
-          channelName: channelData.name || `CH ${channelData.channelIndex}`,
-          deviceId: channelData.deviceId,
-          previousFrequencyHz: existing.frequency,
-          newFrequencyHz: channelData.frequency,
-          timestamp: new Date().toISOString(),
-          source: 'TELEMETRY',
-        });
-      }
+      // Frequency changes are recorded by the server and arrive as
+      // `rf:frequency`, so every client keeps the same history.
 
       // RF dropout/recovery is detected server-side and arrives via `rf:event`
       // so every client sees an identical log — nothing to derive here.
@@ -140,6 +129,11 @@ function getSocket(): Socket {
   // RF dropout / recovery, detected server-side and replayed on connect.
   _socket.on('rf:event', (event: RfEvent) => {
     useRfEventStore.getState().addEvent(event);
+  });
+
+  // A carrier moved: recorded server-side, the same on every screen.
+  _socket.on('rf:frequency', (event: FrequencyChangeEvent) => {
+    useFrequencyHistoryStore.getState().add(event);
   });
 
   _socket.on('rf:events-cleared', () => {

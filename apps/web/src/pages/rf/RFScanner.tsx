@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useState } from 'react';
-import { Radio, Download, Wifi, AlertTriangle, CheckCircle, Trash2 } from 'lucide-react';
+import { Radio, Download, Wifi, AlertTriangle, CheckCircle, Trash2, History } from 'lucide-react';
 import { useDeviceStore } from '../../stores/deviceStore';
 import { IntermodPanel } from './IntermodPanel';
 import { CoordinationPanel } from './CoordinationPanel';
@@ -11,6 +11,7 @@ import { SpectrumCanvas } from './components/SpectrumCanvas';
 import { ScanControls } from './components/ScanControls';
 import { useScanStore } from '../../stores/scanStore';
 import { FrequencyTable } from './components/FrequencyTable';
+import { FrequencyHistory } from './components/FrequencyHistory';
 import './RFScanner.css';
 
 function RfEventLog() {
@@ -163,6 +164,18 @@ export default function RFScanner() {
               <span className="table-count">{channels.length} channels</span>
             </div>
             <FrequencyTable channels={channels} />
+          </section>
+
+          {/* How the table above came to be: every retune, by RFDeck or at the
+              receiver, kept by the server. */}
+          <section className="rf-card freq-history-card">
+            <div className="rf-card-header">
+              <div className="rf-card-title">
+                <History size={16} className="card-icon" />
+                Frequency History
+              </div>
+            </div>
+            <FrequencyHistory />
           </section>
 
           {/* RF Signal Event Log */}
