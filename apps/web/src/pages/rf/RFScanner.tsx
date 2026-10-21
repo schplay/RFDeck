@@ -5,7 +5,7 @@ import { IntermodPanel } from './IntermodPanel';
 import { CoordinationPanel } from './CoordinationPanel';
 import { TvOccupancyPanel } from './TvOccupancyPanel';
 import { useActiveChannels } from '../../hooks/useActiveChannels';
-import { apiFetch } from '../../lib/api';
+import { apiFetch, API_BASE, getToken } from '../../lib/api';
 import { useRfEventStore } from '../../stores/rfEventStore';
 import { SpectrumCanvas } from './components/SpectrumCanvas';
 import { ScanControls } from './components/ScanControls';
@@ -33,6 +33,18 @@ function RfEventLog() {
     <div className="rf-event-log">
       <div className="rf-event-log-toolbar">
         <span className="rf-event-log-count">{events.length} events</span>
+        {/* Everything the server has kept, not just this list: alerts,
+            dropouts and recoveries, and frequency changes. A link rather than
+            a fetch so the browser saves it; the token rides along as for the
+            show report, since a navigation cannot carry the auth header. */}
+        <a
+          className="fh-action-btn"
+          href={`${API_BASE}/events/export${getToken() ? `?token=${encodeURIComponent(getToken()!)}` : ''}`}
+          title="Download the full event history as CSV: alerts, dropouts and recoveries, and frequency changes"
+          aria-label="Download the full event history as CSV"
+        >
+          <Download size={13} />
+        </a>
         <button className="fh-action-btn danger" onClick={() => events.length && window.confirm('Clear RF event log?') && clearAll()} disabled={events.length === 0} title="Clear log">
           <Trash2 size={13} />
         </button>

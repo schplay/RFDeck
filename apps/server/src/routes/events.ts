@@ -60,7 +60,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
 
     const header = [
       'Timestamp', 'Source', 'Type', 'Severity', 'Channel',
-      'Device', 'RF A', 'RF B', 'Message', 'Acknowledged',
+      'Device', 'RF A', 'RF B', 'From (MHz)', 'To (MHz)', 'Message', 'Acknowledged',
     ];
 
     const rows = events.map(e => [
@@ -72,6 +72,8 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
       e.deviceId ?? '',
       e.rfLevelA ?? '',
       e.rfLevelB ?? '',
+      e.fromKHz != null ? (e.fromKHz / 1000).toFixed(3) : '',
+      e.toKHz != null ? (e.toKHz / 1000).toFixed(3) : '',
       e.message,
       e.acknowledged ? 'yes' : 'no',
     ].map(csvCell).join(','));
