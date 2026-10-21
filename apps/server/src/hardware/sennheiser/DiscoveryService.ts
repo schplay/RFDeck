@@ -8,6 +8,8 @@ import { EventEmitter } from 'events';
 import { mcpBus } from './McpBus';
 import { ShureSlpListener } from '../shure/slp';
 import { probeShure, describeIdentity, logIdentity } from '../shure/probe';
+import { probeSscUdp } from './digital6000/probe';
+import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
 import { log } from '../../logger';
 import { IgnoreRule, parseIgnoreList, isIgnored } from './discoveryIgnore';
 
@@ -245,6 +247,8 @@ export class DiscoveryService extends EventEmitter {
   // Announcements repeat every few seconds. Probing on each one would mean a
   // TCP connection per device per announcement, forever.
   private shureProbed  = new Set<string>();
+  // Addresses that announced `_ssc._udp` and have been asked what they are.
+  private sscUdpProbed = new Set<string>();
   // Addresses already reported as found-but-not-offered, so the repeating
   // scans do not repeat the warning.
   private notOfferedReported = new Set<string>();
@@ -630,7 +634,45 @@ export class DiscoveryService extends EventEmitter {
           this.registerSerial(ip).catch(() => {});
         }
       });
+
+      // Digital 6000 has no TCP, so it never appears above. The SSC
+      // specification has UDP servers announce `_ssc._udp`; the announcement
+      // says an SSC server is there but not which product, so the device is
+      // asked once (one datagram each way) and offered only if it is a
+      // Digital 6000. Anything else on `_ssc._udp` — an EW-DX also announcing
+      // its UDP side — is found over TCP already.
+      bonjour.find({ type: 'ssc', protocol: 'udp' }, (service: any) => {
+        const ip = this.pickIPv4(service);
+        if (ip) this.onSscUdpAnnouncement(ip, service.port || D6000_PORT, service.name);
+      });
     }
+  }
+
+  private onSscUdpAnnouncement(ip: string, port: number, announcedName: string): void {
+    if (this.excluded(ip)) return;
+    if (this.sscUdpProbed.has(ip)) return;
+    if (this.seenIps.has(`${ip}:${D6000_PORT}`)) return;
+    // Claimed before the probe: announcements repeat, and one in flight is enough.
+    this.sscUdpProbed.add(ip);
+
+    probeSscUdp(ip, port).then(identity => {
+      if (!identity) {
+        // May still be booting; a later announcement can try again.
+        this.sscUdpProbed.delete(ip);
+        log.debug(`[Discovery] ${ip} announced _ssc._udp but did not answer on ${port}`);
+        return;
+      }
+      if (!isDigital6000(identity.product)) {
+        log.debug(`[Discovery] ${ip} announced _ssc._udp as ${identity.product}; not a Digital 6000`);
+        return;
+      }
+      // Stored on port 45 whatever was announced: the Digital 6000 client
+      // always speaks there, and the inventory key must match what it tracks.
+      this.emitDiscovered(
+        ip, D6000_PORT, identity.name || announcedName || identity.product, 'd6000',
+        { manufacturer: 'Sennheiser', model: identity.product },
+      );
+    });
   }
 
   // ── Shure SLP passive listener ────────────────────────────────────────
@@ -1194,6 +1236,7 @@ export class DiscoveryService extends EventEmitter {
     // Also clear the probe record, or a removed Shure device would announce
     // itself forever without ever being offered again.
     this.shureProbed.delete(ip);
+    this.sscUdpProbed.delete(ip);
     // And any "not a Sennheiser device" verdict, so re-adding an address the
     // operator has just corrected does not wait out the cache.
     this.deviceNames.delete(ip);
@@ -1211,5 +1254,6 @@ export class DiscoveryService extends EventEmitter {
     this.shureSlp?.stop();
     this.shureSlp = null;
     this.shureProbed.clear();
+    this.sscUdpProbed.clear();
   }
 }
