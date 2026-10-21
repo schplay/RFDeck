@@ -6,6 +6,7 @@ import {
   setMeterRate, setMute, setFrequency, getAll, getChannelParam, getEveryChannelParam,
   iemMeterToPercent,
   FAMILIES,
+  unsupportedModel,
 } from './protocol';
 
 // There is no Shure receiver on this machine, so these fixtures are the
@@ -536,5 +537,17 @@ describe('identifyModel', () => {
     // box about channels 3 and 4 for the life of the process.
     expect(identifyModel('AXT600')).toBeNull();
     expect(identifyModel('')).toBeNull();
+  });
+});
+
+describe('unsupportedModel', () => {
+  it('refuses UHF-R by name', () => {
+    expect(unsupportedModel('UR4D')).toBe('UHF-R');
+  });
+
+  it('does not refuse the PSM1000, which is supported', () => {
+    // It was listed here before PSM1000 support landed, and stayed listed.
+    expect(unsupportedModel('P10T')).toBeNull();
+    expect(unsupportedModel('PSM1000')).toBeNull();
   });
 });

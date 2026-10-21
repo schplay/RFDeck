@@ -14,7 +14,9 @@ import {
 } from './protocol';
 
 // Shure receivers over the "command strings" protocol: ASCII in angle brackets
-// on TCP 2202. Covers Axient Digital (AD4D/AD4Q), ULX-D and QLX-D.
+// on TCP 2202. Covers Axient Digital (AD4D/AD4Q), ULX-D, QLX-D, SLX-D and the
+// PSM1000 IEM transmitter (P10T), which speaks a different dialect — see
+// protocol.ts.
 //
 // See docs/SHURE_PROTOCOL.md for where every format came from, and for the
 // list of things that cannot be confirmed without hardware on the bench.

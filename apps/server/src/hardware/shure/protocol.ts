@@ -223,7 +223,6 @@ const MODEL_CHANNELS: Array<{ match: RegExp; family: ShureFamily; channels: numb
  * See docs/MANUFACTURER_ROADMAP.md for what each of these needs.
  */
 const KNOWN_UNSUPPORTED: Array<{ match: RegExp; what: string }> = [
-  { match: /\bP10T\b|\bPSM\s?1000\b/i, what: 'PSM1000 (IEM transmitter)' },
   { match: /\bUR4|\bUHF-?R\b/i,        what: 'UHF-R' },
 ];
 
