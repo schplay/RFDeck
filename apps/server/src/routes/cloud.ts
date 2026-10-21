@@ -263,6 +263,8 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
         for (const device of await prisma.inventoryDevice.findMany()) {
           try { dm.updateTrackedDevice(device); } catch { /* one bad row must not stop the rest */ }
         }
+        // The restored battery levels drive alerts and every client's colors.
+        await dm.applyBatteryThresholds().catch(() => {});
       }
 
       // Then tell every open client, with the roster inline because that is the

@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { prisma } from '../db';
 import { encryptSecret } from '../auth/secretBox';
+import { normalizeBatteryThresholds } from '../hardware/batteryThresholds';
 
 export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
   // GET global settings.
@@ -30,13 +31,23 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
       settings = await prisma.settings.create({ data: {} });
     }
 
+    // Kept usable rather than taken as sent: a critical level at or above the
+    // warning level would make the low-battery warning impossible to reach.
+    const touchedBattery = ['batteryWarningPct', 'batteryCriticalPct']
+      .some(k => Object.prototype.hasOwnProperty.call(data, k));
+    const battery = touchedBattery
+      ? normalizeBatteryThresholds(data.batteryWarningPct, data.batteryCriticalPct, {
+          warningPct: settings.batteryWarningPct, criticalPct: settings.batteryCriticalPct,
+        })
+      : null;
+
     settings = await prisma.settings.update({
       where: { id: settings.id },
       data: {
         aes67MulticastIp:   data.aes67MulticastIp,
         aes67Port:           data.aes67Port,
-        batteryWarningPct:   data.batteryWarningPct,
-        batteryCriticalPct:  data.batteryCriticalPct,
+        batteryWarningPct:   battery?.warningPct,
+        batteryCriticalPct:  battery?.criticalPct,
         dropoutSensitivity:  data.dropoutSensitivity,
         bindInterface:       data.bindInterface,
         discoveryIgnore:     typeof data.discoveryIgnore === 'string'
@@ -86,6 +97,11 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify, options) => {
     // something it should not be, and "from the next scan" is not an answer.
     if (Object.prototype.hasOwnProperty.call(data, 'discoveryIgnore')) {
       (fastify as any).deviceManager?.applyDiscoveryIgnore().catch(() => {});
+    }
+
+    // Alerts and every client's battery colors follow the new levels at once.
+    if (touchedBattery) {
+      await (fastify as any).deviceManager?.applyBatteryThresholds().catch(() => {});
     }
 
     const { defaultPassword, authPinHash, ...safe } = settings;

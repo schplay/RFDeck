@@ -185,6 +185,8 @@ export default fp(async (fastify, opts) => {
     for (const est of deviceManager.getBatteryEstimateSnapshot()) {
       socket.emit('battery:estimate', est);
     }
+    // The levels from Settings that every view colors a battery by.
+    socket.emit('battery:thresholds', deviceManager.getBatteryThresholds());
     // Recording state changes rarely and is pushed when it does, so a client
     // joining mid-show would otherwise show nothing until the next patch
     // change — which on a running rig may be never.

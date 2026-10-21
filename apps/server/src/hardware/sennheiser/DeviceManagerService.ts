@@ -24,6 +24,7 @@ import { ShureClient } from '../shure/ShureClient';
 import { Digital6000Client } from './digital6000/Digital6000Client';
 import { isDigital6000, SSC_PORT as D6000_PORT } from './digital6000/protocol';
 import { canSet } from '../HardwareClient';
+import { BatteryThresholds, DEFAULT_BATTERY_THRESHOLDS, normalizeBatteryThresholds, batteryAlertStep } from '../batteryThresholds';
 import { log } from '../../logger';
 
 // The union is kept rather than replaced by HardwareClient because the
@@ -230,6 +231,9 @@ export class DeviceManagerService extends EventEmitter {
   // not evidence: transmitters report garbage during a re-sync, and a single
   // bad sample used to raise a CRITICAL alert on a full pack.
   private pendingLowBattery = new Map<string, number>();
+  // The operator's low and critical levels from Settings, read at startup and
+  // again whenever they are saved.
+  private batteryThresholds: BatteryThresholds = { ...DEFAULT_BATTERY_THRESHOLDS };
 
   // Last moment each device was known to be in contact, keyed by device id.
   //
@@ -360,6 +364,27 @@ export class DeviceManagerService extends EventEmitter {
     }
   }
 
+  /**
+   * Re-read the battery alert levels and tell every client.
+   *
+   * Called at startup and again whenever the setting is saved or restored, so
+   * the alerts and every battery shown on screen agree with Settings at once.
+   */
+  async applyBatteryThresholds(): Promise<void> {
+    try {
+      const settings = await prisma.settings.findFirst();
+      this.batteryThresholds = normalizeBatteryThresholds(
+        settings?.batteryWarningPct, settings?.batteryCriticalPct);
+    } catch (err: any) {
+      log.warn(`[DeviceManager] Could not read the battery alert levels: ${err?.message}`);
+    }
+    this.io.emit('battery:thresholds', this.batteryThresholds);
+  }
+
+  getBatteryThresholds(): BatteryThresholds {
+    return { ...this.batteryThresholds };
+  }
+
   /** Re-read the interface setting and restart the passive listeners on it. */
   async rebindNetworkInterface(): Promise<void> {
     const before = mcpBus.getBindAddress();
@@ -386,6 +411,7 @@ export class DeviceManagerService extends EventEmitter {
     // and the exclusion list before a single packet could be sent.
     await this.applyBindInterface();
     await this.applyDiscoveryIgnore();
+    await this.applyBatteryThresholds();
 
     // Fix legacy G3/G4 records added via discovery before manufacturer inference was corrected.
     // MCP-discovered devices have port 53212; records with manufacturer='Unknown' got that value
@@ -2028,19 +2054,15 @@ export class DeviceManagerService extends EventEmitter {
             const oldBatt = oldChannel.batteryPercent;
             const newBatt = newChannel.batteryPercent;
             if (oldBatt !== undefined && newBatt !== undefined) {
-              // A threshold crossing must hold for two consecutive samples.
-              // Transmitters report garbage while re-syncing, and one bad
-              // sample raised a CRITICAL alert on a full pack in a live show.
-              const crossedLow      = oldBatt > 20 && newBatt <= 20 && newBatt > 5;
-              const crossedCritical = oldBatt > 5  && newBatt <= 5;
-              const pending = this.pendingLowBattery.get(channelId);
+              // At the operator's levels from Settings, confirmed by a second
+              // sample — see batteryAlertStep.
+              const step = batteryAlertStep(
+                oldBatt, newBatt, this.pendingLowBattery.get(channelId), this.batteryThresholds);
+              if (step.pending === undefined) this.pendingLowBattery.delete(channelId);
+              else this.pendingLowBattery.set(channelId, step.pending);
 
-              if (newBatt > 20) {
-                this.pendingLowBattery.delete(channelId);
-              } else if (pending !== undefined && newBatt <= pending) {
-                // Second consecutive low reading: now it is real.
-                this.pendingLowBattery.delete(channelId);
-                const critical = newBatt <= 5;
+              if (step.alert) {
+                const critical = step.alert === 'critical';
                 this.emitAlert({
                   severity: critical ? 'CRITICAL' : 'WARNING',
                   type: critical ? 'CRITICAL_BATTERY' : 'LOW_BATTERY',
@@ -2049,8 +2071,6 @@ export class DeviceManagerService extends EventEmitter {
                   channelName: newChannel.name,
                   deviceId
                 });
-              } else if (crossedLow || crossedCritical) {
-                this.pendingLowBattery.set(channelId, newBatt);
               }
             }
 
