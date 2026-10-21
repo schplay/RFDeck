@@ -35,7 +35,28 @@ if (!fs.existsSync(webIndex)) {
 
 // A fresh database per run, so a test can never pass because of a row an
 // earlier run left behind.
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rfdeck-e2e-'));
+// Each run's folder is named after this process, so a later run can tell
+// which leftovers are dead. On Windows the cleanup below never gets to run:
+// Playwright ends the server with a forced kill that skips exit handlers, and
+// the database file is still locked at that moment anyway. So every run first
+// removes the folders of runs whose process is gone, and the temp folder holds
+// at most the runs still going.
+const RUN_PREFIX = 'rfdeck-e2e-';
+
+function isAlive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (err) { return err.code === 'EPERM'; }   // exists, owned by someone else
+}
+
+for (const name of fs.readdirSync(os.tmpdir())) {
+  if (!name.startsWith(RUN_PREFIX)) continue;
+  const pid = Number(name.slice(RUN_PREFIX.length).split('-')[0]);
+  // Folders from before this naming have no pid; they are leftovers too.
+  if (Number.isInteger(pid) && pid > 0 && isAlive(pid)) continue;
+  try { fs.rmSync(path.join(os.tmpdir(), name), { recursive: true, force: true }); } catch { /* still locked */ }
+}
+
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), `${RUN_PREFIX}${process.pid}-`));
 const dbPath = path.join(dataDir, 'e2e.db').replace(/\\/g, '/');
 const DATABASE_URL = `file:${dbPath}`;
 
