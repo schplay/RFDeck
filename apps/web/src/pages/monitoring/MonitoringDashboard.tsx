@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChannelStrip } from '../../components/channel/ChannelStrip';
 import { ChannelActions } from '../../components/channel/ChannelActions';
 import { DenseTile } from '../../components/channel/DenseTile';
@@ -13,7 +14,7 @@ import { GoLivePanel } from '../../components/live/GoLivePanel';
 import { DeviceDrawer } from '../inventory/components/DeviceDrawer';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { useLayoutStore, sortChannels, useDragReorder, useFlipAnimation } from '../../stores/layoutStore';
-import { Ban, LayoutGrid, List, Grid3x3, Search, ArrowUpDown, WifiOff, Lock, Unlock } from 'lucide-react';
+import { Ban, LayoutGrid, List, Grid3x3, Search, ArrowUpDown, WifiOff, Lock, Unlock, X } from 'lucide-react';
 import { useConnectionHealth } from '../../hooks/useConnectionHealth';
 import { channelStatus, channelPlace, batteryTone } from '../../lib/channelStatus';
 import { useBatteryThresholds } from '../../stores/batteryStore';
@@ -30,6 +31,16 @@ export default function MonitoringDashboard() {
   const viewMode = useLayoutStore(s => s.dashboardView);
   const setViewMode = useLayoutStore(s => s.setDashboardView);
   const [searchQuery, setSearchQuery] = useState('');
+  // One device's channels only, from "View Channels" in the device drawer.
+  // In the address, so it survives a reload and can be cleared with Back.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deviceFilterId = searchParams.get('device');
+  const deviceFilter = deviceFilterId ? inventory.find(d => d.id === deviceFilterId) ?? null : null;
+  const clearDeviceFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('device');
+    setSearchParams(next);
+  };
   const orderMode = useLayoutStore(s => s.orderMode);
   const customOrder = useLayoutStore(s => s.customOrder);
   const setOrderMode = useLayoutStore(s => s.setOrderMode);
@@ -53,8 +64,9 @@ export default function MonitoringDashboard() {
   const filteredChannels = useMemo(() => {
     const q = searchQuery.toLowerCase();
     const filtered = channels.filter(ch =>
-      ch.name.toLowerCase().includes(q) ||
-      ch.deviceId.toLowerCase().includes(q)
+      (!deviceFilter || ch.deviceId.split(':')[0] === deviceFilter.ip) &&
+      (ch.name.toLowerCase().includes(q) ||
+       ch.deviceId.toLowerCase().includes(q))
     );
     if (sortBy === 'custom') return sortChannels(filtered, 'custom', customOrder);
     return filtered.sort((a, b) => {
@@ -63,7 +75,7 @@ export default function MonitoringDashboard() {
       if (sortBy === 'battery') return (a.batteryPercent ?? 100) - (b.batteryPercent ?? 100);
       return 0;
     });
-  }, [channels, searchQuery, sortBy, customOrder]);
+  }, [channels, searchQuery, sortBy, customOrder, deviceFilter]);
 
   const { handlers: dragHandlers } = useDragReorder(filteredChannels);
   const setFlipRef = useFlipAnimation(filteredChannels.map(ch => ch.id).join('|'));
@@ -116,6 +128,14 @@ export default function MonitoringDashboard() {
         <div className="header-left">
           <h1>Monitoring</h1>
           <span className="channel-count">{filteredChannels.length} channels</span>
+          {deviceFilter && (
+            <span className="device-filter-chip">
+              Only {deviceFilter.name}
+              <button onClick={clearDeviceFilter} aria-label="Show every device's channels" title="Show every device's channels">
+                <X size={12} />
+              </button>
+            </span>
+          )}
         </div>
         
         <div className="dashboard-toolbar">

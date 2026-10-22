@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useNavigate } from 'react-router-dom';
 import {
   X, Wifi, WifiOff, Radio, Info, Network,
   Cpu, Trash2, Activity, Zap, Headphones, Pencil, Check, Ban, Mic, PowerOff, Wrench
@@ -108,6 +109,14 @@ export function DeviceDrawer({ device, onClose, initialSection = 'device' }: Pro
       removeFromInventory(device.id);
       onClose();
     }
+  };
+
+  // The dashboard narrowed to this device's channels.
+  const navigate = useNavigate();
+  const handleViewChannels = () => {
+    if (!device) return;
+    onClose();
+    navigate(`/?device=${encodeURIComponent(device.id)}`);
   };
 
   const handleIdentify = () => {
@@ -592,7 +601,11 @@ export function DeviceDrawer({ device, onClose, initialSection = 'device' }: Pro
                           Identify
                         </button>
                       )}
-                      <button className="btn-primary-sm">
+                      <button
+                        className="btn-primary-sm"
+                        onClick={handleViewChannels}
+                        title="Open the dashboard showing only this device's channels"
+                      >
                         <Radio size={14} />
                         View Channels
                       </button>
