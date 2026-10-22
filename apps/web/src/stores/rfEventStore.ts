@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type RfEventType = 'DROPOUT' | 'RECOVERY' | 'WEAK_SIGNAL';
+export type RfEventType = 'DROPOUT' | 'RECOVERY';
 
 export interface RfEvent {
   id: string;

@@ -542,7 +542,20 @@
 .scan-controls .btn-secondary-rf { padding: 4px 10px; font-size: 12px; }
 .scan-controls-spacer { flex: 1; }
 
-/* RF event log toolbar: the count on the left, its actions on the right. */
+/* ── RF event log ─────────────────────────────────────────────────────
+   Dropouts and recoveries, newest first. A dropout is the thing to see, so it
+   carries the error color; a recovery is good news and stays quiet. The list
+   scrolls inside its card (.history-card caps the height). */
+
+.rf-event-log {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 12px;
+}
+
+/* The count on the left, its actions on the right. */
 .rf-event-log-toolbar {
   display: flex;
   align-items: center;
@@ -554,4 +567,92 @@
   margin-right: auto;
   font-size: 12px;
   color: var(--color-on-surface-variant);
+}
+
+.rf-event-empty {
+  padding: 24px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-on-surface-variant);
+}
+
+.rf-event-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rf-event-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 5px;
+  border-left: 2px solid transparent;
+  background: var(--color-surface-container);
+  font-size: 12px;
+}
+
+.rf-event-dropout {
+  border-left-color: var(--color-error);
+  background: rgb(255 180 171 / 0.06);
+}
+
+.rf-event-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-event-dropout .rf-event-icon { color: var(--color-error); }
+.rf-event-recovery .rf-event-icon { color: var(--color-on-surface-variant); }
+
+.rf-event-body {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rf-event-ch {
+  font-weight: 600;
+  color: var(--color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rf-event-type {
+  white-space: nowrap;
+  color: var(--color-on-surface-variant);
+}
+
+.rf-event-dropout .rf-event-type { color: var(--color-error); }
+
+.rf-event-levels {
+  display: flex;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+  white-space: nowrap;
+}
+
+.rf-event-time {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--color-on-surface-variant);
+  white-space: nowrap;
+}
+
+/* On a phone the antenna levels give way to the name and the time. */
+@media (max-width: 480px) {
+  .rf-event-row { grid-template-columns: 18px minmax(0, 1fr) auto; }
+  .rf-event-levels { display: none; }
 }
