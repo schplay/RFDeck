@@ -52,9 +52,22 @@ test.describe('coordination', () => {
     }
   });
 
+  test('accepts a PSM1000 band as Shure prints it', async ({ request }) => {
+    const created = await request.post('/api/inventory', {
+      data: { name: 'PSM', manufacturer: 'Shure', model: 'P10T', ip: '10.255.0.12', port: 2202, deviceType: 'output' },
+    });
+    const device = await created.json();
+    try {
+      const res = await request.put(`/api/coordination/devices/${device.id}/band`, { data: { band: 'J8A' } });
+      expect(res.ok()).toBe(true);
+    } finally {
+      await request.delete(`/api/inventory/${device.id}`);
+    }
+  });
+
   test('refuses to tune a model RFDeck cannot drive, and validates apply', async ({ request }) => {
     const created = await request.post('/api/inventory', {
-      data: { name: 'PSM', manufacturer: 'Shure', model: 'P10T', ip: '10.255.0.11', port: 2202, deviceType: 'output' },
+      data: { name: 'UHF-R', manufacturer: 'Shure', model: 'UR4D', ip: '10.255.0.11', port: 2202 },
     });
     const device = await created.json();
     try {
