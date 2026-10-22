@@ -45,7 +45,7 @@ export function parseExclusions(text: string): Array<[number, number]> {
 }
 
 const FAMILY_LABEL: Record<string, string> = {
-  'shure-ad': 'Axient Digital', 'shure-ulxd': 'ULX-D', 'shure-qlxd': 'QLX-D', 'shure-slxd': 'SLX-D',
+  'shure-ad': 'Axient Digital', 'shure-ulxd': 'ULX-D', 'shure-qlxd': 'QLX-D', 'shure-slxd': 'SLX-D', 'shure-psm1000': 'PSM1000 (IEM)',
   'senn-ewdx': 'EW-DX', 'senn-d6000': 'Digital 6000', 'senn-g3g4': 'EW G3/G4',
 };
 

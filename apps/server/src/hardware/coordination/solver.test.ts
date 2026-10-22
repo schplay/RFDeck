@@ -59,7 +59,18 @@ describe('profiles', () => {
     expect(familyOf('Sennheiser', 'EWDX EM 4')).toBe('senn-ewdx');
     expect(familyOf('Sennheiser', 'EM 6000')).toBe('senn-d6000');
     expect(familyOf('Sennheiser', 'EW G3/G4')).toBe('senn-g3g4');
-    expect(familyOf('Shure', 'P10T')).toBeNull();
+    expect(familyOf('Shure', 'P10T')).toBe('shure-psm1000');
+    expect(familyOf('Shure', 'UR4D')).toBeNull();
+  });
+
+  it('holds a PSM1000 to its band as Shure prints it, gap included', () => {
+    const j8a = profileFor('shure-psm1000', 'J8A')!;
+    expect(j8a.segmentsKHz).toEqual([[554_000, 608_000], [614_000, 616_000]]);
+    expect(j8a.stepKHz).toBe(25);
+    // No spacing figure is published, so the one used is labelled as chosen.
+    expect(j8a.assumed).toEqual(['spacing']);
+    expect(candidateBands('shure-psm1000', 600_000)).toEqual(
+      expect.arrayContaining(['J8', 'J8A', 'J8E', 'J8J', 'K10E']));
   });
 });
 

@@ -57,8 +57,14 @@ describe('buildRig', () => {
     expect(rig.transmitters[0].profile.spacingKHz.standard).toBe(400);
   });
 
+  it('coordinates a PSM1000 once its band is declared', () => {
+    const rig = buildRig([row({ model: 'P10T', band: 'J8' })], [chan('r1:1', 600_000, { role: 'iem' })]);
+    expect(rig.devices[0]).toMatchObject({ family: 'shure-psm1000', ready: true, reason: null, bandReported: false });
+    expect(rig.transmitters).toHaveLength(1);
+  });
+
   it('refuses a model it cannot tune by name', () => {
-    const rig = buildRig([row({ model: 'P10T' })], [chan('r1:1', 600_000, { role: 'iem' })]);
+    const rig = buildRig([row({ model: 'UR4D' })], [chan('r1:1', 600_000)]);
     expect(rig.devices[0]).toMatchObject({ family: null, ready: false, reason: 'RFDeck cannot tune this model' });
     expect(rig.skipped[0].reason).toBe('RFDeck cannot tune this model');
   });

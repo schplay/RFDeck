@@ -13,6 +13,7 @@ export type CoordinationFamily =
   | 'shure-ulxd'
   | 'shure-qlxd'
   | 'shure-slxd'
+  | 'shure-psm1000' // P10T IEM transmitter
   | 'senn-ewdx'
   | 'senn-d6000'
   | 'senn-g3g4';
@@ -71,6 +72,11 @@ const FAMILY_RULES: Record<CoordinationFamily, FamilyRules> = {
   'shure-qlxd': { stepKHz: 25, spacingKHz: { standard: 350 }, assumed: ['spacing'] },
   // SLX-D: nothing read from Shure's own document yet (page unreachable).
   'shure-slxd': { stepKHz: 25, spacingKHz: { standard: 350 }, assumed: ['step', 'spacing'] },
+  // PSM1000 user guide (2014, Rev. 3): frequency "adjustable in increments of
+  // 1MHz or 25kHz". Shure publishes no minimum spacing for it, only "39
+  // compatible frequencies per band". 400 kHz is the conservative figure used
+  // for the other analog FM systems here, and is labelled as chosen.
+  'shure-psm1000': { stepKHz: 25, spacingKHz: { standard: 400 }, assumed: ['spacing'] },
   // EW-DX: equidistant grid, 600 kHz standard / 300 kHz Link Density (design
   // guide). The manual tuning step is not published anywhere accessible;
   // the factory presets sit on a 600 kHz grid so that is the grid used until
@@ -147,6 +153,19 @@ const SHURE_QLXD: BandTable = {
   Z18: [MHz(1785, 1805)], Z19: [MHz(1785, 1800)], Z20: [MHz(1790, 1805)],
 };
 
+// Shure PSM1000 user guide (v12.0, 2025), "Frequency Range and Transmitter
+// Output Power", P10T bands. Gaps are as printed.
+const SHURE_PSM1000: BandTable = {
+  G10: [MHz(470, 542)], G10E: [MHz(470, 542)], G10J: [MHz(470, 542)], G11: [MHz(479, 542)],
+  G62: [MHz(510, 530)], H8Z: [MHz(518, 582)], H22: [MHz(518, 584)],
+  J8: [MHz(554, 626)], J8A: [MHz(554, 608), MHz(614, 616)], J8E: [MHz(554, 626)], J8J: [MHz(554, 626)],
+  K10E: [MHz(596, 668)],
+  L8: [MHz(626, 698)], L8A: [MHz(653, 657), MHz(657, 663)], L8E: [MHz(626, 698)], L8J: [MHz(626, 698)],
+  L9E: [MHz(670, 742)], L11J: [MHz(670, 714)], M19: [MHz(694, 703)],
+  P8: [MHz(710, 790)], Q12: [MHz(748, 758)], Q21: [MHz(710, 787)], Q22E: [MHz(750, 822)],
+  R27: [MHz(794, 806)], X1: [MHz(944, 952)], X7: [MHz(925, 937.5)], X55: [MHz(941, 960)],
+};
+
 // Sennheiser EW-D / EW-DX instruction manual, product listing.
 const SENN_EWDX: BandTable = {
   'Q1-9':  [MHz(470.2, 550)],
@@ -183,6 +202,7 @@ const TABLES: Record<CoordinationFamily, BandTable> = {
   'shure-ulxd': SHURE_ULXD,
   'shure-qlxd': SHURE_QLXD,
   'shure-slxd': {},
+  'shure-psm1000': SHURE_PSM1000,
   'senn-ewdx':  SENN_EWDX,
   'senn-d6000': SENN_D6000,
   'senn-g3g4':  SENN_G3G4,
@@ -251,7 +271,7 @@ export function candidateBands(family: CoordinationFamily, frequencyKHz: number)
 /**
  * Which coordination family an inventory row belongs to, from the fields
  * RFDeck already uses to choose a protocol. Null when it is not one RFDeck
- * can tune — a PSM1000, a UHF-R — so the caller can leave it out of the
+ * can tune — a UHF-R — so the caller can leave it out of the
  * plan by name rather than by accident.
  */
 export function familyOf(manufacturer: string, model: string): CoordinationFamily | null {
@@ -261,6 +281,7 @@ export function familyOf(manufacturer: string, model: string): CoordinationFamil
     if (/ULX-?D/i.test(m))         return 'shure-ulxd';
     if (/QLX-?D/i.test(m))         return 'shure-qlxd';
     if (/SLX-?D/i.test(m))         return 'shure-slxd';
+    if (/P10T|PSM ?1000/i.test(m)) return 'shure-psm1000';
     return null;
   }
   if (/EM ?6000|6000/i.test(m))    return 'senn-d6000';
@@ -279,6 +300,7 @@ export function bandIsReported(family: CoordinationFamily): boolean {
     case 'shure-slxd': // Companion says so; not confirmed against Shure
     case 'shure-ulxd':
     case 'shure-qlxd':
+    case 'shure-psm1000': // no band parameter in its command table
     case 'senn-g3g4':
       return false;
   }
