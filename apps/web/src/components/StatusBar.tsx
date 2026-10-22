@@ -7,7 +7,7 @@ import { useLiveStore } from '../stores/liveStore';
 import { useStatusStore } from '../stores/statusStore';
 import { useSocket } from '../hooks/useSocket';
 import { describeChannelKey } from '../lib/channelLabel';
-import { isUnsupportedManufacturer } from '@rfdeck/shared-utils';
+import { isUnsupportedDevice } from '@rfdeck/shared-utils';
 import './StatusBar.css';
 
 // One line, always there, saying what RFDeck is doing.
@@ -38,9 +38,9 @@ export function StatusBar() {
   const audioLevels = useStatusStore(s => s.audioLevels);
   const captures = useStatusStore(s => s.captures);
 
-  // Brands RFDeck cannot talk to are never contacted, so they are not part of
+  // Devices RFDeck cannot talk to are never contacted, so they are not part of
   // "how much of the rig is reporting".
-  const tracked = inventory.filter(d => d.active !== false && !isUnsupportedManufacturer(d.manufacturer)).length;
+  const tracked = inventory.filter(d => d.active !== false && !isUnsupportedDevice(d.manufacturer, d.model)).length;
   const online = inventory.filter(d => d.active !== false && d.online).length;
   const bus = listening
     .map(id => channels.find(c => c.id === id))

@@ -39,7 +39,7 @@ const SHURE_MODELS = [
 // who adds a device that will never connect deserves to find that out here
 // rather than from a card that stays grey all night.
 const MANUFACTURER_PORT_HINTS: Record<string, { port: number; hint: string }> = {
-  Sennheiser:   { port: 443,  hint: 'EW-DX (firmware ≥ 4.0) — port 443 (HTTPS SSCv2). G3/G4 and Digital 6000 are found automatically. To add a Digital 6000 by hand, set the model to "EM 6000" — it speaks SSC over UDP 45 and the port here is ignored.' },
+  Sennheiser:   { port: 443,  hint: 'EW-DX (firmware ≥ 4.0) — port 443 (HTTPS SSCv2). G3/G4, the 2000 series and Digital 6000 are found automatically. The EM 3731/3732 cannot be monitored: it talks only to Sennheiser software. To add a Digital 6000 by hand, set the model to "EM 6000" — it speaks SSC over UDP 45 and the port here is ignored.' },
   Shure:        { port: 2202, hint: 'Axient Digital / ULX-D / QLX-D / SLX-D — port 2202' },
   Wisycom:      { port: 2101, hint: 'Not yet supported. MRK receivers use Ember+; the tree layout is undocumented.' },
   Lectrosonics: { port: 4080, hint: 'Not yet supported. Lectrosonics publishes the port but not the protocol.' },

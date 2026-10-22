@@ -32,3 +32,22 @@ test.describe('a device from an unsupported brand', () => {
     await expect(page.getByText('Device Offline / Unreachable')).toHaveCount(0);
   });
 });
+
+test.describe('a supported brand\'s model that cannot be monitored', () => {
+  test('says so for an EM 3732', async ({ page, request }) => {
+    const res = await request.post('/api/inventory', {
+      data: { name: 'Old 3000 RX', manufacturer: 'Sennheiser', model: 'EM 3732-II', ip: '192.0.2.45', port: 443 },
+    });
+    expect(res.ok()).toBeTruthy();
+    const { id } = await res.json();
+    try {
+      await page.goto('/#/inventory');
+      const card = page.locator('.hardware-card', { hasText: 'Old 3000 RX' });
+      await expect(card.getByText('Not supported')).toBeVisible();
+      await card.click();
+      await expect(page.getByText(/RFDeck cannot monitor the EM 3731\/3732/)).toBeVisible();
+    } finally {
+      await request.delete(`/api/inventory/${id}`);
+    }
+  });
+});

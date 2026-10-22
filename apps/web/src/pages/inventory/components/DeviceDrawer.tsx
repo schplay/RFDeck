@@ -12,7 +12,7 @@ import { channelKey } from '../../../lib/channelKey';
 import { useChannelStore } from '../../../stores/channelStore';
 import { useMaintenance } from '../../../hooks/useMaintenance';
 import './DeviceDrawer.css';
-import { isUnsupportedManufacturer } from '@rfdeck/shared-utils';
+import { unsupportedReason } from '@rfdeck/shared-utils';
 
 interface Props {
   device: InventoryDevice | null;
@@ -224,12 +224,12 @@ export function DeviceDrawer({ device, onClose, initialSection = 'device' }: Pro
                   <PowerOff size={14} />
                   <span>Device set inactive — monitoring paused</span>
                 </div>
-              ) : isUnsupportedManufacturer(device.manufacturer) ? (
+              ) : unsupportedReason(device.manufacturer, device.model) ? (
                 // Never contacted, so "offline" would be wrong: there is nothing
                 // to fix on the device or the network.
                 <div className="status-banner inactive">
                   <Ban size={14} />
-                  <span>RFDeck cannot monitor {device.manufacturer} devices, so it does not contact this one.</span>
+                  <span>{unsupportedReason(device.manufacturer, device.model)}</span>
                 </div>
               ) : (
                 device.online && device.authFailed ? (

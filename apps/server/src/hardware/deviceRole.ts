@@ -162,5 +162,9 @@ export function isLegacyMcpModel(model?: string | null): boolean {
   if (!m) return false;
   // "EW G3/G4", "ew 300 G3", "EM 2050 G4", "G4". The generation marker has to
   // stand on its own, so a "G3" inside a serial or a room name is not a model.
-  return /(^|[\s\-/(])G[34]([\s\-/)]|$)/i.test(m);
+  if (/(^|[\s\-/(])G[34]([\s\-/)]|$)/i.test(m)) return true;
+  // The 2000 series speaks the same protocol: Sennheiser's media control
+  // protocol description covers "ew 300 G3, ew 500 G3 and 2000 series" and
+  // names the EM 2000, EM 2050 and SR 2050 IEM.
+  return /\b(EM\s?20(00|50)|SR\s?2050)\b/i.test(m);
 }

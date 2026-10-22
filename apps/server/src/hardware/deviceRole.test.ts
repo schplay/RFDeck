@@ -84,8 +84,19 @@ describe('isSscModel — which devices may take the G3/G4 fallback', () => {
     expect(isSscModel('EW-DX EM 4 DANTE')).toBe(true);
     expect(isSscModel('EWDX EM2')).toBe(true);
     expect(isSscModel('EM 6000')).toBe(true);
-    expect(isSscModel('EM 2050')).toBe(true);
     expect(isSscModel('EM 9046')).toBe(true);
+  });
+
+  it('sends the 2000 series to MCP, which is what it speaks', () => {
+    // Sennheiser's media control protocol description covers "ew 300 G3,
+    // ew 500 G3 and 2000 series" and names the EM 2000, EM 2050 and SR 2050
+    // IEM. An EM 2050 used to be classed as SSC and never reached MCP.
+    for (const model of ['EM 2050', 'EM 2000', 'SR 2050 IEM']) {
+      expect(isLegacyMcpModel(model)).toBe(true);
+      expect(isSscModel(model)).toBe(false);
+    }
+    // Not the 3000 series, which is not on that list.
+    expect(isLegacyMcpModel('EM 3732')).toBe(false);
   });
 
   it('protects an EW-DX whose model runs straight into a digit', () => {

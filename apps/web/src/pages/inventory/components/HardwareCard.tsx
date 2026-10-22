@@ -2,7 +2,7 @@ import React from 'react';
 import { CheckCircle, XCircle, PowerOff, Ban } from 'lucide-react';
 import { InventoryDevice } from '../../../stores/deviceStore';
 import { useSurfaceLocked, LOCKED_REASON } from '../../../stores/uiStore';
-import { isUnsupportedManufacturer } from '@rfdeck/shared-utils';
+import { unsupportedReason } from '@rfdeck/shared-utils';
 import './HardwareCard.css';
 
 
@@ -18,10 +18,10 @@ export function HardwareCard({ device, viewMode, onClick, onToggleActive }: Prop
   // Inactive devices are intentionally powered off — show them as dimmed/neutral
   // rather than as an error state, so real offline faults still stand out.
   const isInactive = device.active === false;
-  // A brand RFDeck cannot talk to. The server never contacts it, so it is
+  // A device RFDeck cannot talk to. The server never contacts it, so it is
   // neither online nor a fault, and is drawn neutral like an inactive device.
-  const unsupported = !isInactive && isUnsupportedManufacturer(device.manufacturer);
-  const UNSUPPORTED_TITLE = `RFDeck cannot monitor ${device.manufacturer} devices, so it does not contact this one.`;
+  const UNSUPPORTED_TITLE = unsupportedReason(device.manufacturer, device.model) ?? undefined;
+  const unsupported = !isInactive && UNSUPPORTED_TITLE !== undefined;
   // Reachable but refusing the password: a third state between online and
   // offline. Shown as a warning rather than green, because green sent the
   // operator to the dashboard looking for cards that could never appear.
