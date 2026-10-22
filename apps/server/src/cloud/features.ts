@@ -57,10 +57,13 @@ export type FeatureFlag = typeof FEATURES[keyof typeof FEATURES];
  * the ones we actually gate keeps the difference visible — and stops somebody
  * adding a check for a flag that was never meant to control anything here.
  */
+//
+// `BACKUP_HISTORY` is not here: how many versions of a show file are kept is
+// the cloud service's to enforce, since it is the one storing them. RFDeck
+// checks only that show-file sync is included at all (`BACKUP_SHOWFILE`).
 export const GATED_BY_RFDECK: readonly FeatureFlag[] = [
   FEATURES.BACKUP_CONFIG,
   FEATURES.BACKUP_SHOWFILE,
-  FEATURES.BACKUP_HISTORY,
   FEATURES.SPECTRUM,
   FEATURES.INVENTORY,
 ];

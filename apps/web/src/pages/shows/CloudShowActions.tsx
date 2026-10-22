@@ -3,6 +3,7 @@ import { UploadCloud, DownloadCloud, Check, AlertTriangle } from 'lucide-react';
 import { API_BASE, apiFetch } from '../../lib/api';
 import { useCloudStore } from '../../stores/cloudStore';
 import { useShowStore } from '../../stores/showStore';
+import { useEntitled, FEATURES } from '../../hooks/useEntitled';
 import './CloudShowActions.css';
 
 /**
@@ -22,6 +23,9 @@ interface Conflict {
 
 export function CloudShowActions({ showId, showName }: { showId: string; showName: string }) {
   const linked = useCloudStore(s => s.status.linked);
+  // Rendered disabled with the reason when the account does not include it,
+  // like every other gated cloud control.
+  const { allowed, reason } = useEntitled(FEATURES.backupShowfile);
   const fetchShows = useShowStore(s => s.fetchShows);
   const [busy, setBusy] = useState<'push' | 'pull' | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -93,16 +97,16 @@ export function CloudShowActions({ showId, showName }: { showId: string; showNam
       <button
         className="btn-ghost"
         onClick={() => void push()}
-        disabled={busy !== null}
-        title="Save this show to the cloud, so it can be opened at another venue"
+        disabled={busy !== null || !allowed}
+        title={reason ?? 'Save this show to the cloud, so it can be opened at another venue'}
       >
         <UploadCloud size={14} /> {busy === 'push' ? 'Saving…' : 'Save to cloud'}
       </button>
       <button
         className="btn-ghost"
         onClick={() => void pull(true)}
-        disabled={busy !== null}
-        title="Replace this show with the copy in the cloud"
+        disabled={busy !== null || !allowed}
+        title={reason ?? 'Replace this show with the copy in the cloud'}
       >
         <DownloadCloud size={14} /> {busy === 'pull' ? 'Opening…' : 'Open from cloud'}
       </button>

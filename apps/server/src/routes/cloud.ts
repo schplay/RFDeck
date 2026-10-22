@@ -118,6 +118,8 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/cloud/showfiles', async (request, reply) => {
     const cloud = service();
     if (!cloud?.showFiles) return reply.code(409).send({ error: 'not_configured', shows: [] });
+    const refusal = await denied(cloud, FEATURES.BACKUP_SHOWFILE);
+    if (refusal) return reply.code(402).send({ ...refusal, shows: [] });
     try {
       return { shows: await cloud.showFiles.list() };
     } catch (err: any) {
@@ -138,6 +140,8 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
     if (!cloud?.showFiles) {
       return reply.code(409).send({ error: 'not_configured' });
     }
+    const refusal = await denied(cloud, FEATURES.BACKUP_SHOWFILE);
+    if (refusal) return reply.code(402).send(refusal);
     try {
       const result = await cloud.showFiles.push(showId);
       if (result.status === 'conflict') {
@@ -170,6 +174,8 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
     const { version } = (request.body ?? {}) as { version?: number };
     const cloud = service();
     if (!cloud?.showFiles) return reply.code(409).send({ error: 'not_configured' });
+    const refusal = await denied(cloud, FEATURES.BACKUP_SHOWFILE);
+    if (refusal) return reply.code(402).send(refusal);
     try {
       const result = await cloud.showFiles.pull(showId, version);
       // Every open client is showing this show's cast; tell them it changed.
