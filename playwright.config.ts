@@ -54,13 +54,7 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: /mobile\.spec\.ts/ },
   ],
 
-  webServer: {
-    command: 'node e2e/serve.mjs',
-    url: `${baseURL}/health`,
-    ignoreHTTPSErrors: true,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  // A real server on a fresh database, stopped and removed when the run ends,
+  // pass or fail. See e2e/globalSetup.mjs for why this isn't `webServer`.
+  globalSetup: './e2e/globalSetup.mjs',
 });
