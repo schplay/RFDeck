@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { pinRetryAfterMs, notePinFailure, clearPinFailures } from './pinAuth';
 
+// Each test builds the whole app, which takes longer than the default limit
+// under a full parallel run.
+vi.setConfig({ testTimeout: 30_000 });
+
 // The PIN is the whole of RFDeck's access control, and deliberately so.
 //
 // There are no user accounts. When an operator enables a PIN it covers every

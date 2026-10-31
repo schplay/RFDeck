@@ -20,6 +20,10 @@ import { Feeds } from './feeds';
 import { PackVerifyError } from './packSignature';
 import { CloudConfig } from './config';
 
+// Linking goes through the meros-client helper, a real process per call, so
+// these take longer than the default under a full parallel run.
+vi.setConfig({ testTimeout: 30_000 });
+
 // The feed exists so a rig in a flight case still knows which TV channels are
 // licensed where it is standing. So the tests are mostly about the offline path
 // and about refusing to trust anything unverified — not about the happy fetch.
