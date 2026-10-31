@@ -53,7 +53,7 @@ export const cloudLoginRoutes: FastifyPluginAsync = async (fastify) => {
     const login = guard(request, reply);
     if (!login) return reply;
     try {
-      return login.begin();
+      return await login.begin();
     } catch (err) {
       return fail(reply, err);
     }

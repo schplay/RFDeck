@@ -57,6 +57,8 @@ export class FakeMeros {
   private accessTokens = new Set<string>();
   /** Access token → the refresh family it was issued with, so revoking it cascades. */
   private accessFamilies = new Map<string, string>();
+  /** Who each token family belongs to, for `/oauth/userinfo`. */
+  private familyUsers = new Map<string, { sub: string; name: string | null; email: string | null }>();
   /** Login tokens minted for a service to redeem, by token. */
   private loginTokens = new Map<string, {
     challenge: string; nonce: string | null; clientId: string;
@@ -64,6 +66,8 @@ export class FakeMeros {
   }>();
   /** Access tokens revoked through /oauth/revoke, for assertions. */
   accessRevocations = 0;
+  /** Refresh tokens revoked with the client named. */
+  refreshRevocations = 0;
   /** Revoke requests that named no client, and so revoked nothing. */
   unidentifiedRevocations = 0;
   /** Events received, keyed (source.instance, id) so dedupe is real. */
@@ -251,6 +255,7 @@ export class FakeMeros {
         if (bad) return send(400, { error: 'invalid_grant', error_description: 'The login token is invalid.' });
         ticket!.redeemedAt ??= Date.now();
 
+        this.familyUsers.set(`sso-${ticket!.sub}`, { sub: ticket!.sub, name: ticket!.name, email: ticket!.email });
         const issued = this.issue(`sso-${ticket!.sub}`);
         const claims: Record<string, unknown> = {
           iss: this.baseUrl, aud: ticket!.clientId, sub: ticket!.sub,
@@ -282,7 +287,10 @@ export class FakeMeros {
         return send(200, {});
       }
       const family = this.refreshTokens.get(token);
-      if (family) this.revokedFamilies.add(family);
+      if (family) {
+        this.revokedFamilies.add(family);
+        this.refreshRevocations += 1;
+      }
       // Revoking an access token revokes its refresh token too, as Meros does.
       const accessFamily = this.accessFamilies.get(token);
       if (accessFamily) {
@@ -293,23 +301,37 @@ export class FakeMeros {
       return send(200, {});          // RFC 7009: always 200, never a probe oracle
     }
 
+    // Who the bearer is. The device grant's family belongs to the account
+    // owner who approved the link.
+    if (path === '/oauth/userinfo') {
+      if (!this.authorized(req)) return send(401, { error: 'invalid_token' });
+      const header = (req.headers.authorization as string | undefined) ?? '';
+      const family = this.accessFamilies.get(header.replace(/^Bearer\s+/i, '')) ?? 'family-1';
+      const user = this.familyUsers.get(family) ?? { sub: 'user-fake-1', name: 'Fake Owner', email: 'owner@example.test' };
+      return send(200, { sub: user.sub, name: user.name, email: user.email });
+    }
+
     if (path === '/v1/entitlements') {
       if (!this.authorized(req)) return send(401, { error: 'invalid_token' });
       // Honoured rather than ignored: an account may hold entitlements for several
       // products, and a client that asked for one should not receive the others.
       const wanted = new URL(req.url ?? '', 'http://x').searchParams.get('product');
+      const accountId = this.options.accountId ?? 'acct-fake-1';
       if (wanted && wanted !== 'rfdeck') {
-        return send(200, { account_id: this.options.accountId ?? 'acct-fake-1',
-                           issued_at: new Date().toISOString(), entitlements: [] });
+        return send(200, { product: wanted, account_id: accountId, features: { tier: 'free' }, entitlements: [] });
       }
+      // Meros's shape: a flat map of the flags the account has, and the
+      // entitlements they came from with their expiry.
+      const features: Record<string, unknown> = { tier: 'pro' };
+      for (const f of this.options.features ?? ['rfdeck.spectrum', 'rfdeck.backup.showfile']) features[f] = true;
       return send(200, {
-        account_id: this.options.accountId ?? 'acct-fake-1',
-        issued_at: new Date().toISOString(),
+        product: 'rfdeck',
+        account_id: accountId,
+        features,
         entitlements: [{
-          product: 'rfdeck',
           sku: 'rfdeck-cloud',
           kind: 'subscription',
-          features: this.options.features ?? ['rfdeck.spectrum', 'rfdeck.backup.showfile'],
+          status: 'active',
           expires_at: this.options.expiresAt ?? new Date(Date.now() + 30 * 86400_000).toISOString(),
         }],
       });

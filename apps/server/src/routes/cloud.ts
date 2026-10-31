@@ -150,10 +150,7 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(409).send({
           error: 'version_conflict',
           message: result.conflict.message,
-          head: {
-            version: result.conflict.headVersion,
-            updatedAt: result.conflict.headUpdatedAt,
-          },
+          head: { version: result.conflict.headVersion },
         });
       }
       return result;
@@ -226,10 +223,7 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(409).send({
           error: 'version_conflict',
           message: result.conflict.message,
-          head: {
-            version: result.conflict.headVersion,
-            updatedAt: result.conflict.headUpdatedAt,
-          },
+          head: { version: result.conflict.headVersion },
         });
       }
       return result;
@@ -348,15 +342,15 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
   /**
    * Send events to the cloud, or stop.
    *
-   * Off by default. With it off there are no collectors at all, which is what
-   * makes an unconfigured install indistinguishable from one without the feature.
+   * Off by default. With it off nothing is gathered or sent, which is what makes
+   * an unconfigured install indistinguishable from one without the feature.
    */
   fastify.put('/cloud/events', async (request, reply) => {
     const { enabled } = request.body as { enabled: boolean };
     const cloud = service();
     if (!cloud?.configured) return reply.code(409).send({ error: 'not_configured' });
     await cloud.setEventsToCloud(!!enabled);
-    return { enabled: !!enabled, collectors: cloud.events?.collectorCount ?? 0 };
+    return { enabled: !!enabled };
   });
 
   /**

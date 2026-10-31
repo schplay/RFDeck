@@ -1,8 +1,7 @@
+import { prisma } from '../db';
 import { log } from '../logger';
-import { CloudClient, CloudOffline, CloudRefused } from './client';
-import { LinkStore } from './linkStore';
 import { CloudConfig, INSTANCE_SCOPES } from './config';
-import { DeviceCodeResponse, TokenResponse } from './types';
+import { CloudLocalState, CloudOffline, CloudRefused, MerosClient, MerosSession } from './merosClient';
 
 /**
  * The instance link: this RFDeck server, acting within a Meros account.
@@ -12,26 +11,16 @@ import { DeviceCodeResponse, TokenResponse } from './types';
  * device — a phone is fine — and approves this instance into one of their
  * accounts.
  *
- * ── The part that will bite if it is got wrong ───────────────────────────────
- *
- * Meros rotates the refresh token on every use, and replaying an already-rotated
- * one revokes the **entire (user, client) token family** as a breach response.
- * Three consequences, all enforced here rather than left to a caller:
- *
- *   1. The link is single-writer. One process owns it — the one that owns the
- *      database. A desktop build and a headless install are separate OAuth
- *      clients precisely so they cannot rotate the same token and revoke each
- *      other.
- *   2. The rotated token is committed *before* the access token it arrived with
- *      is used. Crash in between and the next start would present a stale token,
- *      which does not merely fail: it kills the link.
- *   3. `invalid_grant` on refresh means "unlinked, re-link" — not "retry". A
- *      background retry loop would hide the one thing the operator needs told.
+ * The grant, the rotating refresh token and its storage are the meros-client
+ * helper's: it commits a rotated token before using the access token it came
+ * with, serializes every call on a lock (a refresh token used twice revokes the
+ * whole family), and forgets the session when Meros refuses a refresh. What is
+ * left here is the polling loop the UI watches and telling the operator when the
+ * link has died and has to be made again.
  */
 
-/** A device-flow attempt in progress. In memory: it is worthless after a restart. */
+/** A device-flow attempt in progress, as the UI shows it. */
 export interface PendingLink {
-  deviceCode: string;
   userCode: string;
   verificationUri: string;
   verificationUriComplete: string | null;
@@ -42,21 +31,23 @@ export interface PendingLink {
   detail: string | null;
 }
 
+/** Codes that mean the stored link is gone and only re-linking will help. */
+const DEAD_LINK_CODES = new Set(['invalid_grant', 'token_rejected', 'no_sign_in']);
+
 export class CloudLink {
   private pending: PendingLink | null = null;
   private poller: NodeJS.Timeout | null = null;
-  /** In-memory access token; never persisted — it lives an hour. */
-  private accessToken: { value: string; expiresAt: number } | null = null;
-  private refreshing: Promise<string> | null = null;
   /** Set when the link is dead and only the operator can fix it. */
   private relinkReason: string | null = null;
+  readonly session: MerosSession;
 
   constructor(
-    private readonly config: CloudConfig,
-    private readonly client: CloudClient,
-    private readonly store: LinkStore,
+    config: CloudConfig,
+    private readonly meros: MerosClient,
     private readonly onChange: () => void = () => {},
-  ) {}
+  ) {
+    this.session = { name: 'instance', clientId: config.clientId, scopes: INSTANCE_SCOPES };
+  }
 
   get needsRelink(): string | null {
     return this.relinkReason;
@@ -66,27 +57,52 @@ export class CloudLink {
     return this.pending;
   }
 
+  /** Run a cloud command as this instance, noticing when the link has died. */
+  async run<T = any>(command: string, input: Record<string, unknown> = {}): Promise<T> {
+    try {
+      return await this.meros.run<T>(command, input, this.session);
+    } catch (err) {
+      await this.observe(err);
+      throw err;
+    }
+  }
+
+  /**
+   * Note a refusal that means the link is gone.
+   *
+   * `invalid_grant` on a refresh is the helper forgetting the session; the next
+   * call then answers `no_sign_in`. Either way a retry cannot help, and a
+   * background loop would hide the one thing the operator needs told.
+   */
+  private async observe(err: unknown): Promise<void> {
+    const code = err instanceof CloudRefused || err instanceof CloudLocalState ? err.code : null;
+    if (!code || !DEAD_LINK_CODES.has(code)) return;
+    if (code === 'no_sign_in' && !(await this.wasLinked())) return;
+    if (this.relinkReason) return;
+    this.relinkReason =
+      'Meros rejected this instance’s stored credentials. The link has to be ' +
+      'established again from Settings → Cloud.';
+    await this.forgetLocally();
+    log.warn(`[Cloud] Link is dead — ${code}`);
+    this.onChange();
+  }
+
   // ── Linking ───────────────────────────────────────────────────────────────
 
   /** Start the device flow and begin polling. */
   async start(): Promise<PendingLink> {
     this.cancel();
-    const endpoint = await this.client.deviceEndpoint();
-    const res = await this.client.json<DeviceCodeResponse>('POST', endpoint, {
-      form: { client_id: this.config.clientId, scope: INSTANCE_SCOPES.join(' ') },
-    });
+    const res = await this.meros.run<{
+      user_code: string; verification_uri: string; verification_uri_complete?: string | null;
+      interval?: number; expires_at?: number;
+    }>('signin.start', {}, this.session);
 
-    // RFC 8628 §3.2: absent interval means 5 seconds. Honouring the server's
-    // number matters because `slow_down` is a real answer and polling too fast
-    // is how you earn it.
-    const intervalMs = Math.max(1, res.interval ?? 5) * 1000;
     this.pending = {
-      deviceCode: res.device_code,
       userCode: res.user_code,
       verificationUri: res.verification_uri,
       verificationUriComplete: res.verification_uri_complete ?? null,
-      expiresAt: Date.now() + Math.max(60, res.expires_in ?? 600) * 1000,
-      intervalMs,
+      expiresAt: res.expires_at ? res.expires_at * 1000 : Date.now() + 600_000,
+      intervalMs: Math.max(1, res.interval ?? 5) * 1000,
       outcome: 'pending',
       detail: null,
     };
@@ -98,6 +114,9 @@ export class CloudLink {
 
   cancel() {
     if (this.poller) { clearTimeout(this.poller); this.poller = null; }
+    if (this.pending?.outcome === 'pending') {
+      void this.meros.run('signin.cancel', {}, this.session).catch(() => {});
+    }
     this.pending = null;
   }
 
@@ -106,184 +125,105 @@ export class CloudLink {
     this.poller = setTimeout(() => void this.poll(), this.pending.intervalMs);
   }
 
+  private finish(outcome: PendingLink['outcome'], detail: string | null) {
+    if (!this.pending) return;
+    this.pending.outcome = outcome;
+    this.pending.detail = detail;
+    this.onChange();
+  }
+
   private async poll() {
     const pending = this.pending;
     if (!pending || pending.outcome !== 'pending') return;
 
-    if (Date.now() > pending.expiresAt) {
-      pending.outcome = 'expired';
-      pending.detail = 'The code expired before it was approved. Start again.';
-      log.warn('[Cloud] Link code expired before approval');
-      this.onChange();
-      return;
-    }
-
     try {
-      const endpoint = await this.client.tokenEndpoint();
-      const token = await this.client.json<TokenResponse>('POST', endpoint, {
-        form: {
-          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-          device_code: pending.deviceCode,
-          client_id: this.config.clientId,
-        },
-      });
-      await this.keep(token);
-      pending.outcome = 'linked';
-      log.warn('[Cloud] Instance linked to Meros');
-      this.onChange();
-      return;
+      const res = await this.meros.run<{ status: string; interval?: number }>('signin.poll', {}, this.session);
+      if (res.status === 'signed_in') {
+        this.relinkReason = null;
+        await this.recordLinked();
+        log.warn('[Cloud] Instance linked to Meros');
+        this.finish('linked', null);
+        return;
+      }
+      // Pending. The helper raises the interval when Meros says to slow down.
+      if (res.interval) pending.intervalMs = Math.max(1, res.interval) * 1000;
     } catch (err) {
       if (err instanceof CloudRefused) {
-        switch (err.code) {
-          case 'authorization_pending':
-            break;                                  // normal: keep waiting
-          case 'slow_down':
-            pending.intervalMs += 5_000;             // RFC 8628 §3.5
-            break;
-          case 'access_denied':
-            pending.outcome = 'denied';
-            pending.detail = 'The request was declined at meros.co.';
-            this.onChange();
-            return;
-          case 'expired_token':
-            pending.outcome = 'expired';
-            pending.detail = 'The code expired before it was approved. Start again.';
-            this.onChange();
-            return;
-          default:
-            pending.outcome = 'error';
-            pending.detail = err.message;
-            log.warn(`[Cloud] Link failed: ${err.message}`);
-            this.onChange();
-            return;
+        if (err.code === 'access_denied') return this.finish('denied', 'The request was declined at meros.co.');
+        if (err.code === 'expired_token') {
+          return this.finish('expired', 'The code expired before it was approved. Start again.');
         }
-      } else if (!(err instanceof CloudOffline)) {
-        pending.outcome = 'error';
-        pending.detail = (err as Error)?.message ?? 'unknown';
-        this.onChange();
-        return;
+        log.warn(`[Cloud] Link failed: ${err.message}`);
+        return this.finish('error', err.message);
+      }
+      if (!(err instanceof CloudOffline)) {
+        return this.finish('error', (err as Error)?.message ?? 'unknown');
       }
       // Offline: the operator may simply be approving it on a phone while the
       // venue's uplink flaps. Keep polling until the code expires.
+      if (Date.now() > pending.expiresAt) {
+        return this.finish('expired', 'The code expired before it was approved. Start again.');
+      }
     }
     this.schedulePoll();
   }
 
   /**
-   * Persist a token response.
-   *
-   * The refresh token is committed to the database *before* the access token is
-   * put in memory for use — see the class comment. Deliberately not clever: the
-   * write happens first, always, even when it costs a round trip.
+   * An access token for this instance, for the one caller that still calls
+   * Meros itself (the signed data feeds). The helper refreshes it when needed.
    */
-  private async keep(token: TokenResponse) {
-    if (token.refresh_token) {
-      await this.store.saveRefreshToken(token.refresh_token);
-    }
-    this.accessToken = {
-      value: token.access_token,
-      // 60s of headroom: a token that expires mid-request is a retry we can
-      // simply not have.
-      expiresAt: Date.now() + Math.max(30, (token.expires_in ?? 3600) - 60) * 1000,
-    };
-    this.relinkReason = null;
+  async token(): Promise<string> {
+    const res = await this.run<{ access_token: string }>('signin.token');
+    return res.access_token;
   }
 
   async isLinked(): Promise<boolean> {
-    return !!(await this.store.readRefreshToken());
-  }
-
-  // ── Using the link ────────────────────────────────────────────────────────
-
-  /**
-   * A usable access token, refreshing if necessary.
-   *
-   * Concurrent callers share one refresh. Two simultaneous refreshes would each
-   * present the same refresh token, and the second would look like a replay —
-   * which is exactly the thing that revokes the family.
-   */
-  async token(): Promise<string> {
-    if (this.relinkReason) throw new CloudRefused(401, 'invalid_grant', this.relinkReason);
-    if (this.accessToken && Date.now() < this.accessToken.expiresAt) return this.accessToken.value;
-    if (this.refreshing) return this.refreshing;
-
-    this.refreshing = this.refresh().finally(() => { this.refreshing = null; });
-    return this.refreshing;
-  }
-
-  private async refresh(): Promise<string> {
-    const stored = await this.store.readRefreshToken();
-    if (!stored) throw new CloudRefused(401, 'not_linked', 'This instance is not linked to Meros.');
-
-    const endpoint = await this.client.tokenEndpoint();
-    let token: TokenResponse;
     try {
-      token = await this.client.json<TokenResponse>('POST', endpoint, {
-        form: {
-          grant_type: 'refresh_token',
-          refresh_token: stored,
-          client_id: this.config.clientId,
-        },
-      });
-    } catch (err) {
-      if (err instanceof CloudRefused && (err.code === 'invalid_grant' || err.status === 400 || err.status === 401)) {
-        // The refresh token is gone: rotated and replayed, revoked at Meros, or
-        // the family was killed. Retrying cannot help, and a loop would hide it.
-        await this.markUnlinked(
-          'Meros rejected this instance’s stored credentials. The link has to be ' +
-          'established again from Settings → Cloud.',
-        );
-        throw new CloudRefused(401, 'invalid_grant', this.relinkReason!);
-      }
-      throw err;
+      const res = await this.meros.run<{ signed_in: boolean }>('signin.status', {}, this.session);
+      return res.signed_in === true;
+    } catch {
+      return false;
     }
-    await this.keep(token);
-    log.debug('[Cloud] Access token refreshed');
-    this.onChange();
-    return this.accessToken!.value;
   }
 
-  private async markUnlinked(reason: string) {
-    this.relinkReason = reason;
-    this.accessToken = null;
-    await this.store.saveRefreshToken(null);
-    log.warn(`[Cloud] Link is dead — ${reason}`);
-    this.onChange();
+  // ── What RFDeck records about the link ────────────────────────────────────
+  //
+  // When it was made, for "linked since". The credentials are the helper's.
+
+  private async wasLinked(): Promise<boolean> {
+    return !!(await prisma.settings.findFirst())?.cloudLinkedAt;
+  }
+
+  private async recordLinked(): Promise<void> {
+    const settings = await prisma.settings.findFirst() ?? await prisma.settings.create({ data: {} });
+    await prisma.settings.update({ where: { id: settings.id }, data: { cloudLinkedAt: new Date() } });
+  }
+
+  private async forgetLocally(): Promise<void> {
+    const settings = await prisma.settings.findFirst();
+    if (!settings) return;
+    await prisma.settings.update({ where: { id: settings.id }, data: { cloudLinkedAt: null } });
   }
 
   // ── Unlinking ─────────────────────────────────────────────────────────────
 
   /**
-   * Revoke at Meros, then forget locally.
+   * Revoke at Meros and forget locally.
    *
-   * Local state is cleared even when the revoke fails: an operator who has said
-   * "unlink" must not be left linked because the venue's uplink was down. The
-   * token stops working when Meros next sees it either way.
+   * The helper forgets the session even when the revoke cannot reach Meros: an
+   * operator who has said "unlink" must not be left linked because the venue's
+   * uplink was down.
    */
-  async unlink(): Promise<{ revoked: boolean }> {
-    const stored = await this.store.readRefreshToken();
-    let revoked = false;
-
-    if (stored) {
-      try {
-        const endpoint = await this.client.revocationEndpoint();
-        if (endpoint) {
-          await this.client.json('POST', endpoint, {
-            form: { token: stored, client_id: this.config.clientId, token_type_hint: 'refresh_token' },
-          });
-          revoked = true;
-        }
-      } catch (err) {
-        this.client.logOnce('Revoking the link at Meros failed; clearing it locally anyway', err);
-      }
-    }
-
-    await this.store.forgetLink();
-    this.accessToken = null;
-    this.relinkReason = null;
+  async unlink(): Promise<void> {
     this.cancel();
-    log.warn(`[Cloud] Instance unlinked${revoked ? ' and revoked at Meros' : ''}`);
+    try {
+      await this.meros.run('signin.signout', {}, this.session);
+    } catch (err) {
+      log.warn(`[Cloud] Unlinking: ${(err as Error).message}`);
+    }
+    await this.forgetLocally();
+    this.relinkReason = null;
+    log.warn('[Cloud] Instance unlinked');
     this.onChange();
-    return { revoked };
   }
 }

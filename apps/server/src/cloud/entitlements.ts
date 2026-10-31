@@ -1,24 +1,16 @@
 import { log } from '../logger';
-import { CloudClient } from './client';
 import { CloudLink } from './link';
-import { EntitlementCache } from './linkStore';
-import { EntitlementsResponse } from './types';
 
 /**
  * The one place that answers "is this account entitled to X".
  *
- * Entitlements are data, verified and then cached, so the answer survives a rig
- * with no internet. Meros issues them account-scoped with namespaced `rfdeck.*`
- * feature names; RFDeck consumes that and does not invent a format.
- *
- * **Gating is deferred by owner decision.** The plumbing and the gate are built;
- * nothing is walled off yet, and features are granted liberally while testing.
- * `entitled()` is written so that turning enforcement on later is a change to
- * one constant rather than a hunt through the codebase.
+ * Meros issues entitlements account-scoped with namespaced `rfdeck.*` feature
+ * names. Reading, caching and the 30-day offline grace are the meros-client
+ * helper's (`cloud.entitlements`): it keeps the last answer, honors it offline
+ * and reports `held` — the features, or nothing once the grace has lapsed. What
+ * stays RFDeck's is the decision: which features it gates, and that it gates at
+ * all.
  */
-
-/** How long a cached entitlement is honoured after it expires with no refresh. */
-const GRACE_MS = 30 * 24 * 60 * 60_000;
 
 /**
  * Whether a missing entitlement actually withholds anything.
@@ -38,110 +30,60 @@ const GRACE_MS = 30 * 24 * 60 * 60_000;
  */
 export const GATING_ENFORCED = true;
 
-interface CachedEntitlements {
-  accountId: string;
-  issuedAt: string;
+/** The helper's `cloud.entitlements` answer. */
+export interface EntitlementsAnswer {
+  account_id: string | null;
   features: string[];
-  /** The soonest expiry across the account's rfdeck entitlements, if any. */
-  expiresAt: string | null;
-  /** When RFDeck last successfully read this from Meros. */
-  fetchedAt: string;
+  tier: string;
+  expires_at: string | null;
+  held: string[];
+  in_grace: boolean;
+  lapsed: boolean;
+  /** Unix seconds. */
+  fetched_at: number;
+  /** True when Meros could not be reached and this is the last answer. */
+  cached: boolean;
 }
 
 export class Entitlements {
-  private cache: CachedEntitlements | null = null;
-  private loaded = false;
+  private answer: EntitlementsAnswer | null = null;
   private lastError: string | null = null;
 
   constructor(
-    private readonly client: CloudClient,
     private readonly link: CloudLink,
-    private readonly cache_: EntitlementCache,
     private readonly onChange: () => void = () => {},
   ) {}
 
-  /** Read the cached statement from the database once per process. */
-  private async load(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
-    const stored = await this.cache_.read();
-    if (!stored) return;
-    try {
-      this.cache = JSON.parse(stored);
-    } catch {
-      log.warn('[Cloud] Cached entitlements are unreadable — ignoring them');
-    }
-  }
-
   /**
-   * Fetch from Meros and cache.
+   * Ask Meros, or the helper's cached answer when Meros is unreachable.
    *
    * Offline is not a failure: the cached copy carries on. The point of the cache
    * is a rig that has been in a flight case, so refusing to answer because the
    * network is down would defeat it.
    */
-  async refresh(): Promise<CachedEntitlements | null> {
-    await this.load();
-    let token: string;
-    try {
-      token = await this.link.token();
-    } catch (err) {
-      this.lastError = (err as Error).message;
-      return this.cache;
-    }
-
+  async refresh(): Promise<EntitlementsAnswer | null> {
     try {
       // Scoped to this product: an account may pay for several Meros products
-      // independently, and asking for all of them then filtering would make
-      // RFDeck's own entitlements depend on how much unrelated data came back.
-      const res = await this.client.json<EntitlementsResponse>(
-        'GET', `${this.client.baseUrl}/v1/entitlements?product=rfdeck`, { token },
-      );
-      const mine = (res.entitlements ?? []).filter(e => e.product === 'rfdeck');
-      const features = [...new Set(mine.flatMap(e => e.features ?? []))].sort();
-      const expiries = mine
-        .map(e => e.expires_at)
-        .filter((v): v is string => !!v)
-        .sort();
-
-      this.cache = {
-        accountId: res.account_id,
-        issuedAt: res.issued_at,
-        features,
-        expiresAt: expiries[0] ?? null,
-        fetchedAt: new Date().toISOString(),
-      };
-      this.lastError = null;
-
-      // `account_id` is how RFDeck learns which account it is acting in: the
-      // instance token is user-scoped rather than account-pinned, so this is
-      // the resolved answer rather than something the token carried.
-      await this.cache_.write(res.account_id, JSON.stringify(this.cache));
+      // independently.
+      const answer = await this.link.run<EntitlementsAnswer>('cloud.entitlements', { product: 'rfdeck' });
+      this.answer = answer;
+      this.lastError = answer.cached ? 'Meros is unreachable; using the last answer.' : null;
       log.debug(
-        `[Cloud] Entitlements for account ${res.account_id}: ` +
-        `${features.length ? features.join(', ') : '(none)'}`,
+        `[Cloud] Entitlements for account ${answer.account_id}: ` +
+        `${answer.held.length ? answer.held.join(', ') : '(none)'}${answer.cached ? ' (cached)' : ''}`,
       );
       this.onChange();
-      return this.cache;
     } catch (err) {
       this.lastError = (err as Error).message;
-      this.client.logOnce('Reading entitlements failed', err);
-      return this.cache;
+      log.debug(`[Cloud] Reading entitlements failed: ${(err as Error).message}`);
     }
+    return this.answer;
   }
 
-  /** True while a cached statement is being honoured past its expiry. */
-  private inGrace(): boolean {
-    if (!this.cache?.expiresAt) return false;
-    const expired = Date.parse(this.cache.expiresAt);
-    return Number.isFinite(expired) && Date.now() > expired && Date.now() < expired + GRACE_MS;
-  }
-
-  /** Whether the cached statement is too old to honour at all. */
-  private lapsed(): boolean {
-    if (!this.cache?.expiresAt) return false;
-    const expired = Date.parse(this.cache.expiresAt);
-    return Number.isFinite(expired) && Date.now() > expired + GRACE_MS;
+  /** Forget the answer, when the link goes. */
+  clear() {
+    this.answer = null;
+    this.lastError = null;
   }
 
   /**
@@ -149,31 +91,26 @@ export class Entitlements {
    * gating is switched on.
    */
   async holds(feature: string): Promise<boolean> {
-    await this.load();
-    if (!this.cache || this.lapsed()) return false;
-    return this.cache.features.includes(feature);
+    return !!this.answer?.held.includes(feature);
   }
 
   /**
-   * Should this feature be available?
-   *
-   * While gating is deferred this is always true — build the gate, wall nothing
-   * off. One constant flips it, so the day enforcement arrives there is no
-   * scattered set of checks to find.
+   * Should this feature be available? Whether the account holds it, while gating
+   * is enforced.
    */
   async entitled(feature: string): Promise<boolean> {
     if (!GATING_ENFORCED) return true;
     return this.holds(feature);
   }
 
-  async snapshot() {
-    await this.load();
+  snapshot() {
     return {
-      accountId: this.cache?.accountId ?? null,
-      features: this.cache?.features ?? [],
-      expiresAt: this.cache?.expiresAt ?? null,
-      inGrace: this.inGrace(),
-      lapsed: this.lapsed(),
+      accountId: this.answer?.account_id ?? null,
+      features: this.answer?.held ?? [],
+      expiresAt: this.answer?.expires_at ?? null,
+      inGrace: this.answer?.in_grace ?? false,
+      lapsed: this.answer?.lapsed ?? false,
+      fetchedAt: this.answer ? new Date(this.answer.fetched_at * 1000).toISOString() : null,
       lastError: this.lastError,
     };
   }

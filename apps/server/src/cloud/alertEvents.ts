@@ -96,7 +96,6 @@ export function attachEventEmitter(source: EventEmitter, cloud: CloudService): v
     cloud.emit({
       type: event.type === 'RECOVERY' ? 'rfdeck.rf.recovery' : 'rfdeck.rf.dropout',
       severity: event.type === 'RECOVERY' ? 'info' : 'warning',
-      occurredAt: event.timestamp ? new Date(event.timestamp) : undefined,
       subject: { kind: 'channel', id: event.channelId, name: event.channelName ?? undefined },
       attrs: {
         message: event.type === 'RECOVERY'
@@ -168,7 +167,6 @@ export function attachEventEmitter(source: EventEmitter, cloud: CloudService): v
     cloud.emit({
       type: eventTypeFor(alert.type),
       severity: severityFor(alert.severity),
-      occurredAt: alert.timestamp ? new Date(alert.timestamp) : undefined,
       // The channel is what a rule is most likely to be scoped to, so it is the
       // subject; the device rides in attrs alongside it.
       subject: alert.channelId

@@ -1,6 +1,6 @@
 import { prisma } from '../db';
 import { log } from '../logger';
-import { CloudClient, CloudRefused } from './client';
+import { CloudRefused } from './merosClient';
 import { CloudLink } from './link';
 
 /**
@@ -158,14 +158,7 @@ function int(value: unknown): number | null {
 }
 
 export class InventorySync {
-  constructor(
-    private readonly client: CloudClient,
-    private readonly link: CloudLink,
-  ) {}
-
-  private get url(): string {
-    return `${this.client.baseUrl}/v1/inventory/rfdeck`;
-  }
+  constructor(private readonly link: CloudLink) {}
 
   /** Every device this install knows about, in Meros's shape. */
   async build(): Promise<CloudInventoryDevice[]> {
@@ -188,11 +181,9 @@ export class InventorySync {
         + `the cloud accepts in one push.`,
       );
     }
-
-    const token = await this.link.token();
     try {
-      const result = await this.client.json<{ count?: number; updated_at?: string }>(
-        'PUT', this.url, { token, body: { devices } },
+      const result = await this.link.run<{ count?: number; updated_at?: string }>(
+        'cloud.inventory.put', { product: 'rfdeck', devices },
       );
       log.info(`[Cloud] Pushed ${devices.length} device(s) to the online inventory`);
       return {
@@ -206,9 +197,8 @@ export class InventorySync {
 
   /** What the cloud currently lists, so an operator can see the push landed. */
   async fetch(): Promise<CloudInventoryListing> {
-    const token = await this.link.token();
     try {
-      const raw = await this.client.json<any>('GET', this.url, { token });
+      const raw = await this.link.run<any>('cloud.inventory.get', { product: 'rfdeck' });
       return {
         product: typeof raw?.product === 'string' ? raw.product : 'rfdeck',
         count: Number(raw?.count ?? (Array.isArray(raw?.devices) ? raw.devices.length : 0)),
@@ -222,9 +212,8 @@ export class InventorySync {
 
   /** Clear the listing. An empty reconcile, which is how Meros spells "remove it all". */
   async clear(): Promise<void> {
-    const token = await this.link.token();
     try {
-      await this.client.json('PUT', this.url, { token, body: { devices: [] } });
+      await this.link.run('cloud.inventory.put', { product: 'rfdeck', devices: [] });
       log.info('[Cloud] Cleared the online inventory listing');
     } catch (err) {
       throw this.translate(err);

@@ -1,11 +1,21 @@
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+
+// The link records when it was made; the database is replaced so nothing here
+// writes to a real one.
+vi.mock('../db', () => {
+  const settings = { id: 1, cloudLinkedAt: null };
+  return { prisma: { settings: {
+    findFirst: async () => settings, create: async () => settings,
+    update: async ({ data }: any) => Object.assign(settings, data),
+  } } };
+});
+
 import { FakeMeros } from './fakeMeros';
-import { CloudClient } from './client';
 import { CloudLink } from './link';
-import { MemoryLinkStore } from './linkStore';
+import { MerosClient, resolveMerosClientBinary } from './merosClient';
 import { Feeds } from './feeds';
 import { PackVerifyError } from './packSignature';
 import { CloudConfig } from './config';
@@ -43,16 +53,19 @@ async function harness(options: { linked?: boolean } = {}) {
     baseUrl, clientId: 'rfdeck-server-test',
     browserClientId: null, packKeys: fake.packKeys(),
   };
-  const client = new CloudClient(config);
-  const link = new CloudLink(config, client, new MemoryLinkStore());
+  // The link is the meros-client helper's; the feeds take their token from it.
+  const meros = new MerosClient(config, resolveMerosClientBinary(), {
+    stateDir: path.join(dir, 'meros'), keyFile: path.join(dir, 'meros.key'),
+  });
+  const link = new CloudLink(config, meros);
   if (options.linked !== false) {
     await link.start();
-    const deadline = Date.now() + 4000;
+    const deadline = Date.now() + 15_000;
     while (Date.now() < deadline && link.pendingLink?.outcome === 'pending') {
       await new Promise(r => setTimeout(r, 20));
     }
   }
-  return { fake: fake!, config, feeds: new Feeds(config, client, link, dir) };
+  return { fake: fake!, config, feeds: new Feeds(config, link, path.join(dir, 'packs')) };
 }
 
 describe('fetching a pack', () => {
@@ -64,7 +77,7 @@ describe('fetching a pack', () => {
     expect(got.fromCache).toBe(false);
     expect(got.payload.cell).toBe('tn40w076');
     expect(got.header.kid).toBe(fake.kid);
-    expect(fs.existsSync(path.join(dir, 'regional-us-fcc-tn40w076.json'))).toBe(true);
+    expect(fs.existsSync(path.join(dir, 'packs', 'regional-us-fcc-tn40w076.json'))).toBe(true);
   });
 
   it('re-polls conditionally, so an unchanged weekly poll is cheap', async () => {
@@ -161,7 +174,7 @@ describe('nothing unverified becomes data', () => {
     fake.publishPack('regional-us-fcc-tn40w076', cellPayload);
     await feeds.fetch('regional-us-fcc-tn40w076');
 
-    const file = path.join(dir, 'regional-us-fcc-tn40w076.json');
+    const file = path.join(dir, 'packs', 'regional-us-fcc-tn40w076.json');
     const entry = JSON.parse(fs.readFileSync(file, 'utf8'));
     const [tag, header] = entry.response.signed.split('.');
     const forged = Buffer.from(JSON.stringify({ ...cellPayload, stations: [] })).toString('base64url');

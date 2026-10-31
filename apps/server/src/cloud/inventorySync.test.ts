@@ -1,12 +1,5 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import {
-  toCloudDevice, MAX_DEVICES_PER_PUSH, InventorySync, InventoryScopeMissing,
-} from './inventorySync';
-import { FakeMeros } from './fakeMeros';
-import { CloudClient } from './client';
-import { CloudLink } from './link';
-import { MemoryLinkStore } from './linkStore';
-import { CloudConfig } from './config';
+import { describe, it, expect, vi } from 'vitest';
+import { toCloudDevice, MAX_DEVICES_PER_PUSH, InventorySync } from './inventorySync';
 
 // The mapping onto Meros's shape. Mostly a rename, but three things are worth
 // holding still: the enums Meros validates, the fields it must never see, and the
@@ -93,98 +86,19 @@ describe('the push cap', () => {
   });
 });
 
-// ── Against the fake ────────────────────────────────────────────────────────
+// Publishing and reading back, and the scope refusal, run against the fake
+// through the meros-client helper in merosHelper.test.ts.
 
-let fake: FakeMeros | null = null;
-afterEach(async () => { await fake?.close(); fake = null; vi.restoreAllMocks(); });
-
-async function harness(options = {}) {
-  fake = new FakeMeros(options);
-  const baseUrl = await fake.listen();
-  const config: CloudConfig = {
-    baseUrl, clientId: 'rfdeck-server-test',
-    browserClientId: null, packKeys: fake.packKeys(),
-  };
-  const client = new CloudClient(config);
-  const link = new CloudLink(config, client, new MemoryLinkStore());
-  await link.start();
-  const deadline = Date.now() + 4000;
-  while (Date.now() < deadline && link.pendingLink?.outcome === 'pending') {
-    await new Promise(r => setTimeout(r, 20));
-  }
-  const sync = new InventorySync(client, link);
-  // The database is not what is under test here, so the rows are supplied directly.
-  const withDevices = (rows: any[]) => {
-    vi.spyOn(sync, 'build').mockResolvedValue(rows.map(toCloudDevice));
-    return sync;
-  };
-  return { fake: fake!, sync, withDevices };
-}
-
-describe('publishing to the account', () => {
-  it('sends the whole set and reports what the cloud stored', async () => {
-    const { fake, withDevices } = await harness();
-    const sync = withDevices([{ id: 'a', name: 'Rack 1' }, { id: 'b', name: 'Rack 2' }]);
-
-    const result = await sync.push();
-    expect(result.count).toBe(2);
-    expect(result.updatedAt).toBeTruthy();
-    expect(fake.inventory.map((d: any) => d.id)).toEqual(['a', 'b']);
-  });
-
-  it('is a reconcile: a device removed locally disappears from the listing', async () => {
-    // The property with teeth. A client that assumed this merged would leave
-    // devices listed forever; one that assumed it replaced when it merged would
-    // show duplicates. Worth a test rather than a comment.
-    const { fake, sync } = await harness();
-    vi.spyOn(sync, 'build').mockResolvedValue([
-      toCloudDevice({ id: 'a' }), toCloudDevice({ id: 'b' }),
-    ]);
-    await sync.push();
-
-    vi.spyOn(sync, 'build').mockResolvedValue([toCloudDevice({ id: 'a' })]);
-    await sync.push();
-
-    expect(fake.inventory.map((d: any) => d.id)).toEqual(['a']);
-  });
-
-  it('reads back what it published', async () => {
-    const { withDevices } = await harness();
-    const sync = withDevices([{ id: 'a', name: 'Rack 1', serial: 'S1' }]);
-    await sync.push();
-
-    const listing = await sync.fetch();
-    expect(listing.count).toBe(1);
-    expect(listing.devices[0]).toMatchObject({ id: 'a', name: 'Rack 1', serial: 'S1' });
-  });
-
-  it('clears the listing without touching anything local', async () => {
-    const { fake, withDevices } = await harness();
-    const sync = withDevices([{ id: 'a' }]);
-    await sync.push();
-    await sync.clear();
-    expect(fake.inventory).toEqual([]);
-  });
-
+describe('the cap, checked here', () => {
   it('refuses locally rather than sending a batch over the cap', async () => {
-    const { fake, sync } = await harness();
+    const run = vi.fn();
+    const sync = new InventorySync({ run } as any);
     vi.spyOn(sync, 'build').mockResolvedValue(
       Array.from({ length: MAX_DEVICES_PER_PUSH + 1 }, (_, i) => toCloudDevice({ id: `d${i}` })),
     );
     await expect(sync.push()).rejects.toThrow(/over the 5000/);
-    // Caught before the request, so the message can say what it is rather than
-    // relaying a 413.
-    expect(fake.requests.some(r => r.path === '/v1/inventory/rfdeck')).toBe(false);
-  });
-});
-
-describe('telling the two 403s apart', () => {
-  it('reads insufficient_scope as "re-link", not "pay"', async () => {
-    // An install linked before these scopes existed holds a token without them.
-    // Sending that operator to a billing page would waste their time entirely.
-    const { withDevices } = await harness({ withholdInventoryScope: true });
-    const sync = withDevices([{ id: 'a' }]);
-    await expect(sync.push()).rejects.toThrow(InventoryScopeMissing);
-    await expect(sync.push()).rejects.toThrow(/link again/i);
+    // Caught before anything is sent, so the message can say what it is rather
+    // than relaying a 413.
+    expect(run).not.toHaveBeenCalled();
   });
 });

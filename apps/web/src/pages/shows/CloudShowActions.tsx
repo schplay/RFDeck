@@ -18,7 +18,6 @@ import './CloudShowActions.css';
 interface Conflict {
   message: string;
   headVersion: number;
-  headUpdatedAt: string | null;
 }
 
 export function CloudShowActions({ showId, showName }: { showId: string; showName: string }) {
@@ -51,7 +50,6 @@ export function CloudShowActions({ showId, showName }: { showId: string; showNam
         setConflict({
           message: body?.message ?? 'The cloud copy has changed.',
           headVersion: body?.head?.version ?? 0,
-          headUpdatedAt: body?.head?.updatedAt ?? null,
         });
       } else if (!res.ok) {
         setError(body?.message ?? `Could not save to the cloud (HTTP ${res.status}).`);
@@ -120,8 +118,7 @@ export function CloudShowActions({ showId, showName }: { showId: string; showNam
             <strong>The cloud copy changed since you last synced.</strong>
           </div>
           <p className="csa-conflict-body">
-            It is now version {conflict.headVersion}
-            {conflict.headUpdatedAt && `, saved ${new Date(conflict.headUpdatedAt).toLocaleString()}`}.
+            It is now version {conflict.headVersion}.
             Someone else pushed this show, or you pushed it from another machine.
           </p>
           <div className="csa-conflict-actions">

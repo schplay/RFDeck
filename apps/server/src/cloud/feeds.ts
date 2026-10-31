@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { log } from '../logger';
-import { CloudClient, CloudRefused, CloudOffline } from './client';
+import { CloudRefused, CloudOffline } from './merosClient';
 import { CloudLink } from './link';
 import { CloudConfig } from './config';
 import { verifySignedPack, PackVerifyError, PackHeader } from './packSignature';
@@ -42,12 +42,45 @@ interface CacheFile {
   response: unknown;
 }
 
+/**
+ * One conditional GET for a pack.
+ *
+ * The signed data feeds are the one part of the cloud client not yet on the
+ * meros-client helper: RFDeck reads TV occupancy at show time from cache alone,
+ * never waiting on a venue's uplink, and the helper's `cloud.feed` has no
+ * cache-only read. Raised with meros-client; this moves across when it has one.
+ */
+async function conditionalGet(
+  url: string, token: string | undefined, extra: Record<string, string>,
+): Promise<{ status: number; body: any; headers: { etag: string | null } }> {
+  const headers: Record<string, string> = { Accept: 'application/json', ...extra };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  let response: Response;
+  try {
+    response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) });
+  } catch (err: any) {
+    throw new CloudOffline(err?.cause?.code ?? err?.name ?? err?.message ?? 'unknown');
+  }
+  const etag = response.headers.get('etag');
+  if (response.status === 304) return { status: 304, body: null, headers: { etag } };
+  const text = await response.text().catch(() => '');
+  let parsed: any = null;
+  if (text) { try { parsed = JSON.parse(text); } catch { /* not JSON */ } }
+  if (!response.ok) {
+    throw new CloudRefused(
+      response.status,
+      typeof parsed?.error === 'string' ? parsed.error : null,
+      parsed?.error_description ?? parsed?.message ?? parsed?.error ?? (text.slice(0, 200) || `HTTP ${response.status}`),
+    );
+  }
+  return { status: response.status, body: parsed, headers: { etag } };
+}
+
 export class Feeds {
   private readonly dir: string;
 
   constructor(
     private readonly config: CloudConfig,
-    private readonly client: CloudClient,
     private readonly link: CloudLink,
     dir?: string,
   ) {
@@ -126,7 +159,7 @@ export class Feeds {
   async fetch<T = unknown>(pack: string, options: { force?: boolean } = {}): Promise<CachedPack<T>> {
     this.assertPackName(pack);
     const cached = this.readCache(pack);
-    const url = `${this.client.baseUrl}/v1/feeds/rfdeck/${encodeURIComponent(pack)}`;
+    const url = `${this.config.baseUrl}/v1/feeds/rfdeck/${encodeURIComponent(pack)}`;
 
     let token: string | undefined;
     try {
@@ -141,7 +174,7 @@ export class Feeds {
       const headers: Record<string, string> = {};
       if (cached?.etag && !options.force) headers['If-None-Match'] = cached.etag;
 
-      const response = await this.client.jsonWithHeaders<any>('GET', url, { token, headers });
+      const response = await conditionalGet(url, token, headers);
 
       if (response.status === 304) {
         if (cached) return this.fromCache<T>(pack, cached);

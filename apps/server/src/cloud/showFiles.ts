@@ -52,9 +52,9 @@ export class ShowFiles {
    * Push a show to the cloud.
    *
    * Carries the version this machine last saw. A stale one comes back as a
-   * `DocumentConflict` rather than an overwrite, and the caller decides — except
-   * for the one case that needs no decision: the cloud already holding a
-   * byte-identical copy, which is simply recorded and reported as up to date.
+   * `DocumentConflict` rather than an overwrite, and the caller decides. The
+   * cloud already holding identical content needs no decision and is reported
+   * as up to date.
    */
   async push(showId: string): Promise<
     | { status: 'pushed'; version: number }
@@ -69,23 +69,15 @@ export class ShowFiles {
     try {
       const result = await this.documents.put(COLLECTION, key, file, known?.version ?? undefined);
       await this.remember(key, result.version, result.content_hash ?? contentHash(file));
+      // The cloud already holding this exact show is not a conflict and needs no
+      // decision; the bookmark catches up so the next real edit pushes cleanly.
+      if (result.unchanged) return { status: 'already-current', version: result.version };
       log.info(`[Cloud] Pushed show "${file.show.name}" as version ${result.version}`);
       return { status: 'pushed', version: result.version };
     } catch (err) {
-      if (err instanceof DocumentConflict) {
-        // The conflict itself was decided by Meros on the integer version: the
-        // head advanced past our base_version. `sameContent` only decides whether
-        // it is worth asking the operator about — it never suppresses a conflict,
-        // because a hash we computed ourselves could be wrong in a way a version
-        // comparison cannot.
-        if (err.sameContent) {
-          // Two machines, one show, nothing to resolve. Catch up our bookmark so
-          // the next real edit pushes cleanly instead of conflicting again.
-          await this.remember(key, err.headVersion, err.headContentHash);
-          return { status: 'already-current', version: err.headVersion };
-        }
-        return { status: 'conflict', conflict: err };
-      }
+      // Decided by Meros on the integer version: someone saved different
+      // content since this machine last synced.
+      if (err instanceof DocumentConflict) return { status: 'conflict', conflict: err };
       throw err;
     }
   }

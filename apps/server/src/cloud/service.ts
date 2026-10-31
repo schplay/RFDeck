@@ -1,10 +1,9 @@
 import { Server } from 'socket.io';
 import { prisma } from '../db';
 import { log } from '../logger';
-import { CloudClient } from './client';
 import { CloudConfig, readCloudConfig } from './config';
+import { MerosClient } from './merosClient';
 import { CloudLink, PendingLink } from './link';
-import { PrismaLinkStore, PrismaEntitlementCache } from './linkStore';
 import { Entitlements } from './entitlements';
 import { Documents } from './documents';
 import { ShowFiles } from './showFiles';
@@ -16,7 +15,6 @@ import { RegionalData, parseVenueLocation, OccupancyResult } from './regionalDat
 import { Events, EmitInput } from './events';
 import { CloudUserLogin } from './cloudUser';
 import { PrismaCloudUserStore } from './cloudUserStore';
-import crypto from 'crypto';
 import { CloudStatus } from './types';
 
 /**
@@ -29,7 +27,6 @@ import { CloudStatus } from './types';
  */
 export class CloudService {
   readonly configured: boolean;
-  private readonly client: CloudClient | null;
   private readonly link: CloudLink | null;
   private readonly entitlements: Entitlements | null;
   /** Show files. Null when the cloud is not configured. */
@@ -53,7 +50,6 @@ export class CloudService {
   constructor(private readonly io: Server, config: CloudConfig | null = readCloudConfig()) {
     this.configured = !!config;
     if (!config) {
-      this.client = null;
       this.link = null;
       this.entitlements = null;
       this.showFiles = null;
@@ -63,24 +59,20 @@ export class CloudService {
       log.debug('[Cloud] Not configured (no MEROS_BASE_URL / MEROS_CLIENT_ID) — cloud features are off');
       return;
     }
-    this.client = new CloudClient(config);
+    // Every call to Meros goes through the shared meros-client helper, except
+    // the signed data feeds (see feeds.ts).
+    const meros = new MerosClient(config);
     const announce = () => void this.announce();
-    this.link = new CloudLink(config, this.client, new PrismaLinkStore(), announce);
-    this.entitlements = new Entitlements(this.client, this.link, new PrismaEntitlementCache(), announce);
-    const documents = new Documents(this.client, this.link);
+    this.link = new CloudLink(config, meros, announce);
+    this.entitlements = new Entitlements(this.link, announce);
+    const documents = new Documents(this.link);
     this.showFiles = new ShowFiles(documents);
     this.configBackup = new ConfigBackup(documents);
-    this.inventory = new InventorySync(this.client, this.link);
-    const feeds = new Feeds(config, this.client, this.link);
+    this.inventory = new InventorySync(this.link);
+    const feeds = new Feeds(config, this.link);
     this.regional = new RegionalData(feeds);
-    this.events = new Events(
-      this.client, this.link,
-      // Replaced with the persisted id in start(); a placeholder until then so
-      // nothing can emit under an id that is not the install's.
-      'pending', process.env.RFDECK_VERSION ?? '0.0.0',
-      process.env.RFDECK_EDITION === 'desktop' ? 'desktop' : 'server',
-    );
-    this.cloudUser = new CloudUserLogin(config, this.client, new PrismaCloudUserStore(), () => {
+    this.events = new Events(this.link, process.env.RFDECK_EDITION === 'desktop' ? 'desktop' : 'server');
+    this.cloudUser = new CloudUserLogin(config, meros, new PrismaCloudUserStore(), () => {
       void this.cloudUser?.session()
         .then(session => this.io.emit('cloud:user', session))
         .catch(() => { /* the next page load reads it anyway */ });
@@ -115,6 +107,7 @@ export class CloudService {
 
   stop() {
     this.events?.stop();
+    void this.events?.flush();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.regionalTimer) clearInterval(this.regionalTimer);
     this.link?.cancel();
@@ -135,16 +128,19 @@ export class CloudService {
     this.link?.cancel();
   }
 
-  async unlink() {
-    if (!this.link) return { revoked: false };
-    const result = await this.link.unlink();
+  async unlink(): Promise<{ unlinked: boolean }> {
+    if (!this.link) return { unlinked: false };
+    await this.link.unlink();
+    this.entitlements?.clear();
+    this.events?.setEnabled(false);
     if (this.refreshTimer) { clearInterval(this.refreshTimer); this.refreshTimer = null; }
-    return result;
+    return { unlinked: true };
   }
 
   /** Called after a successful link to pick up the account and its entitlements. */
   async afterLink() {
     if (!this.entitlements) return;
+    await this.configureEvents();
     await this.entitlements.refresh();
     if (!this.refreshTimer) {
       this.refreshTimer = setInterval(() => void this.entitlements!.refresh(), 60 * 60_000);
@@ -174,51 +170,14 @@ export class CloudService {
   // ── Events ────────────────────────────────────────────────────────────────
 
   /**
-   * Give the emitter its identity and its collectors.
-   *
-   * The instance id is generated once and kept: collectors dedupe on
-   * `(source.instance, id)`, so changing it would orphan everything already sent
-   * and make one install look like two.
+   * Send events to Meros Cloud when the operator has switched the stream on
+   * and the instance is linked. The install's identity, the sequence and the
+   * outbox are the helper's.
    */
   private async configureEvents(): Promise<void> {
-    if (!this.events || !this.config) return;
-    const settings = await prisma.settings.findFirst() ?? await prisma.settings.create({ data: {} });
-
-    let instanceId = settings.eventInstanceId;
-    if (!instanceId) {
-      instanceId = crypto.randomUUID();
-      await prisma.settings.update({
-        where: { id: settings.id }, data: { eventInstanceId: instanceId },
-      });
-      log.info(`[Cloud] This install's event instance id is ${instanceId}`);
-    }
-    (this.events as any).instanceId = instanceId;
-    // Continue the series rather than restarting it: a collector reads a repeated
-    // or reversed sequence number as a gap.
-    (this.events as any).seq = settings.eventSeq ?? 0;
-
-    this.events.setCollectors(
-      settings.eventToCloud && settings.cloudRefreshToken
-        // `token: undefined` means "use the instance link's access token".
-        ? [{ name: 'Meros Cloud', url: this.config.baseUrl }]
-        : [],
-    );
-    if (this.eventSeqTimer) clearInterval(this.eventSeqTimer);
-    // Persisted periodically rather than on every event: a lost handful of
-    // numbers after a hard kill is harmless, and a write per event would not be.
-    this.eventSeqTimer = setInterval(() => void this.persistSeq(), 60_000);
-  }
-
-  private eventSeqTimer: NodeJS.Timeout | null = null;
-
-  private async persistSeq(): Promise<void> {
-    try {
-      const seq = (this.events as any)?.seq ?? 0;
-      const settings = await prisma.settings.findFirst();
-      if (settings && seq > (settings.eventSeq ?? 0)) {
-        await prisma.settings.update({ where: { id: settings.id }, data: { eventSeq: seq } });
-      }
-    } catch { /* bookkeeping; never worth surfacing */ }
+    if (!this.events || !this.link) return;
+    const settings = await prisma.settings.findFirst();
+    this.events.setEnabled(!!settings?.eventToCloud && (await this.link.isLinked()));
   }
 
   /** Turn the cloud collector on or off. */
@@ -304,18 +263,19 @@ export class CloudService {
       };
     }
     const settings = await prisma.settings.findFirst();
-    const snap = await this.entitlements.snapshot();
+    const snap = this.entitlements.snapshot();
+    const linked = await this.link.isLinked();
     return {
       configured: true,
-      linked: !!settings?.cloudRefreshToken,
-      accountId: settings?.cloudAccountId ?? snap.accountId,
+      linked,
+      accountId: snap.accountId,
       linkedAt: settings?.cloudLinkedAt?.toISOString() ?? null,
-      lastRefreshAt: settings?.cloudLastRefreshAt?.toISOString() ?? null,
+      lastRefreshAt: snap.fetchedAt,
       features: snap.features,
       expiresAt: snap.expiresAt,
       // "Offline" means: we are working from a cached answer because the last
       // attempt to read a fresh one did not get through.
-      offline: !!snap.lastError && !!settings?.cloudRefreshToken,
+      offline: !!snap.lastError && linked,
       needsRelink: this.link.needsRelink,
       browserClientId: this.config.browserClientId,
       baseUrl: this.config.baseUrl,

@@ -73,16 +73,11 @@ export class ConfigBackup {
         CONFIG_COLLECTION, CONFIG_KEY, file, known?.version ?? undefined,
       );
       await this.remember(result.version, result.content_hash ?? contentHash(file));
+      if (result.unchanged) return { status: 'already-current', version: result.version };
       log.info(`[Cloud] Backed up this install's configuration as version ${result.version}`);
       return { status: 'pushed', version: result.version };
     } catch (err) {
-      if (err instanceof DocumentConflict) {
-        if (err.sameContent) {
-          await this.remember(err.headVersion, err.headContentHash);
-          return { status: 'already-current', version: err.headVersion };
-        }
-        return { status: 'conflict', conflict: err };
-      }
+      if (err instanceof DocumentConflict) return { status: 'conflict', conflict: err };
       throw err;
     }
   }

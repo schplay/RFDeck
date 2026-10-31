@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { CloudClient, CloudRefused } from './client';
+import { CloudRefused } from './merosClient';
 import { CloudLink } from './link';
 
 /**
@@ -23,7 +23,6 @@ export interface DocumentSummary {
 }
 
 export interface DocumentListing {
-  account_id: string;
   product: string;
   collection: string;
   documents: DocumentSummary[];
@@ -31,9 +30,7 @@ export interface DocumentListing {
 
 export interface DocumentVersionInfo {
   version: number;
-  content_hash?: string;
   size_bytes?: number;
-  author_user_id?: string | null;
   created_at?: string;
 }
 
@@ -50,8 +47,6 @@ export interface FetchedDocument<T = unknown> {
   headVersion: number;
   body: T;
   contentHash: string | null;
-  createdAt: string | null;
-  sizeBytes: number | null;
 }
 
 /** The document, or the version, is not in the cloud. A normal answer, not a fault. */
@@ -64,20 +59,17 @@ export class DocumentNotFound extends Error {
   }
 }
 
-/** A push refused because the head moved. Carries what is needed to offer a choice. */
+/**
+ * A push refused because someone saved different content first. Carries what is
+ * needed to offer a choice. An identical copy is not a conflict: the helper
+ * reports it as `unchanged` and nothing is written.
+ */
 export class DocumentConflict extends Error {
   constructor(
     readonly headVersion: number,
-    readonly headUpdatedAt: string | null,
     readonly headContentHash: string | null,
-    /** True when the head's body is byte-identical to what we tried to push. */
-    readonly sameContent: boolean,
   ) {
-    super(
-      sameContent
-        ? 'The cloud already has this exact version.'
-        : `The cloud copy changed${headUpdatedAt ? ` at ${headUpdatedAt}` : ''} and is now version ${headVersion}.`,
-    );
+    super(`The cloud copy changed and is now version ${headVersion}.`);
     this.name = 'DocumentConflict';
   }
 }
@@ -118,20 +110,15 @@ function canonicalise(value: unknown): unknown {
 /**
  * Meros's `content_hash`, computed locally.
  *
- * Used for exactly one thing: telling a **benign** conflict from a real one. When
- * the head's hash equals ours, two machines are holding an identical document and
- * there is nothing for an operator to arbitrate.
- *
- * It is deliberately *not* how a conflict is detected. That is the integer
- * version, decided by Meros — a 409 means the head advanced past our
- * `base_version`, full stop. A version comparison cannot false-positive; a hash
- * computed from our own serialisation could, which is why it only ever downgrades
- * a prompt and never suppresses a conflict.
+ * The same value Meros and the meros-client helper compute, so this machine can
+ * tell whether its own copy of a show still matches what it last synced
+ * without asking. It never decides a conflict: that is the integer version,
+ * decided by Meros.
  *
  * One known limit, deliberately left as a failing test rather than a comment
- * nobody reads: floating-point numbers. PHP and JavaScript do not always render
- * the same float identically (`1.0` versus `1`), so a document containing one
- * could hash differently on each side. Show files contain no floats, and
+ * nobody reads: floating-point numbers. Languages do not always render the same
+ * float identically (`1.0` versus `1`), so a document containing one could hash
+ * differently on each side. Show files contain no floats, and
  * `showFile.test.ts` asserts that, so if a future field introduces one the test
  * fails and points here.
  */
@@ -142,90 +129,81 @@ export function contentHash(body: unknown): string {
 /** Meros's cap on a document body. */
 export const MAX_DOCUMENT_BYTES = 1024 * 1024;
 
-export class Documents {
-  constructor(
-    private readonly client: CloudClient,
-    private readonly link: CloudLink,
-  ) {}
+/** The helper's answer to `cloud.docs.get`. */
+interface DocAnswer {
+  key: string;
+  version: number;
+  head_version: number;
+  body: unknown;
+  content_hash: string | null;
+}
 
-  private base(collection: string): string {
-    return `${this.client.baseUrl}/v1/docs/${PRODUCT}/${encodeURIComponent(collection)}`;
-  }
+/**
+ * The document store, through the meros-client helper (`cloud.docs.*`), acting
+ * as this instance.
+ */
+export class Documents {
+  constructor(private readonly link: CloudLink) {}
 
   async list(collection: string): Promise<DocumentListing> {
-    const token = await this.link.token();
-    return this.client.json<DocumentListing>('GET', this.base(collection), { token });
+    const res = await this.link.run<{ docs: Array<{ key: string; head_version: number; updated: string }> }>(
+      'cloud.docs.list', { product: PRODUCT, collection },
+    );
+    return {
+      product: PRODUCT,
+      collection,
+      documents: (res.docs ?? []).map(d => ({ key: d.key, head_version: d.head_version, updated_at: d.updated })),
+    };
   }
 
-  /**
-   * Fetch the head, or a specific version.
-   *
-   * The response is a stable envelope — `{ key, version, head_version,
-   * content_hash, size_bytes, created_at, body }` — so the document is read from
-   * `body` and the siblings are Meros's metadata about it.
-   *
-   * Deliberately keyed off the envelope rather than sniffed for. An earlier
-   * version of this accepted either a wrapper or a bare document, because the
-   * shape had not been specified; Meros has since guaranteed the envelope and
-   * pointed out that sniffing for our own top-level keys would be the wrong test
-   * anyway. It would be: a document that legitimately contained a `body` key
-   * would be misread, and the check would pass for years before meeting one.
-   */
+  /** Fetch the head, or a specific version. */
   async get<T = unknown>(collection: string, key: string, version?: number): Promise<FetchedDocument<T>> {
-    const token = await this.link.token();
-    const url = `${this.base(collection)}/${encodeURIComponent(key)}`
-      + (version ? `?version=${version}` : '');
-
-    let raw: any;
+    let raw: DocAnswer;
     try {
-      raw = await this.client.json<any>('GET', url, { token });
+      raw = await this.link.run<DocAnswer>('cloud.docs.get', {
+        product: PRODUCT, collection, key, ...(version ? { version } : {}),
+      });
     } catch (err) {
       // "Not in the cloud" is an ordinary answer — a show that has never been
       // pushed — and the UI needs to tell it apart from the cloud being broken.
-      if (err instanceof CloudRefused && err.status === 404) {
-        throw new DocumentNotFound(key, version);
-      }
+      if (err instanceof CloudRefused && err.status === 404) throw new DocumentNotFound(key, version);
       throw err;
     }
-
-    if (!raw || typeof raw !== 'object' || !raw.body || typeof raw.body !== 'object') {
+    if (!raw.body || typeof raw.body !== 'object') {
       throw new Error(`The cloud returned no document body for "${key}".`);
     }
-    const returned = Number(raw.version ?? version ?? 0);
     return {
-      key: typeof raw.key === 'string' ? raw.key : key,
-      version: returned,
-      headVersion: Number(raw.head_version ?? returned),
+      key: raw.key ?? key,
+      version: Number(raw.version),
+      headVersion: Number(raw.head_version ?? raw.version),
       body: raw.body as T,
       contentHash: typeof raw.content_hash === 'string' ? raw.content_hash : null,
-      createdAt: typeof raw.created_at === 'string' ? raw.created_at : null,
-      sizeBytes: Number.isFinite(Number(raw.size_bytes)) ? Number(raw.size_bytes) : null,
     };
   }
 
   async versions(collection: string, key: string): Promise<DocumentVersionInfo[]> {
-    const token = await this.link.token();
-    const raw = await this.client.json<any>(
-      'GET', `${this.base(collection)}/${encodeURIComponent(key)}/versions`, { token },
+    const res = await this.link.run<{ versions: Array<{ version: number; created?: string; size_bytes?: number }> }>(
+      'cloud.docs.versions', { product: PRODUCT, collection, key },
     );
-    const list = Array.isArray(raw) ? raw : raw?.versions;
-    return Array.isArray(list) ? list : [];
+    return (res.versions ?? []).map(v => ({ version: v.version, created_at: v.created, size_bytes: v.size_bytes }));
   }
 
   /**
    * Push a new version.
    *
-   * @param baseVersion The version this was edited from, or 0/undefined for a new
-   *   document. Getting this wrong in either direction is a 409 rather than an
-   *   overwrite, which is the point.
-   * @throws DocumentConflict when the head has moved.
+   * @param baseVersion The version this was edited from, or undefined for a new
+   *   document. Getting this wrong in either direction is a conflict rather than
+   *   an overwrite, which is the point.
+   * @returns `unchanged` when the cloud already holds identical content; then
+   *   nothing was written and `version` is the head's.
+   * @throws DocumentConflict when someone saved different content first.
    */
   async put(
     collection: string,
     key: string,
     body: unknown,
     baseVersion?: number,
-  ): Promise<{ version: number; content_hash: string | null }> {
+  ): Promise<{ version: number; content_hash: string | null; unchanged: boolean }> {
     const encoded = JSON.stringify(body);
     if (Buffer.byteLength(encoded, 'utf8') > MAX_DOCUMENT_BYTES) {
       // Caught here so the message can say what it is rather than relaying a 413.
@@ -234,40 +212,21 @@ export class Documents {
         `over the 1 MB limit for cloud documents.`,
       );
     }
-
-    const token = await this.link.token();
     try {
-      // 201, and the same envelope as a GET minus `body`.
-      const raw = await this.client.json<any>(
-        'PUT', `${this.base(collection)}/${encodeURIComponent(key)}`,
-        { token, body: baseVersion === undefined ? { body } : { body, base_version: baseVersion } },
+      const res = await this.link.run<{ version: number; content_hash: string | null; unchanged?: boolean }>(
+        'cloud.docs.put',
+        { product: PRODUCT, collection, key, body, ...(baseVersion === undefined ? {} : { base_version: baseVersion }) },
       );
-      return {
-        version: Number(raw?.version ?? raw?.head_version ?? 0),
-        content_hash: typeof raw?.content_hash === 'string' ? raw.content_hash : null,
-      };
+      return { version: Number(res.version), content_hash: res.content_hash ?? null, unchanged: res.unchanged === true };
     } catch (err) {
-      if (err instanceof CloudRefused && err.status === 409) {
-        // The 409 carries the head, which is what turns "conflict" into a choice.
-        const head = err.body?.head ?? {};
-        const headHash = typeof head.content_hash === 'string' ? head.content_hash : null;
-        // If the head's body is byte-identical to ours there is nothing to
-        // resolve — two machines pushed the same show. Asking an operator to
-        // arbitrate a non-conflict is how they learn to click through dialogs.
-        const sameContent = !!headHash && headHash === contentHash(body);
-        throw new DocumentConflict(
-          Number(head.version ?? 0),
-          typeof head.updated_at === 'string' ? head.updated_at : null,
-          headHash,
-          sameContent,
-        );
+      if (err instanceof CloudRefused && err.code === 'version_conflict') {
+        throw new DocumentConflict(err.headVersion ?? 0, err.headContentHash);
       }
       throw err;
     }
   }
 
   async remove(collection: string, key: string): Promise<void> {
-    const token = await this.link.token();
-    await this.client.json('DELETE', `${this.base(collection)}/${encodeURIComponent(key)}`, { token });
+    await this.link.run('cloud.docs.delete', { product: PRODUCT, collection, key });
   }
 }
