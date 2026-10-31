@@ -260,6 +260,9 @@ async function startServer() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
       PORT: '3000',
+      // The desktop edition: it links to Meros through the system browser on
+      // this computer, and reports itself as the desktop app.
+      RFDECK_EDITION: 'desktop',
       DATABASE_URL: dbUrl,
       PRISMA_SCHEMA_PATH: paths.schema,
       // Where the built UI is, so the sidecar can serve it over HTTP.
