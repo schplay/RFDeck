@@ -15,6 +15,9 @@ export interface CloudUserRecord {
   signedInAt: Date;
 }
 
+/** How a cloud user can come to be signed in here. Anything else stored is migrated. */
+export const SIGNED_IN_VIA = ['console'] as const;
+
 export interface CloudUserStore {
   read(): Promise<CloudUserRecord | null>;
   /** Record this user, replacing whoever was recorded before. */
@@ -23,6 +26,18 @@ export interface CloudUserStore {
 }
 
 export class PrismaCloudUserStore implements CloudUserStore {
+  /**
+   * Bring a stored sign-in method written by an older version up to a current
+   * value. A rename, not a loss: the person stays signed in.
+   */
+  async migrate(): Promise<number> {
+    const result = await prisma.cloudUser.updateMany({
+      where: { signedInVia: { notIn: [...SIGNED_IN_VIA] } },
+      data: { signedInVia: 'console' },
+    });
+    return result.count;
+  }
+
   async read(): Promise<CloudUserRecord | null> {
     const row = await prisma.cloudUser.findFirst();
     return row ? { sub: row.sub, name: row.name, email: row.email, signedInVia: row.signedInVia, signedInAt: row.signedInAt } : null;

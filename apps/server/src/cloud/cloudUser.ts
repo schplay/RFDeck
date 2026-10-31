@@ -1,6 +1,6 @@
 import { log } from '../logger';
 import { CloudConfig, CLOUD_USER_SCOPES } from './config';
-import { CloudUserStore } from './cloudUserStore';
+import { CloudUserStore, SIGNED_IN_VIA } from './cloudUserStore';
 import { CloudLocalState, CloudOffline, CloudRefused, MerosClient, MerosSession } from './merosClient';
 
 /**
@@ -123,7 +123,7 @@ export class CloudUserLogin {
       sub: res.user.id,
       name: res.user.name ?? null,
       email: res.user.email ?? null,
-      signedInVia: 'manifold',
+      signedInVia: SIGNED_IN_VIA[0],
     });
     this.signedOutReason = null;
     log.warn(`[Cloud] Cloud user ${res.user.email ?? res.user.id} signed in from a console` +

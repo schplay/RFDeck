@@ -40,7 +40,7 @@ export class CloudService {
   /** The event stream. Always present, so callers never branch on the cloud. */
   readonly events: Events | null = null;
   /**
-   * A cloud user signed in on this install from Manifold. Null when the cloud is
+   * A cloud user signed in on this install from a console. Null when the cloud is
    * not configured; present but refusing when the Cloud User client is not.
    */
   readonly cloudUser: CloudUserLogin | null = null;
@@ -92,6 +92,8 @@ export class CloudService {
    */
   async start() {
     if (!this.link || !this.entitlements) return;
+    await new PrismaCloudUserStore().migrate()
+      .catch(err => log.warn(`[Cloud] Could not update the stored sign-in method: ${(err as Error).message}`));
     if (!(await this.link.isLinked())) {
       log.debug('[Cloud] Configured but not linked');
       return;

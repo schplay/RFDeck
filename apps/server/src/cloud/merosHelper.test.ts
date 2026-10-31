@@ -253,7 +253,7 @@ describe('signing a cloud user in from a console', () => {
     });
     const session = await login.complete(begun.requestId, token);
     expect(session).toMatchObject({
-      signedIn: true, replacedPrevious: false, signedInVia: 'manifold',
+      signedIn: true, replacedPrevious: false, signedInVia: 'console',
       user: { sub: 'user-42', name: 'Ada', email: 'ada@example.test' },
     });
 

@@ -4,11 +4,11 @@ import { apiFetch } from '../../lib/api';
 import { useSocket } from '../../hooks/useSocket';
 
 /**
- * The cloud user signed in on this server from Manifold, with a way to sign out.
+ * The cloud user signed in on this server from a console, with a way to sign out.
  *
  * Shown because a long-lived sign-in associates this install with a named person
  * for up to a year, and whoever walks up to the rig should be able to see who
- * that is and end it. Signing out on Manifold does not end it — only signing out
+ * that is and end it. Signing out on the console does not end it — only signing out
  * here, or Meros refusing the sign-in, does.
  */
 
@@ -37,7 +37,7 @@ export function CloudUserCard() {
 
   useEffect(() => { void load(); }, [load]);
 
-  // A sign-in from Manifold arrives while this page may be open.
+  // A sign-in from a console arrives while this page may be open.
   useEffect(() => {
     if (!socket) return;
     const onUser = (next: Omit<CloudSession, 'configured'>) =>
@@ -73,9 +73,9 @@ export function CloudUserCard() {
             <strong>{who}</strong>
             {session.user?.email && session.user.email !== who && <> ({session.user.email})</>} is
             signed in to Meros Cloud on this server
-            {session.signedInVia === 'manifold' ? ', from Manifold' : ''}
+            {session.signedInVia === 'console' ? ', from a console' : ''}
             {session.signedInAt && <>, since {new Date(session.signedInAt).toLocaleString()}</>}.
-            Signing out on Manifold does not sign them out here.
+            Signing out on the console does not sign them out here.
           </p>
           {error && <p className="cloud-error">{error}</p>}
           <div className="settings-form">
@@ -93,8 +93,8 @@ export function CloudUserCard() {
             </div>
           )}
           <p className="settings-desc">
-            Nobody is signed in. A cloud user is signed in here from Manifold, when the
-            console is connected to this server.
+            Nobody is signed in. A cloud user is signed in here from a console connected
+            to this server.
           </p>
         </>
       )}

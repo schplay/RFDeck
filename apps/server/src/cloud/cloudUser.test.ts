@@ -119,7 +119,7 @@ describe('the routes', () => {
     expect(done.json()).toMatchObject({ signedIn: true, user: { sub: SUB }, replacedPrevious: false });
 
     const session = (await f.inject({ method: 'GET', url: '/api/auth/cloud-session', remoteAddress: '127.0.0.1' })).json();
-    expect(session).toMatchObject({ configured: true, signedIn: true, signedInVia: 'manifold' });
+    expect(session).toMatchObject({ configured: true, signedIn: true, signedInVia: 'console' });
 
     const out = (await f.inject({ method: 'POST', url: '/api/auth/cloud-signout', remoteAddress: '127.0.0.1' })).json();
     expect(out).toEqual({ signedIn: false });
