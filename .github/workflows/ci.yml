@@ -63,6 +63,14 @@ jobs:
       - name: Typecheck server
         run: pnpm --filter @rfdeck/server exec tsc --noEmit
 
+      # The Meros Cloud client is the shared meros-client helper, built from
+      # source at the commit pinned in apps/server/package.json. The cloud tests
+      # drive it against RFDeck's fake Meros.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build the meros-client helper
+        run: pnpm --filter @rfdeck/server build:meros-client
+
       - name: Typecheck web
         run: pnpm --filter @rfdeck/web exec tsc --noEmit
 
@@ -137,6 +145,9 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm --filter @rfdeck/server exec prisma generate
+
+      # The meros-client helper ships inside the app, built for this platform.
+      - uses: dtolnay/rust-toolchain@stable
 
       # Builds the shared packages, web and server, then packages. Never
       # publishes: a CI run is a check that packaging works, not a release.

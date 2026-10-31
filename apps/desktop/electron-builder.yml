@@ -35,6 +35,13 @@ extraResources:
     to: app/server/dist
   - from: ../server/prisma/schema.prisma
     to: app/server/prisma/schema.prisma
+  # The meros-client helper every call to Meros Cloud goes through, built for
+  # this platform. The server finds it beside its own build, at server/bin.
+  - from: ../server/bin
+    to: app/server/bin
+    filter:
+      - meros-client
+      - meros-client.exe
   # Pins the server tree to CommonJS. Node decides module format from the
   # nearest package.json up the tree, which would otherwise be the Electron
   # shell's — and that declares "type": "module".
