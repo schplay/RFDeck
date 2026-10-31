@@ -3,12 +3,17 @@
   "version": "1.0.0",
   "private": true,
   "main": "dist/server.js",
+  "merosClient": {
+    "repository": "https://github.com/meros-co/meros-client",
+    "rev": "eb87725db5696b5a5bf8118dabd8326023ad2e4c"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
+    "build:meros-client": "node scripts/build-meros-client.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

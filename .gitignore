@@ -61,3 +61,7 @@ apps/server/prisma/*.db-shm
 # Stray dev databases created by test runs
 rfdeck.db
 apps/server/rfdeck.db
+
+# The meros-client helper, built from source by apps/server/scripts/build-meros-client.mjs
+apps/server/bin/
+apps/server/.meros-client-build/
