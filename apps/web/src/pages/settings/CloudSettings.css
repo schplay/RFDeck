@@ -86,9 +86,7 @@
   color: var(--color-error, #d05353);
 }
 
-/* ── The device flow ───────────────────────────────────────────────────────
-   The code is the whole interaction, so it is the largest thing on the card and
-   readable across a rack at arm's length. */
+/* ── Linking, while the browser is at meros.co ─────────────────────────── */
 .cloud-pending {
   margin-top: 14px;
   padding: 16px;
@@ -104,30 +102,14 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--font-mono);
   font-size: 13px;
   color: var(--color-primary);
   text-decoration: underline;
 }
 
-.cloud-code {
-  font-family: var(--font-mono);
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  color: var(--color-primary);
-  padding: 6px 12px;
-  border-radius: var(--radius-sm, 6px);
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-  /* Typed by hand from across the room, so the digits must not shuffle. */
-  font-variant-numeric: tabular-nums;
-  user-select: all;
-}
-
 @media (max-width: 640px) {
   .cloud-row { flex-direction: column; gap: 2px; }
   .cloud-label { flex-basis: auto; }
-  .cloud-code { font-size: 24px; letter-spacing: 0.12em; }
 }
 
 /* A plain switch. The copy above it does the explaining, so this stays quiet. */

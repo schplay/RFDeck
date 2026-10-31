@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Cloud, CloudOff, Link2, Unlink, AlertTriangle, Check, ExternalLink, RotateCcw } from 'lucide-react';
+import { Cloud, CloudOff, Link2, Unlink, AlertTriangle, Check, ExternalLink } from 'lucide-react';
 import { useCloudStore } from '../../stores/cloudStore';
 import { API_BASE, apiFetch } from '../../lib/api';
 import { ConfigBackupCard } from './ConfigBackupCard';
@@ -10,10 +10,9 @@ import './CloudSettings.css';
 /**
  * Settings → Cloud: link this rig to a Meros account, and see what that gets it.
  *
- * The device flow, because a rig may have no browser of its own and may be
- * reached only over a show LAN. The operator opens the verification URL on
- * whatever device is to hand — a phone is fine — approves it there, and this page
- * watches the server's polling.
+ * Linking is signing in with Meros: meros.co's own sign-in page, then back
+ * here linked. RFDeck Desktop opens the system browser on its own computer;
+ * any other browser goes to meros.co and comes back to this page.
  */
 
 function when(iso: string | null | undefined): string {
@@ -23,21 +22,13 @@ function when(iso: string | null | undefined): string {
 }
 
 export function CloudSettings() {
-  const { status, loaded, pending, busy, error,
-          fetchStatus, startLink, pollLink, cancelLink, unlink,
+  const { status, loaded, linking, linkingPage, busy, error,
+          fetchStatus, link, cancelLink, unlink,
           setEventsToCloud } = useCloudStore();
   const [venueLocation, setVenueLocation] = useState('');
   const [venueSaved, setVenueSaved] = useState(false);
 
   useEffect(() => { void fetchStatus(); }, [fetchStatus]);
-
-  // Poll while a link is in flight. The server is doing the real polling; this
-  // is just the page keeping up with it.
-  useEffect(() => {
-    if (!pending?.pending) return;
-    const timer = setInterval(() => void pollLink(), 2000);
-    return () => clearInterval(timer);
-  }, [pending?.pending, pollLink]);
 
   useEffect(() => {
     fetch(`${API_BASE}/settings`)
@@ -145,34 +136,18 @@ export function CloudSettings() {
 
         {error && <p className="cloud-error">{error}</p>}
 
-        {/* ── The device flow ───────────────────────────────────────────────── */}
-        {pending?.pending ? (
+        {/* ── Linking ───────────────────────────────────────────────────────── */}
+        {linking ? (
           <div className="cloud-pending">
             <p className="settings-desc">
-              Open this on any device — a phone is fine — sign in, and approve this rig.
+              Finish signing in on meros.co in your browser to link this rig.
             </p>
-            <a
-              className="cloud-verify-link"
-              href={pending.verificationUriComplete ?? pending.verificationUri}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {pending.verificationUri} <ExternalLink size={13} />
-            </a>
-            <div className="cloud-code" aria-label="Your code">{pending.userCode}</div>
-            <p className="cloud-sub">
-              Waiting for approval… the code expires {when(pending.expiresAt)}.
-            </p>
+            {linkingPage && (
+              <a className="cloud-verify-link" href={linkingPage} target="_blank" rel="noreferrer">
+                Browser didn’t open? Open the sign-in page <ExternalLink size={13} />
+              </a>
+            )}
             <button className="btn-ghost" onClick={() => void cancelLink()}>Cancel</button>
-          </div>
-        ) : pending && pending.outcome !== 'linked' ? (
-          <div className="cloud-pending">
-            <p className="cloud-error">
-              {pending.detail ?? 'Linking did not complete.'}
-            </p>
-            <button className="btn-primary" onClick={() => void startLink()} disabled={busy}>
-              <RotateCcw size={14} /> Try again
-            </button>
           </div>
         ) : status.linked ? (
           <div className="settings-form">
@@ -182,8 +157,8 @@ export function CloudSettings() {
           </div>
         ) : (
           <div className="settings-form">
-            <button className="btn-primary" onClick={() => void startLink()} disabled={busy}>
-              <Link2 size={14} /> {busy ? 'Starting…' : 'Link this rig'}
+            <button className="btn-primary" onClick={() => void link()} disabled={busy}>
+              <Link2 size={14} /> {status.needsRelink ? 'Link again' : 'Link this rig'}
             </button>
           </div>
         )}

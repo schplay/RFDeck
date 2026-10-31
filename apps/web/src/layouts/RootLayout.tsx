@@ -11,6 +11,8 @@ import { useCloudStore } from '../stores/cloudStore';
 import { watchProfileChanges, flushProfileChanges } from '../lib/profileWatcher';
 import { StatusBar } from '../components/StatusBar';
 import { AccountMenu } from '../components/AccountMenu';
+import { usePersonStore } from '../stores/personStore';
+import { takeSignInReturn } from '../lib/signIn';
 // Bundled import so the path survives base './' and the Electron file:// build.
 import logoMark from '../assets/logo-mark.svg';
 import './RootLayout.css';
@@ -45,9 +47,21 @@ export default function RootLayout() {
   // Desktop ignores this state entirely — the sidebar is always visible there.
   const [navOpen, setNavOpen] = useState(false);
 
-  // The account menu needs the browser client id, which comes with cloud status.
+  // The account menu needs to know whether people can sign in, which comes
+  // with cloud status.
   const fetchCloudStatus = useCloudStore(s => s.fetchStatus);
   useEffect(() => { void fetchCloudStatus(); }, [fetchCloudStatus]);
+
+  // Back from signing in on meros.co: finish what it came back with. Read once;
+  // the address is cleaned so a reload doesn't replay it.
+  useEffect(() => {
+    const back = takeSignInReturn();
+    if (!back) return;
+    if (back.outcome === 'person' && back.claim) void usePersonStore.getState().claim(back.claim);
+    else if (back.outcome === 'linked') void useCloudStore.getState().linkReturned(null);
+    else if (back.errorFor === 'person') usePersonStore.getState().failed(back.error ?? 'sign_in_failed');
+    else void useCloudStore.getState().linkReturned(back.error ?? 'sign_in_failed');
+  }, []);
 
   // Stamp and push preference changes. Idempotent, and a no-op when nobody is
   // signed in beyond recording when each change happened.

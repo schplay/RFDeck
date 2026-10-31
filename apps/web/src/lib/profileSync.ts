@@ -1,4 +1,4 @@
-import { PersonSession, accessTokenFor } from './personLink';
+import { PersonSession, asPerson } from './personLink';
 
 /**
  * A person's preferences, following them between machines.
@@ -18,18 +18,6 @@ import { PersonSession, accessTokenFor } from './personLink';
  * RFDeck works.
  */
 
-/**
- * The namespace preferences live under.
- *
- * Meros also offers a shared `meros` namespace for preferences that should follow a
- * person across the whole portfolio rather than belonging to one product. Nothing
- * RFDeck syncs today qualifies — layout, meter settings and UI state are all about
- * *this* application's screens — so everything goes in `rfdeck`. A genuinely
- * portfolio-wide preference, such as a theme or a locale, would belong in `meros`,
- * and would want a second namespace here rather than a rename of this one.
- */
-const NAMESPACE = 'rfdeck';
-
 /** The stores worth carrying. Keyed by the `localStorage` key each one persists to. */
 export const SYNCED_KEYS = [
   'rfdeck-layout',
@@ -37,48 +25,18 @@ export const SYNCED_KEYS = [
   'rfdeck-ui',
 ] as const;
 
+/** The person's preferences at Meros, as the RFDeck server relays them. */
 export interface RemoteProfile {
-  namespace: string;
   keys: Record<string, unknown>;
   /** Per-key ISO timestamps, which is what makes the merge decidable. */
   key_meta: Record<string, string>;
-  updated_at: string | null;
 }
 
-export class ProfileSyncError extends Error {}
-
-async function call<T>(
-  baseUrl: string,
-  session: PersonSession,
-  method: 'GET' | 'PUT' | 'DELETE',
-  body?: unknown,
-  clientId?: string,
-  onRenewed?: (s: PersonSession) => void,
-): Promise<T> {
-  // Renewed here rather than by a timer, so a sync that happens after an hour
-  // idle just works instead of failing and asking the operator to sign in again.
-  const token = clientId
-    ? await accessTokenFor(baseUrl, clientId, session, onRenewed ?? (() => {}))
-    : session.accessToken;
-
-  const res = await fetch(`${baseUrl}/v1/profiles/${NAMESPACE}`, {
+async function call<T>(session: PersonSession, method: 'GET' | 'PUT', body?: unknown): Promise<T> {
+  return asPerson<T>(session, '/cloud/me/profile', {
     method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  if (res.status === 413) {
-    throw new ProfileSyncError(
-      'Your saved preferences are too large to sync. Something is storing more than it should be.',
-    );
-  }
-  if (!res.ok) {
-    const detail = await res.json().catch(() => null);
-    throw new ProfileSyncError(detail?.message ?? `Profile sync failed (HTTP ${res.status}).`);
-  }
-  return res.json();
 }
 
 /** What is stored locally, for the keys that are synced. */
@@ -128,13 +86,8 @@ export interface SyncResult {
  * definitely written deliberately at some point, whereas an untimed local value may
  * only be a default.
  */
-export async function syncProfile(
-  baseUrl: string,
-  session: PersonSession,
-  clientId?: string,
-  onRenewed?: (s: PersonSession) => void,
-): Promise<SyncResult> {
-  const remote = await call<RemoteProfile>(baseUrl, session, 'GET', undefined, clientId, onRenewed);
+export async function syncProfile(session: PersonSession): Promise<SyncResult> {
+  const remote = await call<RemoteProfile>(session, 'GET');
   const local = readLocal();
   const result: SyncResult = { pulled: [], pushed: [], resolved: [] };
 
@@ -167,26 +120,20 @@ export async function syncProfile(
   if (Object.keys(toPush).length > 0) {
     // Partial merge: only these keys are touched, so a preference changed on
     // another machine in the same moment survives.
-    await call(baseUrl, session, 'PUT', { keys: toPush }, clientId, onRenewed);
+    await call(session, 'PUT', { keys: toPush });
   }
   return result;
 }
 
 /** Push specific keys. Used after a local change, debounced by the caller. */
-export async function pushProfile(
-  baseUrl: string,
-  session: PersonSession,
-  keys: string[] = [...SYNCED_KEYS],
-  clientId?: string,
-  onRenewed?: (s: PersonSession) => void,
-): Promise<void> {
+export async function pushProfile(session: PersonSession, keys: string[] = [...SYNCED_KEYS]): Promise<void> {
   const local = readLocal();
   const payload: Record<string, unknown> = {};
   for (const key of keys) {
     if (key in local) payload[key] = local[key];
   }
   if (Object.keys(payload).length === 0) return;
-  await call(baseUrl, session, 'PUT', { keys: payload }, clientId, onRenewed);
+  await call(session, 'PUT', { keys: payload });
 }
 
 /**

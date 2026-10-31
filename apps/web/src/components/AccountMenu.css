@@ -117,23 +117,10 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-family: var(--font-mono);
+  margin-bottom: 10px;
   font-size: 11px;
   color: var(--color-primary);
   text-decoration: underline;
-  word-break: break-all;
-}
-
-/* Read off a screen and typed into a phone, so it is the biggest thing here. */
-.am-code {
-  margin: 10px 0;
-  font-family: var(--font-mono);
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-primary);
-  user-select: all;
 }
 
 .am-spin { animation: am-spin 1s linear infinite; }

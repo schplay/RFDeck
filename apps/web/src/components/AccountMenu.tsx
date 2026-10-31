@@ -12,8 +12,8 @@ import './AccountMenu.css';
  * it carries a layout between venues. Overselling it would invite an operator to
  * think RFDeck needed it.
  *
- * Hidden entirely when the server has no browser client configured, rather than
- * shown disabled: an offer that cannot be taken up is just clutter in a header
+ * Hidden entirely when the server can't sign people in, rather than shown
+ * disabled: an offer that cannot be taken up is just clutter in a header
  * that is already busy.
  */
 
@@ -25,9 +25,10 @@ function initials(name: string | null, email: string | null): string {
 }
 
 export function AccountMenu() {
-  const browserClientId = useCloudStore(s => s.status.browserClientId);
-  const { session, pending, outcome, error, syncing, lastSync, remember,
+  const canSignIn = useCloudStore(s => s.status.peopleCanSignIn);
+  const { session, waiting, waitingPage, error, syncing, lastSync, remember,
           setRemember, signIn, cancel, signOut, sync } = usePersonStore();
+  const person = session?.person ?? null;
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
@@ -40,7 +41,7 @@ export function AccountMenu() {
     return () => document.removeEventListener('mousedown', away);
   }, [open]);
 
-  if (!browserClientId) return null;
+  if (!canSignIn && !person) return null;
 
   const synced = lastSync
     ? lastSync.pulled.length + lastSync.pushed.length + lastSync.resolved.length
@@ -49,30 +50,30 @@ export function AccountMenu() {
   return (
     <div className="am" ref={root}>
       <button
-        className={`am-trigger ${session ? 'is-signed-in' : ''}`}
+        className={`am-trigger ${person ? 'is-signed-in' : ''}`}
         onClick={() => setOpen(o => !o)}
-        title={session ? `Signed in as ${session.name ?? session.email ?? session.sub}` : 'Sign in with Meros'}
+        title={person ? `Signed in as ${person.name ?? person.email ?? person.sub}` : 'Sign in with Meros'}
         aria-expanded={open}
       >
-        {session
-          ? <span className="am-initials">{initials(session.name, session.email)}</span>
+        {person
+          ? <span className="am-initials">{initials(person.name, person.email)}</span>
           : <UserCircle2 size={18} />}
       </button>
 
       {open && (
         <div className="am-panel" role="dialog" aria-label="Account">
-          {session ? (
+          {person ? (
             <>
               <div className="am-who">
-                <div className="am-name">{session.name ?? session.email ?? 'Signed in'}</div>
-                {session.email && session.name && <div className="am-email">{session.email}</div>}
+                <div className="am-name">{person.name ?? person.email ?? 'Signed in'}</div>
+                {person.email && person.name && <div className="am-email">{person.email}</div>}
               </div>
               <p className="am-note">
                 Your layout, meter settings and solo groups follow you to any RFDeck
                 you sign in to.
               </p>
               <p className="am-note am-quiet">
-                {session.persistent
+                {person.persistent
                   ? 'Staying signed in on this machine.'
                   : 'Signed in until this tab closes.'}
               </p>
@@ -93,17 +94,17 @@ export function AccountMenu() {
                 </button>
               </div>
             </>
-          ) : pending ? (
+          ) : waiting ? (
             <>
               <p className="am-note">
-                Open this on your phone, sign in, and approve.
+                Finish signing in on meros.co in your browser.
               </p>
-              <a className="am-verify" href={pending.verificationUriComplete ?? pending.verificationUri}
-                 target="_blank" rel="noreferrer">
-                {pending.verificationUri} <ExternalLink size={12} />
-              </a>
-              <div className="am-code">{pending.userCode}</div>
-              <button className="am-action" onClick={cancel}>Cancel</button>
+              {waitingPage && (
+                <a className="am-verify" href={waitingPage} target="_blank" rel="noreferrer">
+                  Browser didn’t open? Open the sign-in page <ExternalLink size={12} />
+                </a>
+              )}
+              <button className="am-action" onClick={() => void cancel()}>Cancel</button>
             </>
           ) : (
             <>
@@ -126,9 +127,7 @@ export function AccountMenu() {
                   <em>Leave unticked on a shared venue computer.</em>
                 </span>
               </label>
-              {outcome === 'denied' && <p className="am-error">That request was declined.</p>}
-              {outcome === 'expired' && <p className="am-error">The code expired. Try again.</p>}
-              {outcome === 'error' && error && <p className="am-error">{error}</p>}
+              {error && <p className="am-error">{error}</p>}
               <button className="am-action am-primary" onClick={() => void signIn()}>
                 <UserCircle2 size={13} /> Sign in with Meros
               </button>

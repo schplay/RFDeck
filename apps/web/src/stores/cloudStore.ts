@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { API_BASE, apiFetch } from '../lib/api';
+import { signInWithMeros, cancelSignIn, pendingSignInPage, signInMessage } from '../lib/signIn';
 
 /**
  * The Meros Cloud link, as the UI sees it.
@@ -22,8 +23,9 @@ export interface CloudStatus {
   offline: boolean;
   /** The link is dead and only the operator can fix it, with the reason. */
   needsRelink: string | null;
-  /** The RFDeck Browser client, for the person link's own device flow. */
-  browserClientId: string | null;
+  /** Whether people can sign in here to sync their preferences. */
+  peopleCanSignIn: boolean;
+  /** The Meros origin this install talks to. */
   baseUrl: string | null;
   /** Whether the event stream is being sent to the cloud. Off by default. */
   eventsToCloud: boolean;
@@ -31,36 +33,30 @@ export interface CloudStatus {
   eventsQueued: number;
 }
 
-/** A device-flow attempt the server is polling on our behalf. */
-export interface PendingLink {
-  pending: boolean;
-  outcome?: 'pending' | 'linked' | 'denied' | 'expired' | 'error';
-  detail?: string | null;
-  userCode?: string;
-  verificationUri?: string;
-  verificationUriComplete?: string | null;
-  expiresAt?: string;
-}
-
 const EMPTY: CloudStatus = {
   configured: false, linked: false, accountId: null, linkedAt: null,
   lastRefreshAt: null, features: [], expiresAt: null, offline: false,
-  needsRelink: null, browserClientId: null, baseUrl: null,
+  needsRelink: null, peopleCanSignIn: false, baseUrl: null,
   eventsToCloud: false, eventsQueued: 0,
 };
 
 interface CloudState {
   status: CloudStatus;
   loaded: boolean;
-  pending: PendingLink | null;
+  /** Linking through the system browser (RFDeck Desktop), until it comes back. */
+  linking: boolean;
+  /** The page the system browser was opened at, for when it didn't come up. */
+  linkingPage: string | null;
   busy: boolean;
   error: string | null;
 
   fetchStatus: () => Promise<void>;
   setStatus: (status: CloudStatus) => void;
-  startLink: () => Promise<void>;
-  pollLink: () => Promise<void>;
+  /** Link this RFDeck to a Meros account by signing in with Meros. */
+  link: () => Promise<void>;
   cancelLink: () => Promise<void>;
+  /** A link that meros.co sent this page back from. */
+  linkReturned: (error: string | null) => Promise<void>;
   unlink: () => Promise<void>;
   setEventsToCloud: (enabled: boolean) => Promise<void>;
 }
@@ -68,7 +64,8 @@ interface CloudState {
 export const useCloudStore = create<CloudState>()((set, get) => ({
   status: EMPTY,
   loaded: false,
-  pending: null,
+  linking: false,
+  linkingPage: null,
   busy: false,
   error: null,
 
@@ -86,35 +83,31 @@ export const useCloudStore = create<CloudState>()((set, get) => ({
   /** From the `cloud:status` socket event, so every open client stays in step. */
   setStatus: (status) => set({ status, loaded: true }),
 
-  startLink: async () => {
-    set({ busy: true, error: null });
+  link: async () => {
+    set({ linking: true, linkingPage: null, error: null });
+    const watch = setInterval(() => {
+      void pendingSignInPage().then(page => { if (get().linking) set({ linkingPage: page }); });
+    }, 1000);
     try {
-      const res = await fetch(`${API_BASE}/cloud/link`, { method: 'POST' });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`);
-      set({ pending: { pending: true, ...body } });
+      const result = await signInWithMeros('instance');
+      if (result.redirected) return;
+      await get().fetchStatus();
+      set({ linking: false, linkingPage: null });
     } catch (err) {
-      set({ error: (err as Error).message });
+      set({ linking: false, linkingPage: null, error: (err as Error).message });
     } finally {
-      set({ busy: false });
-    }
-  },
-
-  pollLink: async () => {
-    try {
-      const res = await fetch(`${API_BASE}/cloud/link`);
-      const body: PendingLink = await res.json();
-      set({ pending: body.outcome ? body : null });
-      // A completed link changes what the rest of the page should say.
-      if (body.outcome && body.outcome !== 'pending') await get().fetchStatus();
-    } catch {
-      /* transient; the next tick tries again */
+      clearInterval(watch);
     }
   },
 
   cancelLink: async () => {
-    try { await apiFetch('/cloud/link', { method: 'DELETE' }); } catch { /* ignore */ }
-    set({ pending: null });
+    await cancelSignIn();
+    set({ linking: false, linkingPage: null });
+  },
+
+  linkReturned: async (error) => {
+    set({ error: error ? signInMessage(error) : null });
+    await get().fetchStatus();
   },
 
   setEventsToCloud: async (enabled) => {
@@ -133,7 +126,6 @@ export const useCloudStore = create<CloudState>()((set, get) => ({
     set({ busy: true, error: null });
     try {
       await apiFetch('/cloud/unlink', { method: 'POST' });
-      set({ pending: null });
       await get().fetchStatus();
     } catch (err) {
       set({ error: (err as Error).message });
