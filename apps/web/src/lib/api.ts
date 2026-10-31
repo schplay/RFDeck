@@ -124,7 +124,7 @@ export async function fetchAuthStatus(): Promise<AuthStatus> {
  * The fingerprint in the form an operator reads aloud.
  *
  * Must match `shortFingerprint` in `apps/server/src/tls.ts`: the operator is
- * comparing this against what Manifold shows, so the two have to be formatted
+ * comparing this against what a console shows, so the two have to be formatted
  * identically or the check is unusable.
  */
 export function shortFingerprint(spki: string): string {

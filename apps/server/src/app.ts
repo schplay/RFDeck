@@ -67,7 +67,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // a property of RFDeck rather than of whether somebody configured a
   // certificate: loadTlsConfig generates one when none is.
   app.decorate('isSecure', true);
-  // The pin. Manifold compares this with what its TLS session presented, and the
+  // The pin. A console compares this with what its TLS session presented, and the
   // operator confirms the short form of it at pairing.
   app.decorate('tlsFingerprint', tls.spki);
 

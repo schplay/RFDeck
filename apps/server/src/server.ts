@@ -61,7 +61,7 @@ async function start() {
     await app.listen({ port, host });
     log.info(`RFDeck server listening on https://${host}:${port}`);
     // Printed every start, not only when the certificate is made: an operator
-    // pairing Manifold next season needs it then, not in a log from install day.
+    // pairing a console next season needs it then, not in a log from install day.
     log.info(`[TLS] Certificate fingerprint ${shortFingerprint(fingerprint)} - confirm this when pairing a client`);
     if (envFile) log.debug(`Local environment loaded from ${envFile}`);
     // Say which capture path this machine got, at startup rather than on the

@@ -4,7 +4,7 @@ import { CloudLoginError } from '../cloud/cloudUser';
 import { isLoopback } from '../auth/pinAuth';
 
 /**
- * Signing a Meros cloud user in on this install, for Manifold.
+ * Signing a Meros cloud user in on this install, for a console.
  *
  *   POST /api/auth/cloud-login/begin      → { requestId, codeChallenge, codeChallengeMethod, nonce, expiresIn }
  *   POST /api/auth/cloud-login/complete   { requestId, loginToken } → the session
@@ -12,7 +12,7 @@ import { isLoopback } from '../auth/pinAuth';
  *   POST /api/auth/cloud-signout          → { signedIn: false, revoked }
  *
  * All four sit behind the PIN gate like every other route: the PIN authorises the
- * *connection* (Manifold already holds a PIN token), and this adds an identity on
+ * *connection* (the console already holds a PIN token), and this adds an identity on
  * top. See `cloud/cloudUser.ts` for the flow and why it is shaped this way.
  *
  * **HTTPS only, loopback excepted.** A login token redeems into a year of access to

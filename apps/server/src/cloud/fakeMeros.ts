@@ -132,9 +132,9 @@ export class FakeMeros {
   }
 
   /**
-   * Mint a login token the way Meros does for Manifold (`POST /oauth/sso/ticket`).
+   * Mint a login token the way Meros does for a console (`POST /oauth/sso/ticket`).
    *
-   * Called directly by tests, standing in for Manifold: what matters on RFDeck's
+   * Called directly by tests, standing in for the console: what matters on RFDeck's
    * side is the redeem, so the mint is modelled only as far as the redeem checks it.
    */
   mintLoginToken(opts: {

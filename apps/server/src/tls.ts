@@ -15,7 +15,7 @@ import { log } from './logger';
 //
 // That was an acceptable trade while the only secret crossing the wire was the
 // PIN token: install-scoped, revocable locally, worthless off the LAN. It stopped
-// being acceptable when the Manifold cloud-login flow arrived, because the Meros
+// being acceptable when the console cloud-login flow arrived, because the Meros
 // login token it carries redeems into a **one-year refresh token** for somebody's
 // cloud account. A credential of that value cannot cross a venue network in
 // plain text, and a venue network is where RFDeck lives.
@@ -34,7 +34,7 @@ export interface TlsConfig {
   /**
    * SHA-256 of the DER-encoded SubjectPublicKeyInfo, lowercase hex.
    *
-   * This is what Manifold pins and what the operator confirms at pairing. The
+   * This is what a console pins and what the operator confirms at pairing. The
    * **public key**, deliberately, not the certificate: a certificate is
    * regenerated whenever the machine's address set changes, which on DHCP it
    * will, and a pin that broke every time a lease moved is a pin nobody keeps.
@@ -56,7 +56,7 @@ const SAN_FILE = 'rfdeck-cert.sans';
  *
  * A certificate that does not cover the address a client typed produces a
  * different browser warning from the self-signed one — and, worse, breaks
- * Manifold's hostname check even when the pin matches. Collected fresh on every
+ * a console's hostname check even when the pin matches. Collected fresh on every
  * start, which is also how a DHCP move is noticed.
  */
 export function localSubjectNames(
@@ -124,7 +124,7 @@ function configured(): TlsConfig | null {
   } catch (err: any) {
     // Falling back to a generated certificate here would quietly ignore a
     // deployment that asked for a specific one — including a real CA-issued
-    // certificate — and the first sign would be a pin mismatch at Manifold.
+    // certificate — and the first sign would be a pin mismatch at the console.
     log.error(
       `Could not read the TLS certificate or key (${err?.message}). ` +
       'Refusing to start rather than serving a different identity than configured.',
@@ -179,7 +179,7 @@ export async function loadTlsConfig(dir: string = defaultTlsDir()): Promise<TlsC
     if (haveCert && !sansMatch) {
       log.info(
         '[TLS] This machine answers on different addresses than when the certificate ' +
-        'was made; reissuing it. The key is unchanged, so the fingerprint Manifold ' +
+        'was made; reissuing it. The key is unchanged, so the fingerprint a console ' +
         'pinned still matches.',
       );
     }
@@ -253,11 +253,11 @@ async function generate(
   );
 
   // Verified rather than assumed. A silently rotated key would break every pin
-  // and look exactly like an attack from Manifold's side, so if it ever happens
+  // and look exactly like an attack from the console's side, so if it ever happens
   // it has to be said out loud rather than discovered at the rig.
   if (existingKey && spkiFingerprint(pems.private) !== spkiFingerprint(existingKey)) {
     log.warn(
-      "[TLS] This install's key changed while reissuing the certificate. Manifold " +
+      "[TLS] This install's key changed while reissuing the certificate. A console " +
       'and any other paired client will report a fingerprint mismatch and must be ' +
       'paired again. This is not expected — please report it.',
     );
@@ -271,7 +271,7 @@ async function generate(
   log.warn(
     `[TLS] Generated this install's certificate, covering ${names.dns.join(', ')} and ` +
     `${names.ips.join(', ')}. Fingerprint ${shortFingerprint(spki)} — confirm this when ` +
-    'pairing Manifold or any other client.',
+    'pairing a console or any other client.',
   );
   return { key: Buffer.from(pems.private), cert: Buffer.from(pems.cert), spki, dir };
 }

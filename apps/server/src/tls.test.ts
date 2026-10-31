@@ -10,7 +10,7 @@ import { loadTlsConfig, localSubjectNames, spkiFingerprint, shortFingerprint } f
 // a certificate and the desktop build served the venue network in clear text.
 //
 // The property these tests exist for is the one everything else rests on: **the
-// key is stable across certificate reissue.** Manifold pins the public key, and a
+// key is stable across certificate reissue.** A console pins the public key, and a
 // certificate is reissued whenever the machine's addresses change — which on DHCP
 // they will. If a reissue rotated the key, every paired client would report a
 // mismatch, which is indistinguishable from an attack, on an ordinary Tuesday
@@ -66,7 +66,7 @@ describe('an install with no certificate configured', () => {
   });
 
   it('keeps the key when the certificate is reissued for new addresses', async () => {
-    // The property Manifold's pin depends on. Simulated by invalidating the
+    // The property a console's pin depends on. Simulated by invalidating the
     // recorded address set, which is exactly what a DHCP move does.
     const first = await loadTlsConfig(dir);
     fs.writeFileSync(path.join(dir, 'rfdeck-cert.sans'), 'something-else');

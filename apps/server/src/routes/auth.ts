@@ -62,14 +62,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
    * The PIN login. The only credential RFDeck has, and deliberately so.
    *
    * RFDeck has no user accounts. When an operator enables a PIN it is the auth for
-   * every client from another machine - a browser, a Manifold console, anything
+   * every client from another machine - a browser, a console, anything
    * else on the API or the socket. They all call this once and keep the token
    * (`x-rfdeck-token` on REST, `handshake.auth.token` on the Socket.IO connect).
    * Loopback is always exempt, and a `micboard: true` handshake gets read-only
    * telemetry without one.
    *
    * There is no pairing step, no per-device credential and no approval, on purpose:
-   * a Manifold instance pointed at a free RFDeck with no cloud connection should
+   * a console pointed at a free RFDeck with no cloud connection should
    * simply work. This endpoint is permanent and has no deprecation.
    *
    * Two things were built here and removed. A certificate-bound proof form, on the

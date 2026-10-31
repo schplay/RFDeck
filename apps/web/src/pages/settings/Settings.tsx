@@ -54,7 +54,7 @@ function CertificateFingerprint({ spki }: { spki?: string }) {
     <div className="form-group">
       <label>This server&apos;s certificate fingerprint</label>
       <p className="settings-desc settings-desc-tight">
-        When pairing Manifold or another client, check that it shows the same
+        When pairing a console or another client, check that it shows the same
         value. If it shows something different you are not connected to this
         server, and should not continue.
       </p>

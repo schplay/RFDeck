@@ -189,7 +189,7 @@ export function CloudSettings() {
         )}
       </div>
 
-      {/* ── The cloud user signed in here from Manifold ─────────────────────
+      {/* ── The cloud user signed in here from a console ─────────────────────
           Independent of the instance link: a person, not this rig. */}
       <CloudUserCard />
 

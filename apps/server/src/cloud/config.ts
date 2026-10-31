@@ -33,14 +33,14 @@ export interface CloudConfig {
    */
   browserClientId: string | null;
   /**
-   * The "RFDeck Cloud User" client: the one this server redeems a Manifold login
+   * The "RFDeck Cloud User" client: the one this server redeems a console's login
    * token as, signing a cloud user in on this install.
    *
    * Its own client, not the instance link's, so the two refresh families can
    * never revoke each other: Meros's reuse detection revokes every token for a
    * (user, client) pair, and the person who links a rig is usually the person who
    * signs in to it. Optional, and null until the seeder has printed an id for this
-   * environment — sign-in through Manifold is simply unavailable until then.
+   * environment — sign-in from a console is simply unavailable until then.
    */
   cloudUserClientId?: string | null;
   /**
@@ -86,7 +86,7 @@ export const INSTANCE_SCOPES = [
  * local storage only when the operator says "keep me signed in on this machine".
  */
 /**
- * Scopes a cloud user signed in through Manifold is redeemed with.
+ * Scopes a cloud user signed in from a console is redeemed with.
  *
  * Meros adds `offline_access` to every login-token redeem, so it is not listed.
  * Identity (`openid profile email`) is what puts `sub`, a name and an email in

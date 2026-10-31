@@ -432,7 +432,7 @@ async function ensureWindowsFirewall(): Promise<void> {
  *
  * Electron reports `certificate.fingerprint` as `sha256/<base64 of the DER
  * digest>`, which is a digest of the whole certificate rather than of the public
- * key. That is the right choice here even though Manifold pins the public key: the
+ * key. That is the right choice here even though a console pins the public key: the
  * file is read fresh on every comparison, so a reissue on an address change is
  * picked up on the next request with no pairing step - this side has the
  * certificate itself, and needs no stable identifier for it.

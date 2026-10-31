@@ -4,7 +4,7 @@ import { pinRetryAfterMs, notePinFailure, clearPinFailures } from './pinAuth';
 // The PIN is the whole of RFDeck's access control, and deliberately so.
 //
 // There are no user accounts. When an operator enables a PIN it covers every
-// client from another machine - a browser, a Manifold console, anything on the
+// client from another machine - a browser, a console, anything on the
 // API or the socket - with loopback always exempt and a `micboard: true`
 // handshake allowed read-only. No pairing, no per-device credential, no approval:
 // a console pointed at a free RFDeck with no cloud connection should just work.
