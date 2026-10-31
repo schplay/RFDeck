@@ -60,16 +60,36 @@ export class CloudLocalState extends Error {
   }
 }
 
+/** The call was stopped on purpose, by its `signal`. */
+export class SignInCanceled extends Error {
+  constructor() {
+    super('The sign-in was canceled.');
+    this.name = 'SignInCanceled';
+  }
+}
+
 /** Which identity a call acts as, and the OAuth client it belongs to. */
 export interface MerosSession {
-  /** The handle in the helper's state directory. */
-  name: string;
+  /**
+   * The handle in the helper's state directory. Null lets the helper pick: for
+   * a person's sign-in, one session per person.
+   */
+  name: string | null;
   clientId: string;
   scopes: readonly string[];
 }
 
 /** A call that takes longer than this is a wedged helper, not a slow network. */
 const CALL_TIMEOUT_MS = 90_000;
+
+/** For the one call that waits on a person rather than the network. */
+export interface RunOptions {
+  timeoutMs?: number;
+  /** Stops the helper, as when the operator cancels a sign-in. */
+  signal?: AbortSignal;
+  /** Each line the helper writes to stderr, as it writes it. */
+  onStderrLine?: (line: string) => void;
+}
 
 /**
  * Where the helper binary is.
@@ -121,10 +141,15 @@ export class MerosClient {
    *
    * @throws CloudOffline, CloudRefused or CloudLocalState, by exit code.
    */
-  async run<T = any>(command: string, input: Record<string, unknown> = {}, session?: MerosSession): Promise<T> {
+  async run<T = any>(
+    command: string,
+    input: Record<string, unknown> = {},
+    session?: MerosSession,
+    options: RunOptions = {},
+  ): Promise<T> {
     const request: Record<string, unknown> = { ...this.common, ...input };
     if (session) {
-      request.session = session.name;
+      if (session.name) request.session = session.name;
       request.client_id = session.clientId;
       request.scopes = [...session.scopes];
     }
@@ -140,14 +165,27 @@ export class MerosClient {
     const { code, stdout, stderr } = await new Promise<{ code: number; stdout: string; stderr: string }>(resolve => {
       const child = execFile(
         this.bin, [command],
-        { timeout: CALL_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, windowsHide: true },
+        {
+          timeout: options.timeoutMs ?? CALL_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, windowsHide: true,
+          signal: options.signal,
+        },
         (err, out, errOut) => {
           const exit = err ? (typeof (err as any).code === 'number' ? (err as any).code : -1) : 0;
           resolve({ code: exit, stdout: out ?? '', stderr: errOut ?? '' });
         },
       );
+      if (options.onStderrLine) {
+        let partial = '';
+        child.stderr?.on('data', (chunk: Buffer | string) => {
+          const lines = (partial + chunk.toString()).split(/\r?\n/);
+          partial = lines.pop() ?? '';
+          for (const line of lines) if (line.trim()) options.onStderrLine!(line);
+        });
+      }
       child.stdin?.end(JSON.stringify(request));
     });
+
+    if (options.signal?.aborted) throw new SignInCanceled();
 
     let answer: any = null;
     try { answer = JSON.parse(stdout); } catch { /* reported below */ }

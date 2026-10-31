@@ -30,6 +30,10 @@ function isOpenRead(method: string, path: string): boolean {
   if (method !== 'GET') return false;
   // Whether anything is running, and whose cast is on the wall.
   if (path === '/api/live') return true;
+  // Coming back from meros.co's sign-in page. A navigation, so it carries no
+  // PIN token; it is bound instead to the browser that began the sign-in by
+  // the state cookie, which only a call that passed the PIN can set.
+  if (path === '/api/cloud/signin/callback') return true;
   // Headshots. A prefix rather than a fixed path because the id is in the URL.
   return /^\/api\/performers\/[\w-]+\/photo$/.test(path);
 }

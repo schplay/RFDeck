@@ -1,48 +1,33 @@
 import { prisma } from '../db';
 import { log } from '../logger';
 import { CloudConfig, INSTANCE_SCOPES } from './config';
-import { CloudLocalState, CloudOffline, CloudRefused, MerosClient, MerosSession } from './merosClient';
+import { CloudLocalState, CloudRefused, MerosClient, MerosSession } from './merosClient';
 
 /**
  * The instance link: this RFDeck server, acting within a Meros account.
  *
- * The device grant (RFC 8628) because a rig may have no browser of its own and
- * may be reachable only over a show LAN. The operator opens meros.co/link on any
- * device — a phone is fine — and approves this instance into one of their
- * accounts.
+ * Made by signing in with Meros in a browser (see `signIn.ts`): RFDeck Desktop
+ * through the helper's loopback sign-in, a server through a redirect from the
+ * browser that reached it, with the RFDeck Server client.
  *
- * The grant, the rotating refresh token and its storage are the meros-client
- * helper's: it commits a rotated token before using the access token it came
- * with, serializes every call on a lock (a refresh token used twice revokes the
- * whole family), and forgets the session when Meros refuses a refresh. What is
- * left here is the polling loop the UI watches and telling the operator when the
- * link has died and has to be made again.
+ * The rotating refresh token and its storage are the meros-client helper's: it
+ * commits a rotated token before using the access token it came with,
+ * serializes every call on a lock (a refresh token used twice revokes the whole
+ * family), and forgets the session when Meros refuses a refresh. What is left
+ * here is recording the link and telling the operator when it has died and has
+ * to be made again.
  */
-
-/** A device-flow attempt in progress, as the UI shows it. */
-export interface PendingLink {
-  userCode: string;
-  verificationUri: string;
-  verificationUriComplete: string | null;
-  expiresAt: number;
-  intervalMs: number;
-  /** Set when polling has finished, one way or the other. */
-  outcome: 'pending' | 'linked' | 'denied' | 'expired' | 'error';
-  detail: string | null;
-}
 
 /** Codes that mean the stored link is gone and only re-linking will help. */
 const DEAD_LINK_CODES = new Set(['invalid_grant', 'token_rejected', 'no_sign_in']);
 
 export class CloudLink {
-  private pending: PendingLink | null = null;
-  private poller: NodeJS.Timeout | null = null;
   /** Set when the link is dead and only the operator can fix it. */
   private relinkReason: string | null = null;
   readonly session: MerosSession;
 
   constructor(
-    config: CloudConfig,
+    readonly config: CloudConfig,
     private readonly meros: MerosClient,
     private readonly onChange: () => void = () => {},
   ) {
@@ -51,10 +36,6 @@ export class CloudLink {
 
   get needsRelink(): string | null {
     return this.relinkReason;
-  }
-
-  get pendingLink(): PendingLink | null {
-    return this.pending;
   }
 
   /** Run a cloud command as this instance, noticing when the link has died. */
@@ -87,85 +68,12 @@ export class CloudLink {
     this.onChange();
   }
 
-  // ── Linking ───────────────────────────────────────────────────────────────
-
-  /** Start the device flow and begin polling. */
-  async start(): Promise<PendingLink> {
-    this.cancel();
-    const res = await this.meros.run<{
-      user_code: string; verification_uri: string; verification_uri_complete?: string | null;
-      interval?: number; expires_at?: number;
-    }>('signin.start', {}, this.session);
-
-    this.pending = {
-      userCode: res.user_code,
-      verificationUri: res.verification_uri,
-      verificationUriComplete: res.verification_uri_complete ?? null,
-      expiresAt: res.expires_at ? res.expires_at * 1000 : Date.now() + 600_000,
-      intervalMs: Math.max(1, res.interval ?? 5) * 1000,
-      outcome: 'pending',
-      detail: null,
-    };
-    log.info(`[Cloud] Link started — approve at ${res.verification_uri} with code ${res.user_code}`);
-    this.schedulePoll();
+  /** The sign-in that makes the link has finished. */
+  async linked(): Promise<void> {
+    this.relinkReason = null;
+    await this.recordLinked();
+    log.warn('[Cloud] Instance linked to Meros');
     this.onChange();
-    return this.pending;
-  }
-
-  cancel() {
-    if (this.poller) { clearTimeout(this.poller); this.poller = null; }
-    if (this.pending?.outcome === 'pending') {
-      void this.meros.run('signin.cancel', {}, this.session).catch(() => {});
-    }
-    this.pending = null;
-  }
-
-  private schedulePoll() {
-    if (!this.pending) return;
-    this.poller = setTimeout(() => void this.poll(), this.pending.intervalMs);
-  }
-
-  private finish(outcome: PendingLink['outcome'], detail: string | null) {
-    if (!this.pending) return;
-    this.pending.outcome = outcome;
-    this.pending.detail = detail;
-    this.onChange();
-  }
-
-  private async poll() {
-    const pending = this.pending;
-    if (!pending || pending.outcome !== 'pending') return;
-
-    try {
-      const res = await this.meros.run<{ status: string; interval?: number }>('signin.poll', {}, this.session);
-      if (res.status === 'signed_in') {
-        this.relinkReason = null;
-        await this.recordLinked();
-        log.warn('[Cloud] Instance linked to Meros');
-        this.finish('linked', null);
-        return;
-      }
-      // Pending. The helper raises the interval when Meros says to slow down.
-      if (res.interval) pending.intervalMs = Math.max(1, res.interval) * 1000;
-    } catch (err) {
-      if (err instanceof CloudRefused) {
-        if (err.code === 'access_denied') return this.finish('denied', 'The request was declined at meros.co.');
-        if (err.code === 'expired_token') {
-          return this.finish('expired', 'The code expired before it was approved. Start again.');
-        }
-        log.warn(`[Cloud] Link failed: ${err.message}`);
-        return this.finish('error', err.message);
-      }
-      if (!(err instanceof CloudOffline)) {
-        return this.finish('error', (err as Error)?.message ?? 'unknown');
-      }
-      // Offline: the operator may simply be approving it on a phone while the
-      // venue's uplink flaps. Keep polling until the code expires.
-      if (Date.now() > pending.expiresAt) {
-        return this.finish('expired', 'The code expired before it was approved. Start again.');
-      }
-    }
-    this.schedulePoll();
   }
 
   /**
@@ -215,7 +123,6 @@ export class CloudLink {
    * uplink was down.
    */
   async unlink(): Promise<void> {
-    this.cancel();
     try {
       await this.meros.run('signin.signout', {}, this.session);
     } catch (err) {

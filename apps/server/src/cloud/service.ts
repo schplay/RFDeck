@@ -3,7 +3,9 @@ import { prisma } from '../db';
 import { log } from '../logger';
 import { CloudConfig, readCloudConfig } from './config';
 import { MerosClient } from './merosClient';
-import { CloudLink, PendingLink } from './link';
+import { CloudLink } from './link';
+import { People } from './people';
+import { SignIn } from './signIn';
 import { Entitlements } from './entitlements';
 import { Documents } from './documents';
 import { ShowFiles } from './showFiles';
@@ -44,6 +46,10 @@ export class CloudService {
    * not configured; present but refusing when the Cloud User client is not.
    */
   readonly cloudUser: CloudUserLogin | null = null;
+  /** People signed in to sync their preferences. */
+  readonly people: People | null = null;
+  /** Signing the instance or a person in with Meros. */
+  readonly signIn: SignIn | null = null;
   private refreshTimer: NodeJS.Timeout | null = null;
   private regionalTimer: NodeJS.Timeout | null = null;
 
@@ -71,7 +77,10 @@ export class CloudService {
     this.inventory = new InventorySync(this.link);
     const feeds = new Feeds(config, this.link);
     this.regional = new RegionalData(feeds);
-    this.events = new Events(this.link, process.env.RFDECK_EDITION === 'desktop' ? 'desktop' : 'server');
+    const desktop = process.env.RFDECK_EDITION === 'desktop';
+    this.events = new Events(this.link, desktop ? 'desktop' : 'server');
+    this.people = new People(config, meros);
+    this.signIn = new SignIn(meros, this.link, this.people, desktop);
     this.cloudUser = new CloudUserLogin(config, meros, new PrismaCloudUserStore(), () => {
       void this.cloudUser?.session()
         .then(session => this.io.emit('cloud:user', session))
@@ -112,23 +121,10 @@ export class CloudService {
     void this.events?.flush();
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.regionalTimer) clearInterval(this.regionalTimer);
-    this.link?.cancel();
+    this.signIn?.cancel();
   }
 
   // ── Linking, for the routes ───────────────────────────────────────────────
-
-  async startLink(): Promise<PendingLink> {
-    if (!this.link) throw new Error('Meros Cloud is not configured on this server.');
-    return this.link.start();
-  }
-
-  linkProgress(): PendingLink | null {
-    return this.link?.pendingLink ?? null;
-  }
-
-  cancelLink() {
-    this.link?.cancel();
-  }
 
   async unlink(): Promise<{ unlinked: boolean }> {
     if (!this.link) return { unlinked: false };
@@ -260,7 +256,7 @@ export class CloudService {
       return {
         configured: false, linked: false, accountId: null, linkedAt: null,
         lastRefreshAt: null, features: [], expiresAt: null, offline: false,
-        needsRelink: null, browserClientId: null, baseUrl: null,
+        needsRelink: null, peopleCanSignIn: false, baseUrl: null,
         eventsToCloud: false, eventsQueued: 0,
       };
     }
@@ -279,7 +275,7 @@ export class CloudService {
       // attempt to read a fresh one did not get through.
       offline: !!snap.lastError && linked,
       needsRelink: this.link.needsRelink,
-      browserClientId: this.config.browserClientId,
+      peopleCanSignIn: this.people?.configured ?? false,
       baseUrl: this.config.baseUrl,
       eventsToCloud: settings?.eventToCloud ?? false,
       eventsQueued: this.events?.queued ?? 0,

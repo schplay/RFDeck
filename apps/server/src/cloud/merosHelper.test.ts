@@ -65,11 +65,7 @@ async function setup(options: FakeMerosOptions = {}) {
 
 async function linked(): Promise<CloudLink> {
   const link = new CloudLink(config, meros);
-  await link.start();
-  for (let i = 0; i < 150 && link.pendingLink?.outcome === 'pending'; i++) {
-    await new Promise(r => setTimeout(r, 100));
-  }
-  expect(link.pendingLink?.detail ?? link.pendingLink?.outcome).toBe('linked');
+  await fake.link(meros, link);
   return link;
 }
 
@@ -84,7 +80,7 @@ afterEach(async () => {
 });
 
 describe('the instance link', () => {
-  it('links by device grant, and says so', async () => {
+  it('links by signing in with Meros, and says so', async () => {
     await setup();
     const link = await linked();
     expect(await link.isLinked()).toBe(true);
@@ -92,15 +88,12 @@ describe('the instance link', () => {
     expect(link.needsRelink).toBeNull();
   }, 30_000);
 
-  it('reports a declined request', async () => {
+  it('stays unlinked when the person cancels at meros.co', async () => {
     await setup({ deny: true });
     const link = new CloudLink(config, meros);
-    await link.start();
-    for (let i = 0; i < 150 && link.pendingLink?.outcome === 'pending'; i++) {
-      await new Promise(r => setTimeout(r, 100));
-    }
-    expect(link.pendingLink?.outcome).toBe('denied');
+    await expect(fake.link(meros, link)).rejects.toMatchObject({ code: 'access_denied' });
     expect(await link.isLinked()).toBe(false);
+    expect(db.settings.cloudLinkedAt).toBeNull();
   }, 30_000);
 
   it('unlinks with the client named, so Meros actually revokes', async () => {

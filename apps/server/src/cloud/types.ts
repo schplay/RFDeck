@@ -7,49 +7,6 @@
  * release. See docs/CLOUD_INTEGRATION_PLAN.md.
  */
 
-// ── Discovery ───────────────────────────────────────────────────────────────
-
-export interface MerosDiscovery {
-  issuer?: string;
-  token_endpoint: string;
-  device_authorization_endpoint?: string;
-  revocation_endpoint?: string;
-  userinfo_endpoint?: string;
-  authorization_endpoint?: string;
-  jwks_uri?: string;
-  grant_types_supported?: string[];
-}
-
-// ── Device grant (RFC 8628) ─────────────────────────────────────────────────
-
-export interface DeviceCodeResponse {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  verification_uri_complete?: string;
-  expires_in: number;
-  /** Seconds between polls. Absent means 5, per RFC 8628 §3.2. */
-  interval?: number;
-}
-
-export interface TokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  refresh_token?: string;
-  scope?: string;
-  id_token?: string;
-}
-
-/** The errors RFC 8628 §3.5 defines for polling, plus what Meros adds. */
-export type DeviceTokenError =
-  | 'authorization_pending'
-  | 'slow_down'
-  | 'access_denied'
-  | 'expired_token'
-  | 'invalid_grant'
-  | string;
-
 // ── Entitlements ────────────────────────────────────────────────────────────
 
 export interface Entitlement {
@@ -81,8 +38,9 @@ export interface CloudStatus {
   offline: boolean;
   /** Set when the link is dead and needs re-establishing, with the reason. */
   needsRelink: string | null;
-  /** The browser's own client id, for the person link's device flow. */
-  browserClientId: string | null;
+  /** Whether people can sign in to sync their preferences (the RFDeck Browser client is configured). */
+  peopleCanSignIn: boolean;
+  /** The Meros origin this install talks to. */
   baseUrl: string | null;
   /** Whether the event stream is being sent to the cloud. Off by default. */
   eventsToCloud: boolean;

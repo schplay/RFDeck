@@ -62,13 +62,7 @@ async function harness(options: { linked?: boolean } = {}) {
     stateDir: path.join(dir, 'meros'), keyFile: path.join(dir, 'meros.key'),
   });
   const link = new CloudLink(config, meros);
-  if (options.linked !== false) {
-    await link.start();
-    const deadline = Date.now() + 15_000;
-    while (Date.now() < deadline && link.pendingLink?.outcome === 'pending') {
-      await new Promise(r => setTimeout(r, 20));
-    }
-  }
+  if (options.linked !== false) await fake.link(meros, link);
   return { fake: fake!, config, feeds: new Feeds(config, link, path.join(dir, 'packs')) };
 }
 

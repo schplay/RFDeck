@@ -198,8 +198,8 @@ model Settings {
   // ── Meros Cloud ──
   //
   // The instance link. RFDeck is an OAuth client of meros.co; the operator
-  // approves this instance into one of their accounts with the device grant, and
-  // the server then holds a short-lived access token it refreshes itself.
+  // signs this instance in to one of their accounts with Meros's sign-in page,
+  // and the meros-client helper keeps the tokens and refreshes them.
   //
   // There is no rig or org object: the owner of entitlements and synced state is
   // a Meros *account*, and the token is user-scoped rather than account-pinned,
@@ -496,4 +496,24 @@ model CloudUser {
   signedInVia   String    @default("console")
   signedInAt    DateTime  @default(now())
   lastRefreshAt DateTime?
+}
+
+/// A browser signed in to Meros as a person, for profile sync.
+///
+/// The person's Meros session is the meros-client helper's, one per person
+/// (`session`); this is only which browsers may act as them. The browser holds
+/// the token, and only its SHA-256 is kept here, so a copy of the database
+/// signs nobody in. Signing out deletes every row for the person.
+model PersonToken {
+  tokenHash  String   @id
+  sub        String
+  session    String
+  name       String?
+  email      String?
+  /// Kept past the tab ("keep me signed in on this machine").
+  persistent Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@index([sub])
 }

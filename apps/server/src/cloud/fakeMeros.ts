@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import http from 'http';
 import { AddressInfo } from 'net';
 import { canonicalJson } from './documents';
+import type { CloudLink } from './link';
+import type { MerosClient } from './merosClient';
 
 /**
  * A fake Meros Cloud, in process.
@@ -22,12 +24,10 @@ import { canonicalJson } from './documents';
  */
 
 export interface FakeMerosOptions {
-  /** Approve the device code automatically after this many polls. */
-  approveAfterPolls?: number;
-  /** Answer `slow_down` on the first poll. */
-  slowDownOnce?: boolean;
-  /** Deny the request instead of approving it. */
+  /** Cancel at the sign-in page instead of approving. */
   deny?: boolean;
+  /** Who signs in at the sign-in page. */
+  user?: { sub: string; name: string | null; email: string | null };
   /** Features the account's `rfdeck` entitlement carries. */
   features?: string[];
   /** When the entitlement expires. */
@@ -47,7 +47,10 @@ export interface FakeMerosOptions {
 
 export class FakeMeros {
   private server: http.Server;
-  private polls = 0;
+  /** Pushed authorization requests, by `request_uri`. */
+  private pushed = new Map<string, URLSearchParams>();
+  /** Authorization codes waiting to be exchanged. */
+  private codes = new Map<string, { request: URLSearchParams }>();
   /** Live refresh tokens → the family they belong to. */
   private refreshTokens = new Map<string, string>();
   /** Families that have been revoked by a replay. */
@@ -119,6 +122,55 @@ export class FakeMeros {
     return new Map([[this.kid, Buffer.from(this.publicKeyBase64Url, 'base64url')]]);
   }
 
+  /**
+   * Answer the sign-in page as the person would, standing in for the browser:
+   * returns where meros.co sends the browser back to, with a code or, with
+   * `deny`, the cancellation.
+   */
+  authorize(authorizeUrl: string): string {
+    const requestUri = new URL(authorizeUrl).searchParams.get('request_uri') ?? '';
+    const request = this.pushed.get(requestUri);
+    if (!request) throw new Error(`No pushed request ${requestUri}`);
+    this.pushed.delete(requestUri);
+    const back = new URL(request.get('redirect_uri')!);
+    back.searchParams.set('state', request.get('state') ?? '');
+    back.searchParams.set('iss', this.baseUrl);
+    if (this.options.deny) {
+      back.searchParams.set('error', 'access_denied');
+    } else {
+      const code = crypto.randomBytes(16).toString('base64url');
+      this.codes.set(code, { request });
+      back.searchParams.set('code', code);
+    }
+    return back.toString();
+  }
+
+  /**
+   * Link an instance to this fake the way a server does, through the browser
+   * sign-in, with this fake answering the sign-in page. For tests of what a
+   * linked instance does; the sign-in itself is tested in signIn.test.ts.
+   */
+  async link(meros: MerosClient, link: CloudLink): Promise<void> {
+    const begun = await meros.run<{ authorize_url: string }>('signin.browser.begin', {
+      redirect_uri: 'https://rack.lan:8443/api/cloud/signin/callback',
+      client: 'server', server_client_id: link.config.clientId,
+    }, link.session);
+    await meros.run('signin.browser.finish', { callback_url: this.authorize(begun.authorize_url) }, link.session);
+    await link.linked();
+  }
+
+  private idToken(clientId: string, user: { sub: string; name?: string | null; email?: string | null }, nonce: string | null) {
+    const now = Math.floor(Date.now() / 1000);
+    const claims: Record<string, unknown> = {
+      iss: this.baseUrl, aud: clientId, sub: user.sub, iat: now, exp: now + 3600, auth_time: now,
+      ...(nonce ? { nonce } : {}),
+      ...(user.name ? { name: user.name } : {}),
+      ...(user.email ? { email: user.email, email_verified: true } : {}),
+    };
+    const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
+    return `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64(claims)}.fake-signature`;
+  }
+
   /** Sign a payload the way Meros does, so the real verifier can check it. */
   signPack(pack: string, payload: unknown, version = 1): Record<string, unknown> {
     const header = {
@@ -175,39 +227,48 @@ export class FakeMeros {
         issuer: this.baseUrl,
         authorization_endpoint: `${this.baseUrl}/oauth/authorize`,
         token_endpoint: `${this.baseUrl}/oauth/token`,
-        device_authorization_endpoint: `${this.baseUrl}/oauth/device/code`,
+        pushed_authorization_request_endpoint: `${this.baseUrl}/oauth/par`,
+        authorization_response_iss_parameter_supported: true,
         revocation_endpoint: `${this.baseUrl}/oauth/revoke`,
         userinfo_endpoint: `${this.baseUrl}/oauth/userinfo`,
         jwks_uri: `${this.baseUrl}/.well-known/jwks.json`,
-        grant_types_supported: ['authorization_code', 'refresh_token', 'device_code'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
         code_challenge_methods_supported: ['S256'],
       });
     }
 
-    if (path === '/oauth/device/code') {
-      this.polls = 0;
-      return send(200, {
-        device_code: 'dev-code-1',
-        user_code: 'WXYZ-1234',
-        verification_uri: `${this.baseUrl}/link`,
-        verification_uri_complete: `${this.baseUrl}/link?code=WXYZ-1234`,
-        expires_in: 600,
-        interval: 1,
-      });
+    // A pushed authorization request. The device signature is Meros's to check;
+    // here only the parameters matter.
+    if (path === '/oauth/par') {
+      const form = new URLSearchParams(body);
+      const requestUri = `urn:ietf:params:oauth:request_uri:${crypto.randomBytes(8).toString('hex')}`;
+      this.pushed.set(requestUri, form);
+      return send(201, { request_uri: requestUri, expires_in: 90 });
     }
 
     if (path === '/oauth/token') {
       const form = new URLSearchParams(body);
       const grant = form.get('grant_type');
 
-      if (grant === 'urn:ietf:params:oauth:grant-type:device_code') {
-        this.polls += 1;
-        if (this.options.deny) return send(400, { error: 'access_denied' });
-        if (this.options.slowDownOnce && this.polls === 1) return send(400, { error: 'slow_down' });
-        if (this.polls < (this.options.approveAfterPolls ?? 1)) {
-          return send(400, { error: 'authorization_pending' });
+      if (grant === 'authorization_code') {
+        const entry = this.codes.get(form.get('code') ?? '');
+        this.codes.delete(form.get('code') ?? '');
+        const verifier = form.get('code_verifier') ?? '';
+        const challenge = crypto.createHash('sha256').update(verifier, 'ascii').digest('base64url');
+        if (!entry
+          || entry.request.get('client_id') !== form.get('client_id')
+          || entry.request.get('redirect_uri') !== form.get('redirect_uri')
+          || entry.request.get('code_challenge') !== challenge) {
+          return send(400, { error: 'invalid_grant' });
         }
-        return send(200, this.issue('family-1'));
+        const user = this.options.user ?? { sub: 'user-fake-1', name: 'Fake Owner', email: 'owner@example.test' };
+        const family = `code-${crypto.randomBytes(4).toString('hex')}`;
+        this.familyUsers.set(family, user);
+        return send(200, {
+          ...this.issue(family),
+          scope: entry.request.get('scope') ?? '',
+          id_token: this.idToken(entry.request.get('client_id')!, user, entry.request.get('nonce')),
+        });
       }
 
       if (grant === 'refresh_token') {
@@ -256,20 +317,10 @@ export class FakeMeros {
         ticket!.redeemedAt ??= Date.now();
 
         this.familyUsers.set(`sso-${ticket!.sub}`, { sub: ticket!.sub, name: ticket!.name, email: ticket!.email });
-        const issued = this.issue(`sso-${ticket!.sub}`);
-        const claims: Record<string, unknown> = {
-          iss: this.baseUrl, aud: ticket!.clientId, sub: ticket!.sub,
-          iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600,
-          auth_time: Math.floor(Date.now() / 1000),
-          ...(ticket!.nonce ? { nonce: ticket!.nonce } : {}),
-          ...(ticket!.name ? { name: ticket!.name } : {}),
-          ...(ticket!.email ? { email: ticket!.email, email_verified: true } : {}),
-        };
-        const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
         return send(200, {
-          ...issued,
+          ...this.issue(`sso-${ticket!.sub}`),
           scope: form.get('scope') ?? '',
-          id_token: `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64(claims)}.fake-signature`,
+          id_token: this.idToken(ticket!.clientId, ticket!, ticket!.nonce),
         });
       }
 
@@ -301,8 +352,7 @@ export class FakeMeros {
       return send(200, {});          // RFC 7009: always 200, never a probe oracle
     }
 
-    // Who the bearer is. The device grant's family belongs to the account
-    // owner who approved the link.
+    // Who the bearer is: whoever signed in for the token's family.
     if (path === '/oauth/userinfo') {
       if (!this.authorized(req)) return send(401, { error: 'invalid_token' });
       const header = (req.headers.authorization as string | undefined) ?? '';

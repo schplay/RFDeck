@@ -1,8 +1,29 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { CloudService } from '../cloud/service';
+import { CloudOffline, CloudRefused } from '../cloud/merosClient';
+import { PersonSignedOut } from '../cloud/people';
+import { SignInError, safeReturnTo } from '../cloud/signIn';
+import { isLoopback } from '../auth/pinAuth';
 import { FEATURES } from '../cloud/features';
 import { prisma } from '../db';
 import { listPerformers } from '../performers/roster';
+
+/** Where meros.co sends a browser back to after signing in. */
+const CALLBACK = '/api/cloud/signin/callback';
+/** The cookie that binds a sign-in's callback to the browser that began it. */
+const STATE_COOKIE = 'rfdeck_signin';
+
+function stateCookie(state: string, maxAgeSec: number): string {
+  return `${STATE_COOKIE}=${encodeURIComponent(state)}; Path=/api/cloud/signin; Max-Age=${maxAgeSec}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+function readCookie(header: string | undefined, name: string): string | undefined {
+  for (const part of (header ?? '').split(';')) {
+    const eq = part.indexOf('=');
+    if (eq > 0 && part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+  }
+  return undefined;
+}
 
 /**
  * The cloud link, for the Settings → Cloud page.
@@ -36,70 +57,182 @@ export const cloudRoutes: FastifyPluginAsync = async (fastify) => {
       return {
         configured: false, linked: false, accountId: null, linkedAt: null,
         lastRefreshAt: null, features: [], expiresAt: null, offline: false,
-        needsRelink: null, browserClientId: null, baseUrl: null,
+        needsRelink: null, peopleCanSignIn: false, baseUrl: null,
         eventsToCloud: false, eventsQueued: 0,
       };
     }
     return cloud.status();
   });
 
+  // ── Signing in with Meros ─────────────────────────────────────────────────
+  //
+  // The instance (linking this RFDeck to an account) and people (syncing their
+  // preferences) sign in the same way: meros.co's sign-in page in a browser.
+  // See cloud/signIn.ts for the two ways there, loopback and redirect.
+
+  const sendSignInError = (reply: FastifyReply, err: unknown) => {
+    if (err instanceof SignInError) return reply.code(err.status).send({ error: err.code, message: err.message });
+    throw err;
+  };
+
   /**
-   * Begin the device flow.
-   *
-   * Returns the user code and the verification URI for the operator to open on
-   * whatever device is to hand. The server polls in the background; the page
-   * watches `/cloud/link` or the `cloud:status` socket event.
+   * Sign in. From RFDeck Desktop on its own computer this waits, up to five
+   * minutes, for the sign-in in the system browser and answers when it's done.
+   * From any other browser it answers `{redirect}`, the meros.co page to send
+   * the browser to, and sets the cookie the callback checks.
    */
-  fastify.post('/cloud/link', async (request, reply) => {
+  fastify.post('/cloud/signin', async (request, reply) => {
     const cloud = service();
-    if (!cloud?.configured) {
-      return reply.code(409).send({
-        error: 'not_configured',
-        message: 'Meros Cloud is not configured on this server.',
-      });
+    if (!cloud?.signIn) {
+      return reply.code(409).send({ error: 'not_configured', message: 'Meros Cloud is not configured on this server.' });
+    }
+    const body = (request.body ?? {}) as { purpose?: string; returnTo?: string; remember?: boolean };
+    if (body.purpose !== 'instance' && body.purpose !== 'person') {
+      return reply.code(400).send({ error: 'invalid_request', message: 'purpose must be "instance" or "person".' });
+    }
+    const persistent = body.remember === true;
+    try {
+      if (cloud.signIn.usesLoopback(isLoopback(request.ip))) {
+        const person = await cloud.signIn.signInHere(body.purpose, persistent);
+        if (!person) {
+          await cloud.afterLink();
+          return { signedIn: true, purpose: 'instance' };
+        }
+        return { signedIn: true, purpose: 'person', token: person.token, person: person.person };
+      }
+      const host = request.headers.host;
+      if (!host) return reply.code(400).send({ error: 'invalid_request', message: 'The request has no Host.' });
+      const { authorizeUrl, state } = await cloud.signIn.begin(
+        body.purpose, `https://${host}${CALLBACK}`, safeReturnTo(body.returnTo), persistent,
+      );
+      reply.header('set-cookie', stateCookie(state, 600));
+      return { redirect: authorizeUrl };
+    } catch (err) {
+      return sendSignInError(reply, err);
+    }
+  });
+
+  /**
+   * RFDeck Desktop's sign-in in the system browser, while it waits: the page it
+   * opened, for an operator whose browser didn't come up.
+   */
+  fastify.get('/cloud/signin', async () => {
+    return { pending: service()?.signIn?.pendingLoopback ?? null };
+  });
+
+  /** Stop RFDeck Desktop's sign-in in the system browser. */
+  fastify.post('/cloud/signin/cancel', async () => {
+    return { canceled: service()?.signIn?.cancel() ?? false };
+  });
+
+  /**
+   * meros.co sends the browser back here. Open past the PIN (it's a
+   * navigation), and bound to the browser that began the sign-in by the state
+   * cookie. Sends the browser on to the page it began from, with the outcome.
+   */
+  fastify.get(CALLBACK.replace('/api', ''), async (request, reply) => {
+    const cloud = service();
+    const query = request.query as Record<string, string | undefined>;
+    const params = new URLSearchParams();
+    let returnTo = '#/';
+    reply.header('set-cookie', stateCookie('', 0));
+    if (!cloud?.signIn) {
+      params.set('signin_error', 'not_configured');
+    } else {
+      try {
+        const finished = await cloud.signIn.finish(query, readCookie(request.headers.cookie, STATE_COOKIE));
+        returnTo = finished.returnTo;
+        if (finished.purpose === 'instance') {
+          await cloud.afterLink();
+          params.set('signin', 'linked');
+        } else {
+          params.set('signin', 'person');
+          params.set('claim', finished.claim!);
+        }
+      } catch (err) {
+        if (!(err instanceof SignInError)) throw err;
+        const begun = err as SignInError & { returnTo?: string; purpose?: string };
+        returnTo = safeReturnTo(begun.returnTo);
+        params.set('signin_error', err.code);
+        if (begun.purpose) params.set('signin_for', begun.purpose);
+      }
+    }
+    // Never cached: the address carries a single-use claim code.
+    reply.header('cache-control', 'no-store');
+    return reply.redirect(`/?${params}${returnTo}`);
+  });
+
+  // ── The person signed in in this browser ──────────────────────────────────
+
+  const person = async (request: FastifyRequest) => {
+    const header = request.headers['x-rfdeck-person'];
+    return (await service()?.people?.resolve(typeof header === 'string' ? header : undefined)) ?? null;
+  };
+
+  const notSignedIn = (reply: FastifyReply) =>
+    reply.code(401).send({ error: 'person_signed_out', message: 'Sign in with Meros to sync preferences.' });
+
+  const sendPersonError = (reply: FastifyReply, err: unknown) => {
+    if (err instanceof PersonSignedOut) return reply.code(401).send({ error: 'person_signed_out', message: err.message });
+    if (err instanceof CloudOffline) return reply.code(502).send({ error: 'meros_unreachable', message: err.message });
+    if (err instanceof CloudRefused) {
+      if (err.status === 413) {
+        return reply.code(413).send({
+          error: 'profile_too_large',
+          message: 'Your saved preferences are too large to sync. Something is storing more than it should be.',
+        });
+      }
+      return reply.code(502).send({ error: err.code ?? 'meros_refused', message: err.message });
+    }
+    throw err;
+  };
+
+  /** Exchange the code the sign-in came back with for this browser's token, once. */
+  fastify.post('/cloud/me/claim', async (request, reply) => {
+    const code = (request.body as { code?: unknown } | undefined)?.code;
+    const people = service()?.people;
+    const claimed = people && typeof code === 'string' ? await people.claim(code) : null;
+    if (!claimed) {
+      return reply.code(400).send({ error: 'unknown_request', message: 'This sign-in expired or was already used. Sign in again.' });
+    }
+    return { token: claimed.token, person: claimed.person };
+  });
+
+  fastify.get('/cloud/me', async (request, reply) => {
+    const who = await person(request);
+    return who ? { person: who } : notSignedIn(reply);
+  });
+
+  fastify.get('/cloud/me/profile', async (request, reply) => {
+    const who = await person(request);
+    if (!who) return notSignedIn(reply);
+    try {
+      return await service()!.people!.profile(who);
+    } catch (err) {
+      return sendPersonError(reply, err);
+    }
+  });
+
+  /** Merge these keys into the person's preferences; a null value removes one. */
+  fastify.put('/cloud/me/profile', async (request, reply) => {
+    const who = await person(request);
+    if (!who) return notSignedIn(reply);
+    const keys = (request.body as { keys?: unknown } | undefined)?.keys;
+    if (!keys || typeof keys !== 'object' || Array.isArray(keys)) {
+      return reply.code(400).send({ error: 'invalid_request', message: 'keys must be an object.' });
     }
     try {
-      const pending = await cloud.startLink();
-      return {
-        userCode: pending.userCode,
-        verificationUri: pending.verificationUri,
-        verificationUriComplete: pending.verificationUriComplete,
-        expiresAt: new Date(pending.expiresAt).toISOString(),
-        outcome: pending.outcome,
-      };
-    } catch (err: any) {
-      // Could not even start: almost always no route to the internet from the
-      // rack, which is worth saying plainly rather than as a stack trace.
-      return reply.code(502).send({
-        error: 'link_start_failed',
-        message: err?.message ?? 'Could not reach Meros to start linking.',
-      });
+      return await service()!.people!.putProfile(who, keys as Record<string, unknown>);
+    } catch (err) {
+      return sendPersonError(reply, err);
     }
   });
 
-  /** Where the pending link got to. */
-  fastify.get('/cloud/link', async () => {
-    const cloud = service();
-    const pending = cloud?.linkProgress();
-    if (!pending) return { pending: false };
-    // A link that has just completed has to pick up the account and its
-    // entitlements before the UI reads status, or the page shows "linked" with
-    // nothing behind it.
-    if (pending.outcome === 'linked') await cloud!.afterLink();
-    return {
-      pending: pending.outcome === 'pending',
-      outcome: pending.outcome,
-      detail: pending.detail,
-      userCode: pending.userCode,
-      verificationUri: pending.verificationUri,
-      verificationUriComplete: pending.verificationUriComplete,
-      expiresAt: new Date(pending.expiresAt).toISOString(),
-    };
-  });
-
-  fastify.delete('/cloud/link', async () => {
-    service()?.cancelLink();
-    return { cancelled: true };
+  /** Sign the person out, here and at Meros, in every browser signed in as them. */
+  fastify.post('/cloud/me/signout', async (request) => {
+    const who = await person(request);
+    if (who) await service()!.people!.signOut(who);
+    return { signedIn: false };
   });
 
   fastify.post('/cloud/unlink', async () => {

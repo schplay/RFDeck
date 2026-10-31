@@ -99,6 +99,17 @@ describe('what the PIN gate lets through unauthenticated', () => {
     expect(needsNoPin('POST', '/api/auth/cloud-signout')).toBe(false);
   });
 
+  it('lets meros.co send a browser back after signing in, and nothing else of signing in', async () => {
+    // The return is a navigation, which carries no PIN token; the state cookie
+    // binds it to the browser that began the sign-in, behind the PIN.
+    const { needsNoPin } = await import('../app');
+    expect(needsNoPin('GET', '/api/cloud/signin/callback')).toBe(true);
+    expect(needsNoPin('POST', '/api/cloud/signin/callback')).toBe(false);
+    expect(needsNoPin('POST', '/api/cloud/signin')).toBe(false);
+    expect(needsNoPin('POST', '/api/cloud/me/claim')).toBe(false);
+    expect(needsNoPin('GET', '/api/cloud/me/profile')).toBe(false);
+  });
+
   it('exempts the Micboard reads by method, not by path alone', async () => {
     // /api/live answers POST and DELETE too, and listing it as a path would let
     // anyone on the network stand the whole rig down without a PIN.

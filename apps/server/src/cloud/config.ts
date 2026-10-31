@@ -27,9 +27,9 @@ export interface CloudConfig {
   /** This install's client for the instance link (RFDeck Server or RFDeck Desktop). */
   clientId: string;
   /**
-   * The RFDeck Browser client, for the person link. The server never uses it —
-   * it hands it to the web UI, which runs its own device flow and keeps the
-   * tokens in the browser.
+   * The RFDeck Browser client, for people signing in to sync their
+   * preferences. Its own client, not the instance link's, so the two refresh
+   * families can never revoke each other. Null turns that sign-in off.
    */
   browserClientId: string | null;
   /**
@@ -73,19 +73,6 @@ export const INSTANCE_SCOPES = [
 ] as const;
 
 /**
- * Scopes the person link requests.
- *
- * Recorded here for reference; the browser builds its own scope string, since it
- * runs the flow itself and the server never holds a personal token.
- *
- * `offline_access` **is** requested. An earlier version left it out so that a
- * shared venue machine would hold no refresh token — but the consequence was
- * re-approving with a phone and a typed code every hour, which is not a trade,
- * it is a broken feature. The shared-machine concern is handled by *where* the
- * token is kept instead: session storage by default, so it ends with the tab, and
- * local storage only when the operator says "keep me signed in on this machine".
- */
-/**
  * Scopes a cloud user signed in from a console is redeemed with.
  *
  * Meros adds `offline_access` to every login-token redeem, so it is not listed.
@@ -100,6 +87,13 @@ export const CLOUD_USER_SCOPES = [
   'profiles:write',
 ] as const;
 
+/**
+ * Scopes a person signing in to sync their preferences requests.
+ *
+ * `offline_access`, so the session renews itself: signing in is once per
+ * sitting, not once an hour. The shared-machine concern is handled by how long
+ * the browser keeps its token instead (see people.ts).
+ */
 export const PERSON_SCOPES = [
   'openid',
   'profile',
