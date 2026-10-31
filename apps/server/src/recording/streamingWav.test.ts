@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, afterAll } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -12,10 +12,23 @@ import { StreamingWav, WAV_HEADER_BYTES } from './pcm';
 // their player refuses or that plays out of sequence. Both are silent failures
 // until the moment the recording is needed.
 
+/** Every folder a test made, so each is removed after it, pass or fail. */
+const made: string[] = [];
+
 async function tmp(): Promise<string> {
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rfdeck-wav-'));
+  made.push(dir);
   return path.join(dir, 'capture.wav');
 }
+
+afterEach(async () => {
+  for (const dir of made) await fs.promises.rm(dir, { recursive: true, force: true });
+});
+
+afterAll(() => {
+  // The check that nothing this file made is left in the temp folder.
+  expect(made.filter(dir => fs.existsSync(dir))).toEqual([]);
+});
 
 function readHeader(file: string) {
   const b = fs.readFileSync(file);
