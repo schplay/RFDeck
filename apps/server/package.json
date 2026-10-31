@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "merosClient": {
     "repository": "https://github.com/meros-co/meros-client",
-    "rev": "f5506879647897653f05f2c1702188f0db400bfe"
+    "rev": "774eb189ef9b15265ce7f4b0e3fd7afaa9c66504"
   },
   "scripts": {
     "build": "tsc",
